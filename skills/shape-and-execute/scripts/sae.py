@@ -3341,9 +3341,57 @@ def build_parser() -> argparse.ArgumentParser:
                 ["doctor", "doctor --repo"], [0, 1, 2], cmd_doctor)
     p.add_argument("--repo", action="store_true")
 
+    fill_missing_help(parser)
     for name, group in (("job", job), ("decision", decision), ("finding", finding), ("setup", setup)):
         group.set_defaults(func=lambda args, g=group: (g.print_help(), EXIT_USAGE)[1])
     return parser
+
+
+ARGUMENT_HELP = {
+    "task": "task ID or a unique end of it (usually the slug)",
+    "id": "job ID, UPPER-KEBAB",
+    "title": "short title",
+    "file": "path of the finding file",
+    "summary": "one line: what was decided, amended or noted",
+    "type": "what to log",
+    "gate": "which gate",
+    "pairs": "settings to change, for example execution=economy",
+    "resume": "run the job again (running, parked or failed); needs --reason",
+    "reason": "why: required with --resume, for graph changes during execution, and for abandon",
+    "review": "flag the job for review (review point selected-jobs)",
+    "final": "the final validation job; runs after every other job and review",
+    "fix_of": "the writer job this fix job repairs; it works in that job's workspace and branch",
+    "needs": "comma list of job IDs that must be done first (writers: also merged)",
+    "difficulty": "mechanical | normal | hard; with the phase level it selects the model rung",
+    "kind": "what the job does",
+    "allow_dirty": "start although tracked files outside .tasks/ have uncommitted changes",
+    "open": "open the URL in the default browser",
+    "repo": "also check this repository: .tasks/, repo profile, a throwaway worktree, the viewer",
+    "tokens": "token use of the subagent, when the harness reports it",
+    "duration_s": "run time of the subagent in seconds, when the harness reports it",
+    "agent_ref": "the harness agent ID, to resume the same agent later",
+    "outcome": "why the finding is closed",
+    "job": "the job this entry is about",
+    "decision_class": "decision class",
+    "amend_id": "the amendment ID under ## Amendments in specs.md",
+    "from_job": "the parked job whose decision request this answers",
+    "confidence": "how sure you are",
+    "source": "where it came from: <task>/<JOB-ID> for findings, <task> for backlog items",
+    "paths": "comma list of related paths",
+    "harness": "orchestrator harness, when it differs from the one recorded at sae new",
+    "accept_review": "merge although the last review said changes-required; logs a decision with this reason",
+    "by": "who decided: human, agent or joint (agent entries are listed in the final report)",
+}
+
+
+def fill_missing_help(parser: argparse.ArgumentParser) -> None:
+    """Every option and argument gets a help line (agents read --help as the reference)."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for child in action.choices.values():
+                fill_missing_help(child)
+        elif action.help is None and action.dest in ARGUMENT_HELP:
+            action.help = ARGUMENT_HELP[action.dest]
 
 
 def main(argv: list[str] | None = None) -> int:

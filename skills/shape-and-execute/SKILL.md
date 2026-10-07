@@ -44,11 +44,17 @@ All task state goes through `sae`, a Python script in this skill:
     python3 <SKILL_DIR>/scripts/sae.py <command> ...
 
 `<SKILL_DIR>` is the folder that contains this file; Claude Code also provides it as
-`${CLAUDE_SKILL_DIR}`. Never edit `state.json` or `events.jsonl` by hand. For an option that
-your phase reference does not show, load [references/sae-cli.md](references/sae-cli.md) —
-every command, its arguments and exit codes.
+`${CLAUDE_SKILL_DIR}`. Never edit `state.json` or `events.jsonl` by hand. For a command or an
+option that your mode reference does not show, run `sae --help` or `sae <command> --help`.
 
-Exit code 2 means the user config is missing. Tell the user and offer setup mode.
+| Exit | Meaning | Do |
+|---|---|---|
+| 0 | ok | continue |
+| 1 | usage or precondition error | read the message; fix the call or the precondition |
+| 2 | user config missing or invalid | tell the user and offer setup mode |
+| 3 | gate refused: lint errors, approval or review missing | fix what the message names |
+| 4 | git problem: dirty tree, merge conflict, worktree or setup failure | read the message; a conflict added `INTEGRATE-<ID>` |
+| 5 | re-run verify failed | resume the same worker with the printed command |
 
 ## Rules for every mode
 

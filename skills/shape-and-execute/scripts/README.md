@@ -1,6 +1,6 @@
 # scripts/
 
-`sae.py`, the shape-and-execute CLI, is not implemented yet (draft v0.1).
+`sae.py` is the shape-and-execute CLI: Python 3.10 or newer, standard library only.
 
-- Implementation spec: the CLI spec of the design notes
-- Agent-facing usage: `references/sae-cli.md`
+    python3 sae.py --help              # every command and the exit codes
+    python3 sae.py <command> --help    # one command: usage, options, examples, exit codes
