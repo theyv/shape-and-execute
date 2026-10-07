@@ -10,7 +10,8 @@ execute.
   `sae dispatch <task> PLAN` and spawn a subagent with the printed prompt and model.
   Collect it when it returns.
 - **Inline** for a small task (one or two jobs, shallow shaping): load
-  [planner.md](planner.md) — how to design the graph and write job files — and plan yourself.
+  [roles/planner.md](../roles/planner.md) — how to design the graph and write job files —
+  and plan yourself.
 
 ## 2. Light review
 
@@ -27,9 +28,8 @@ send the printed message), then check again.
 ## 3. Plan review (when `plan` is a review point)
 
 A clean `sae check` adds `REVIEW-PLAN`. Dispatch it. When the printed output is a COMMAND
-(review in the other harness), run it in the background. When it fails (exit code, empty
-result file; often a quota limit), re-dispatch with
-`--provider <your harness> --resume --reason "provider failed: <message>"`. Collect it.
+(review in the other harness), run it in the background; when it fails, run the IF IT FAILS
+line printed with it. Collect it.
 For `changes-required`, resume the planner with the findings and check again.
 
 ## 4. Plan gate
@@ -39,6 +39,8 @@ For `changes-required`, resume the planner with the findings and check again.
 2. In the chat, give a short summary:
    - the topology and why, in 2–4 lines;
    - the riskiest assumptions made instead of the user;
+   - jobs without `verify` (a `sae check` warning): only judgement checks them, so name them
+     and offer to flag them for review;
    - the settings card with its current values: "ok, or change something?";
    - where execution should run: a fresh session after deep shaping or a long conversation;
      this session for a small task.

@@ -9,7 +9,7 @@ workdir. You integrate; you do not redefine the spec.
    pass.
 3. Check the contracts between the merged jobs, and semantic conflicts that each job's own
    validation could not see.
-4. Commit the merge on your branch (see [commit-message.md](commit-message.md)). Never push.
+4. Commit the merge on your branch (see [commit-message.md](../commit-message.md)). Never push.
 
 Do not invent product behavior, silently change a requirement, pick a consequential
 architecture direction while several valid ones remain, or weaken tests to make them pass.

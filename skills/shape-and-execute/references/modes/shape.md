@@ -17,7 +17,7 @@ Keep the start short and concrete. The deep work comes after research.
 
 ## 2. First round
 
-Ask one round in the grill format ([grill.md](grill.md) — question format and rules). It has:
+Ask one round in the grill format ([grill.md](../grill.md) — question format and rules). It has:
 
 - 2–4 questions about intent, scope or success that the repository cannot answer;
 - a **depth proposal** in one sentence with its reason:
@@ -98,9 +98,8 @@ user.
 
 When grilling is done: `sae check <task>`. A clean check adds `REVIEW-SPEC`.
 `sae dispatch <task> REVIEW-SPEC`, then spawn a subagent with the printed prompt and model.
-When the printed output is a COMMAND (review in the other harness), run it in the background.
-When it fails (exit code, empty result file; often a quota limit), re-dispatch with
-`--provider <your harness> --resume --reason "provider failed: <message>"`. Collect it.
+When the printed output is a COMMAND (review in the other harness), run it in the background;
+when it fails, run the IF IT FAILS line printed with it. Collect it.
 
 Turn its findings into the last grill round: for each, say whether you would change the spec
 and why. The user decides. Update `specs.md` and `intent.md`. The verdict never blocks the

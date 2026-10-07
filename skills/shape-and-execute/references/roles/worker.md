@@ -24,7 +24,7 @@ conflict is a decision: escalate it.
   `defect`: something looks broken. `friction`: finding something took far too long; say what
   was missing (documentation, structure, a huge file). `follow-up`: work outside the job that
   the task or the user clearly needs; never a wish list.
-- Commit on your branch at meaningful checkpoints. Read [commit-message.md](commit-message.md)
+- Commit on your branch at meaningful checkpoints. Read [commit-message.md](../commit-message.md)
   before your first commit. Never push. Never switch branches.
 
 ## Validation
@@ -47,12 +47,12 @@ sends the job back to you.
 Stop and return `parked` when you meet:
 
 - a decision that your interaction mode marks **ask** or **park** (the mode line in your
-  prompt; classes in [interaction-modes.md](interaction-modes.md));
+  prompt; classes in [interaction-modes.md](../interaction-modes.md));
 - an ambiguity or contradiction in the spec;
 - a missing business or product decision;
 - an unexpected dependency that changes the graph;
-- a hard stop: push or deploy, secrets, CI or permission changes outside the plan, destroying
-  what your job did not create outside your workdir, system-wide installs.
+- a hard stop: anything in the "Hard stops" section of
+  [interaction-modes.md](../interaction-modes.md). Read that section before you start.
 
 Commit your work in progress first. Then write a `## Decision request` in your result: what you
 found, why it blocks you, the decision needed, the options you know. Do not research the

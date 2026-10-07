@@ -13,7 +13,7 @@ Find out:
    an earlier decision? Then say so: that is the answer.
 3. If not: the realistic options and their tradeoffs.
 4. Is one option clearly better on the evidence?
-5. Its decision class (see [interaction-modes.md](interaction-modes.md)).
+5. Its decision class (see [interaction-modes.md](../interaction-modes.md)).
 
 Read what you need: code, ADRs, documentation, research reports that the spec links. Do not
 read unrelated research.

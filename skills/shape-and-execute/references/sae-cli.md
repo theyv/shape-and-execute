@@ -16,7 +16,7 @@ tree, merge conflict, worktree setup) · `5` re-run verify failed → resume the
 | `new "<title>" [--slug s] [--harness claude\|codex] [--from <backlog-file>]` | Create a task. Prints its ID. `--from` turns a backlog item into the task's `intent.md` and removes it from the backlog. |
 | `new "<title>" --backlog [--slug s] [--source <task>]` | Create a backlog item for deferred work. Prints its path. |
 | `status [<task>]` | Where things are. The first command after any context reset. Without a task: all tasks, the backlog, open findings. |
-| `set <task> key=value ...` | Change settings: `interaction`, `research`, `planning`, `execution`, `review-level`, `review` (points `spec`, `plan`, `selected-jobs` or `all-jobs`, `integration`; or `off`), `reviewer` (`claude` \| `codex`). |
+| `set <task> key=value ...` | Change settings: `interaction`, `research`, `planning`, `execution`, `review-level`, `review` (points `spec`, `plan`, `selected-jobs` or `all-jobs`, `integration`; or `off`), `reviewer` (`claude` \| `codex`), `max-verify-failures` (only when the user asks). |
 | `approve <task> spec` | Spec gate: `shaping` → `planning`. Runs `check` first; refuses while a due `REVIEW-SPEC` is not collected. |
 | `approve <task> plan` | Plan gate. Runs `check` first. |
 | `start <task> [--allow-dirty]` | Begin execution: task branch, layout, first `next`. Commits the removal of a picked-up backlog item. |

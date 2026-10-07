@@ -29,11 +29,11 @@ When the user names an existing task, run `sae status <task>` first.
 
 | The user wants | Load |
 |---|---|
-| a new task (a note or a backlog item), or to continue a task in phase `shaping` | [references/shape.md](references/shape.md) — intake, research, grilling, spec, spec review, spec approval |
-| to continue a task in phase `planning` | [references/plan.md](references/plan.md) — planner, plan review, plan gate, hand-off |
-| to execute a task (plan approved, or phase `executing`) | [references/execute.md](references/execute.md) — orchestration loop, decisions, merges, finish |
-| setup or model changes, or `sae` exited with code 2 | [references/setup.md](references/setup.md) — user config, harness permissions, repo profile |
-| to review accumulated findings | [references/triage.md](references/triage.md) — findings to decisions, new tasks and backlog items |
+| a new task (a note or a backlog item), or to continue a task in phase `shaping` | [references/modes/shape.md](references/modes/shape.md) — intake, research, grilling, spec, spec review, spec approval |
+| to continue a task in phase `planning` | [references/modes/plan.md](references/modes/plan.md) — planner, plan review, plan gate, hand-off |
+| to execute a task (plan approved, or phase `executing`) | [references/modes/execute.md](references/modes/execute.md) — orchestration loop, decisions, merges, finish |
+| setup or model changes, or `sae` exited with code 2 | [references/modes/setup.md](references/modes/setup.md) — user config, harness permissions, repo profile |
+| to review accumulated findings | [references/modes/triage.md](references/modes/triage.md) — findings to decisions, new tasks and backlog items |
 
 Load only the reference for the current mode.
 
@@ -58,10 +58,9 @@ Exit code 2 means the user config is missing. Tell the user and offer setup mode
   (and reasoning effort, where the harness allows it) exactly as `sae dispatch` prints.
 - **Pointers, not pastes.** Give a subagent the prompt that `sae dispatch` prints. Do not add
   pasted file content to it.
-- **Role protocols belong to subagents.** `job.md`, `research.md`, `planner.md`, `review.md`,
-  `decision.md`, `integration.md` and `commit-message.md` are read by the subagent that the
-  dispatch prompt points to. Do not load them yourself, except `planner.md` when you plan a
-  small task inline.
+- **Role protocols belong to subagents.** The files in `references/roles/` and
+  `references/commit-message.md` are read by the subagent that the dispatch prompt points to.
+  Do not load them yourself, except `roles/planner.md` when you plan a small task inline.
 - **Never push**, deploy or touch the base branch. Commits happen only on task and job branches.
 - **Languages.** Talk to the user in the conversation language from the user config. Write
   task files, code comments and commit messages in the artifact language; a repo pin in

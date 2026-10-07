@@ -12,7 +12,7 @@ open, or reject.
    could look like. Most valuable first. Friction often points at missing documentation, huge
    files or unclear structure; fixing it makes every later task cheaper, so say so when you
    rank.
-4. Ask in the grill format ([grill.md](grill.md)) what to do with each group: fix now (a new
+4. Ask in the grill format ([grill.md](../grill.md)) what to do with each group: fix now (a new
    task), later (a backlog item), leave open, or reject (with a reason).
 5. Fix now → start a new task with [shape.md](shape.md), with the findings as the note. The
    intent links the finding files.

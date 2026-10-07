@@ -7,7 +7,7 @@ small: read a result body only when a job is parked or failed.
 ## Start
 
 1. `sae status <task>`.
-2. Load [interaction-modes.md](interaction-modes.md) — decision classes, the mode table and
+2. Load [interaction-modes.md](../interaction-modes.md) — decision classes, the mode table and
    the hard stops. It decides when you ask the user.
 3. Read `plan.md` (strategy, risks, adaptation triggers) when it exists. Do not read research.
 4. Without git: offer `git init` once. Explain it in plain words: it gives undo and a view of
@@ -26,12 +26,14 @@ Repeat until `sae next` reports that all jobs are done.
 2. For every ready job, up to the parallelism it offers: `sae dispatch <task> <ID>`, then spawn
    a subagent with the printed PROMPT and MODEL (Claude Code: the Agent tool with `model`;
    Codex: spawn the agent with `model` and `reasoning_effort`). When the output is a COMMAND
-   (a review in the other harness), run it in the background.
+   (a review in the other harness), run it in the background; when it fails, run the
+   IF IT FAILS line printed with it.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
    `--agent-ref` when your harness reports them. Then act on the outcome:
    - `done` → nothing to do; `sae` merges the job or adds its review.
    - exit 5 (re-run verify failed) → resume the same worker:
      `sae dispatch <task> <ID> --resume --reason verify-failed`, send the printed message.
+     After the task's limit of failed re-runs, `sae` records the job as `failed` instead.
    - `failed` → read the result; dispatch once more with a precise `--reason`, adapt the
      graph, or log a note and leave it.
    - `parked` → the decision flow below.
@@ -39,8 +41,6 @@ Repeat until `sae next` reports that all jobs are done.
    - review `changes-required` → add fix jobs
      (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID> --reason "<review>: changes required"`),
      or accept it when the mode lets you decide: `sae merge <task> <ID> --accept-review "<why>"`.
-   - an external reviewer failed (exit code, empty file) → re-dispatch with
-     `--provider <your harness> --resume --reason "provider failed: <message>"`.
 4. While anything waits for the user, keep dispatching independent jobs.
 
 ## Decision flow
