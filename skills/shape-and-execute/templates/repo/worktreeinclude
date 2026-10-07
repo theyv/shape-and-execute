@@ -1,0 +1,4 @@
+# Ignored files to copy from the main checkout into each new job worktree.
+# Gitignore syntax. Only files that git ignores are copied.
+# .env
+# .env.local

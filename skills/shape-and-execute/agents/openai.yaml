@@ -1,0 +1,5 @@
+interface:
+  display_name: "Shape and Execute"
+  short_description: "Shape a task into a spec and job plan, then run it with worker agents"
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,21 @@
+---
+# artifact_language: en   # optional: pin the artifact language for everyone in this repository
+---
+
+# Repo profile
+
+<!-- Facts only. Do not repeat what AGENTS.md or CLAUDE.md already say; link them instead. -->
+
+## Validation commands
+- Unit:
+- Typecheck:
+- Lint:
+- End-to-end:
+
+## Hot files
+<!-- Files that many jobs tend to change: lockfiles, registries, migrations, barrel exports,
+     translations. -->
+-
+
+## Worktree notes
+<!-- What a fresh worktree needs. setup.sh does the work. -->
