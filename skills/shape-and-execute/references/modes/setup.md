@@ -51,6 +51,9 @@ Pipe the confirmed JSON to `sae setup save`. It validates the file and backs up 
 - **Codex:** a permission profile that lets git write `.git` (but keeps `.git/hooks` and
   `.git/config` read-only) and makes the worktree root writable. Without it, Codex blocks every
   commit and merge.
+- **Codex subagent cap:** `[agents] max_threads`. By default a Codex session holds only 3
+  subagents (6 on older models); parallel writers, reviews and research then fail with "agent
+  thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to set it.
 - **Claude Code:** the worktree root in `additionalDirectories`, and optional allow rules for
   `git` and the `sae` command for users who do not run with bypassed permissions.
 
