@@ -4,6 +4,9 @@ id: <TOPIC-ID>
 
 # <TOPIC-ID>: <research topic>
 
+## Objective
+<!-- One sentence: what this research must settle, and for which decision. -->
+
 ## Questions
 <!-- Numbered. Each one answerable with evidence. -->
 1.
