@@ -136,6 +136,7 @@ class Task:
         self.new_events: list[dict] = []
         self.dirty = False
         self.saved = False
+        self.writable = True    # False: opened read-only; save() refuses ([READ-ONLY-COMMANDS])
 
     # paths
     @property
@@ -182,7 +183,9 @@ class Task:
             fail(EXIT_USAGE, f"No job {job_id} in task {self.id}.")
         return self.jobs[job_id]
 
-    def load(self) -> None:
+    def load(self, read_only: bool = False) -> None:
+        """Reads state and settings. A writing load also logs an external settings change; a
+        read-only load never does ([READ-ONLY-COMMANDS])."""
         self.state = read_json(self.state_path)
         try:
             settings = read_json(self.settings_path)
@@ -194,6 +197,8 @@ class Task:
         if errors:
             fail(EXIT_USAGE, f"{self.settings_path}: " + "; ".join(errors))
         self.settings = settings
+        if read_only:
+            return
         seen = self.info.get("settings_seen")
         if seen != settings:
             changes = settings_diff(seen or {}, settings)
@@ -221,6 +226,8 @@ class Task:
         return events + self.new_events
 
     def save(self) -> None:
+        if not self.writable:
+            raise RuntimeError(f"task {self.id} was opened read-only")
         self.info["last_change"] = iso()
         write_json(self.state_path, self.state)
         if self.new_events:
@@ -239,12 +246,21 @@ class Task:
 
 
 @contextlib.contextmanager
-def open_task(root: Path, ref: str):
+def open_task(root: Path, ref: str, write: bool = True):
     """Locks the task, loads it, and saves it when the block ends without an exception (the
     block may also save it earlier). After the lock is released, a saved task re-renders the
-    viewer data."""
+    viewer data.
+
+    `write=False` ([READ-ONLY-COMMANDS]): no lock file, no settings-change event, no save and
+    no viewer render, so the command runs without write access. Changes made in the block are
+    dropped; a command that finds it must change the task opens it again with `write=True`."""
     copy = find_task(root, ref)
     task = Task(copy.checkout, copy.task_id, copy.folder)
+    if not write:
+        task.writable = False
+        task.load(read_only=True)
+        yield task
+        return
     with (task.dir / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         task.load()

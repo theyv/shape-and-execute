@@ -1,4 +1,4 @@
-"""Needs graph, waits_for, writer slots, requirement IDs, plan lint and the check run."""
+"""Needs graph, waits_for, writer slots, holds, requirement IDs, plan lint and the check run."""
 
 from __future__ import annotations
 
@@ -141,6 +141,8 @@ def waits_for(task: Task, job_id: str) -> list[str]:
     parked = integration_parked(task)
     if parked:
         reasons.append(f"the task is parked: {parked} requires changes again")
+    for held in active_holds(task):
+        reasons.append(f"hold after {held}")
     if not kind_allowed_now(task, job):
         reasons.append(f"phase {task.phase}")
     return reasons
@@ -148,6 +150,23 @@ def waits_for(task: Task, job_id: str) -> list[str]:
 
 def is_ready(task: Task, job_id: str) -> bool:
     return task.jobs[job_id]["status"] == "pending" and not waits_for(task, job_id)
+
+
+def hold_active(task: Task, job_id: str) -> bool:
+    """A hold after a job is active once the job is done, and merged for a writer in the
+    worktrees layout ([HOLD-AFTER-JOB], 07-cli-spec §6)."""
+    job = task.jobs.get(job_id)
+    if job is None or job["status"] != "done":
+        return False
+    return not (job["kind"] in WRITER_KINDS and task.uses_worktrees and not job["merged"])
+
+
+def active_holds(task: Task) -> list[str]:
+    return [i for i in (task.info.get("holds") or {}) if hold_active(task, i)]
+
+
+def release_command(task: Task, job_id: str) -> str:
+    return f"sae hold {task.id} {job_id} --release"
 
 
 def scopes_overlap(a: list[str], b: list[str]) -> bool:
@@ -181,9 +200,32 @@ def writer_blocked(task: Task, job_id: str, config: dict | None) -> str | None:
             if mine and theirs and not scopes_overlap(mine, theirs):
                 return None
         return f"writer running: {', '.join(running)}"
-    if len(running) >= writer_slots(task, config):
-        return f"all writer slots busy: {', '.join(running)}"
+    slots = writer_slots(task, config)
+    if len(running) >= slots:
+        return f"all writer slots busy: {', '.join(running)}; {writer_slot_text(task, len(running), slots)}"
     return None
+
+
+def writer_slot_text(task: Task, used: int, slots: int) -> str:
+    """The writer-slot notice with the source of the limit ([SETTINGS-VISIBLE])."""
+    if task.uses_worktrees:
+        return f"writer slots {used}/{slots} (parallel.max_writers in the user config)"
+    return f"writer slots {used}/{slots} (chain layout: one writer at a time)"
+
+
+def writer_slot_notice(task: Task, config: dict | None) -> str | None:
+    """The notice when every writer slot is busy and a ready writer waits, else None."""
+    if not task.info.get("git") or task.phase != "executing":
+        return None
+    running = [i for i, j in task.jobs.items() if j["kind"] in WRITER_KINDS and j["status"] == "running"]
+    slots = writer_slots(task, config)
+    if len(running) < slots:
+        return None
+    waiting = [i for i, j in task.jobs.items()
+               if j["kind"] in WRITER_KINDS and is_ready(task, i)]
+    if not waiting:
+        return None
+    return f"Full: {writer_slot_text(task, len(running), slots)}."
 
 
 REQ_HEADING_RE = re.compile(r"^###\s+\[([^\]]*)\]")
@@ -349,28 +391,59 @@ def place_final_after(task: Task, review_id: str) -> None:
                    reason=f"the final validation runs after {review_id}", by="sae")
 
 
-def run_check(task: Task) -> tuple[list[str], list[str], list[str]]:
-    """Lints by phase and materializes due spec and plan reviews. Returns (errors, warnings,
-    added job IDs)."""
-    added: list[str] = []
-    points = task.settings["review"]["points"]
+def check_lint(task: Task) -> tuple[list[str], list[str]]:
+    """(errors, warnings) of `sae check` by phase; writes nothing."""
     if task.phase == "shaping":
         _, errors, warnings = requirement_ids(task)
-        task.event("spec.checked", errors=len(errors), warnings=len(warnings))
-        if (not errors and "spec" in points and (task.dir / "specs.md").exists()
-                and not any(j["kind"] == "review" and j.get("target") == "spec" for j in task.jobs.values())):
-            add_generated_job(task, "REVIEW-SPEC", "review", [], "normal", "spec", "spec review is a review point")
-            added.append("REVIEW-SPEC")
-        return errors, warnings, added
+        return errors, warnings
     errors, warnings = lint_plan(task)
     from .reviews import review_mark  # late import: reviews imports this module
     unreviewed = [i for i in task.jobs if task.jobs[i]["kind"] in WRITER_KINDS
                   and not (review_mark(task, i) or {"reviewed": True})["reviewed"]]
     if unreviewed:
         warnings.append(f"flagged for review, but job reviews are off: {', '.join(unreviewed)}")
-    task.event("plan.checked", errors=len(errors), warnings=len(warnings))
-    if (task.phase == "planning" and not errors and "plan" in points
-            and not any(j["kind"] == "review" and j.get("target") == "plan" for j in task.jobs.values())):
-        add_generated_job(task, "REVIEW-PLAN", "review", [], "normal", "plan", "plan review is a review point")
-        added.append("REVIEW-PLAN")
-    return errors, warnings, added
+    return errors, warnings
+
+
+def due_reviews(task: Task, errors: list[str] | None = None) -> list[str]:
+    """The spec or plan review that is due but not yet a job (07-cli-spec §10.1): its review
+    point is on, the check is clean, and the thing to review exists (`specs.md`; a plan with
+    jobs and no open planning or research job). Computed, never stored: `sae next` lists it as
+    ready, `sae dispatch` adds it."""
+    points = task.settings["review"]["points"]
+    jobs = task.jobs
+    if task.phase == "shaping":
+        point, target, review_id = "spec", "spec", "REVIEW-SPEC"
+        if not (task.dir / "specs.md").exists():
+            return []
+    elif task.phase == "planning":
+        point, target, review_id = "plan", "plan", "REVIEW-PLAN"
+        if any(j["kind"] in ("planning", "research") and j["status"] != "done" for j in jobs.values()):
+            return []
+        if not any(not is_generated(i, j) and j["kind"] not in ("planning", "research") for i, j in jobs.items()):
+            return []
+    else:
+        return []
+    if point not in points or any(j["kind"] == "review" and j.get("target") == target for j in jobs.values()):
+        return []
+    if errors is None:
+        errors = check_lint(task)[0]
+    return [] if errors else [review_id]
+
+
+def add_due_review(task: Task, review_id: str) -> None:
+    target = "spec" if review_id == "REVIEW-SPEC" else "plan"
+    add_generated_job(task, review_id, "review", [], "normal", target, f"{target} review is a review point")
+
+
+def run_check(task: Task, write: bool = True) -> tuple[list[str], list[str], list[str]]:
+    """Lints by phase. Returns (errors, warnings, due spec or plan reviews). With `write` (sae
+    approve) it also logs the check and adds the due reviews; `sae check` passes False."""
+    errors, warnings = check_lint(task)
+    due = due_reviews(task, errors)
+    if write:
+        task.event("spec.checked" if task.phase == "shaping" else "plan.checked",
+                   errors=len(errors), warnings=len(warnings))
+        for review_id in due:
+            add_due_review(task, review_id)
+    return errors, warnings, due
