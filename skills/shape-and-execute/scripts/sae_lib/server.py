@@ -353,7 +353,7 @@ def prototype_path(url_path: str) -> Path:
     base = (copy.folder / "prototypes").resolve()
     target = base.joinpath(*[p for p in parts[2:] if p]).resolve()
     if target.is_dir():
-        target = target / "index.html"
+        target = (target / "index.html").resolve()
     if base not in target.parents or not target.is_file():
         raise RequestError(404, "Only files under the task's prototypes/ are served.")
     return target
