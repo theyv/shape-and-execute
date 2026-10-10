@@ -24,7 +24,8 @@ def task_worktrees_dir(task: Task, config: dict) -> Path:
 
 def workspace_owner(task: Task, job_id: str) -> str:
     """Fix jobs work in the workspace of the job they fix."""
-    return task.jobs[job_id].get("fix_of") or job_id
+    fix = task.jobs[job_id].get("fix_of")  # a fix of an integration review round is an ordinary writer
+    return fix if fix in task.jobs and task.jobs[fix]["kind"] in WRITER_KINDS else job_id
 
 
 def workspace_of(task: Task, job_id: str, config: dict | None) -> tuple[Path, str | None]:

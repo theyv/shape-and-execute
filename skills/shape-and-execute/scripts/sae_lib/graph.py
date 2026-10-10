@@ -72,6 +72,51 @@ def kind_allowed_now(task: Task, job: dict) -> bool:
     return True
 
 
+def review_rounds(task: Task, target: str) -> list[str]:
+    """The review jobs of one target (a job ID, `spec`, `plan` or `integration`), by round."""
+    ids = [i for i, j in task.jobs.items() if j["kind"] == "review" and j.get("target") == target]
+    return sorted(ids, key=lambda i: task.jobs[i].get("round") or 1)
+
+
+def last_round(task: Task, target: str) -> str | None:
+    rounds = review_rounds(task, target)
+    return rounds[-1] if rounds else None
+
+
+def requires_changes(job: dict) -> bool:
+    return job["status"] == "done" and job.get("verdict") == "changes-required"
+
+
+def fix_target(task: Task, job_id: str) -> str | None:
+    """The writer job that a fix job repairs: the fix works on its branch and merges with it.
+    A fix job of an integration review round is an ordinary writer, so None."""
+    fix = task.jobs[job_id].get("fix_of")
+    target = task.jobs.get(fix) if fix else None
+    return fix if target is not None and target["kind"] in WRITER_KINDS else None
+
+
+def integration_parked(task: Task) -> str | None:
+    """The integration review round that parks the task, or None: its second (or later)
+    changes-required round while no fix job of that round exists (07-cli-spec §6)."""
+    rounds = review_rounds(task, "integration")
+    if not rounds or not requires_changes(task.jobs[rounds[-1]]):
+        return None
+    if sum(1 for i in rounds if requires_changes(task.jobs[i])) < 2:
+        return None
+    if any(j.get("fix_of") == rounds[-1] for j in task.jobs.values()):
+        return None
+    return rounds[-1]
+
+
+def works_on_unmerged(task: Task, job: dict, need: str) -> bool:
+    """Reviews and integration jobs work on their unmerged target; a job review also on the
+    target's fix jobs, which merge together with it after the review (DL-94)."""
+    target = job.get("target")
+    if need == target:
+        return True
+    return job["kind"] == "review" and target is not None and fix_target(task, need) == target
+
+
 def waits_for(task: Task, job_id: str) -> list[str]:
     """What a pending job waits for; empty when it is ready."""
     jobs = task.jobs
@@ -84,12 +129,18 @@ def waits_for(task: Task, job_id: str) -> list[str]:
         elif other["status"] != "done":
             reasons.append(need)
         elif (other["kind"] in WRITER_KINDS and task.uses_worktrees and not other["merged"]
-              and job.get("target") != need):  # reviews and integration jobs work on their unmerged target
+              and not works_on_unmerged(task, job, need)):
             reasons.append(f"{need} (merge)")
     if job["final"]:
         open_jobs = [i for i, j in jobs.items() if i != job_id and j["status"] != "done"]
         if open_jobs:
             reasons.append("all other jobs: " + ", ".join(open_jobs))
+        last = last_round(task, "integration")
+        if last and requires_changes(jobs[last]):
+            reasons.append(f"{last} (changes-required: fix jobs, then the next round)")
+    parked = integration_parked(task)
+    if parked:
+        reasons.append(f"the task is parked: {parked} requires changes again")
     if not kind_allowed_now(task, job):
         reasons.append(f"phase {task.phase}")
     return reasons
@@ -268,12 +319,34 @@ def lint_plan(task: Task) -> tuple[list[str], list[str]]:
 
 
 def add_generated_job(task: Task, job_id: str, kind: str, needs: list[str], difficulty: str,
-                      target: str | None, reason: str) -> dict:
+                      target: str | None, reason: str, round_: int | None = None) -> dict:
+    """Adds a job that sae generates (a review, INTEGRATE-<ID>). Its needs are real edges
+    ([GENERATED-JOB-EDGES]); `generated: true` and `by: sae` tell them from planner edges."""
     job = new_job(kind, needs, difficulty, target=target)
+    job["generated"] = True
+    job["round"] = round_ if round_ is not None else (1 if kind == "review" else None)
     task.jobs[job_id] = job
     task.event("job.added", job=job_id, kind=kind, needs=needs, difficulty=difficulty, target=target,
-               reason=reason, by="sae")
+               round=job["round"], reason=reason, by="sae")
     return job
+
+
+def place_final_after(task: Task, review_id: str) -> None:
+    """The final validation needs the last integration review round, instead of the earlier
+    round. The edge is generated: listed in `generated_needs`, its event has `by: sae`."""
+    rounds = set(review_rounds(task, "integration"))
+    for job_id, job in task.jobs.items():
+        if not job["final"] or job["status"] != "pending":
+            continue
+        needs = [n for n in job["needs"] if n not in rounds] + [review_id]
+        if needs == job["needs"]:
+            continue
+        old = job["needs"]
+        job["needs"] = needs
+        job["generated_needs"] = [n for n in job.get("generated_needs", []) if n not in rounds] + [review_id]
+        task.touch(job)
+        task.event("job.changed", job=job_id, changes={"needs": [old, needs]},
+                   reason=f"the final validation runs after {review_id}", by="sae")
 
 
 def run_check(task: Task) -> tuple[list[str], list[str], list[str]]:
@@ -290,6 +363,11 @@ def run_check(task: Task) -> tuple[list[str], list[str], list[str]]:
             added.append("REVIEW-SPEC")
         return errors, warnings, added
     errors, warnings = lint_plan(task)
+    from .reviews import review_mark  # late import: reviews imports this module
+    unreviewed = [i for i in task.jobs if task.jobs[i]["kind"] in WRITER_KINDS
+                  and not (review_mark(task, i) or {"reviewed": True})["reviewed"]]
+    if unreviewed:
+        warnings.append(f"flagged for review, but job reviews are off: {', '.join(unreviewed)}")
     task.event("plan.checked", errors=len(errors), warnings=len(warnings))
     if (task.phase == "planning" and not errors and "plan" in points
             and not any(j["kind"] == "review" and j.get("target") == "plan" for j in task.jobs.values())):

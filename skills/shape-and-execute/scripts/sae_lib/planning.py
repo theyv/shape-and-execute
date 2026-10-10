@@ -26,7 +26,7 @@ from .common import (
 )
 from .config import settings_card, settings_diff, settings_errors
 from .gitutil import find_root, git_user
-from .graph import run_check
+from .graph import last_round, requires_changes, run_check
 from .tasks import Task, is_generated, job_file, new_job, open_task, template
 
 
@@ -162,14 +162,35 @@ def cmd_job_add(args) -> int:
             fail(EXIT_USAGE, "The task already has a final job.")
         if args.fix_of:
             target = task.job(args.fix_of)
-            if target["kind"] not in WRITER_KINDS or args.kind != "implementation":
-                fail(EXIT_USAGE, "--fix-of: a fix job is an implementation job that fixes a writer job.")
+            integration_round = target["kind"] == "review" and target.get("target") == "integration"
+            if args.kind != "implementation" or (target["kind"] not in WRITER_KINDS and not integration_round):
+                fail(EXIT_USAGE, "--fix-of: a fix job is an implementation job that fixes a writer job, or the "
+                                 "findings of an integration review round.")
+            last = last_round(task, "integration")
+            if integration_round and (args.fix_of != last or not requires_changes(target)):
+                if requires_changes(task.jobs[last]):
+                    fail(EXIT_USAGE, f"--fix-of {args.fix_of}: fix jobs answer the last integration review round. "
+                                     f"Use: sae job add {task.id} {job_id} --kind implementation --fix-of {last} "
+                                     f"--reason \"<finding>\"")
+                fail(EXIT_USAGE, f"--fix-of {args.fix_of}: {last} does not say changes-required, so it needs no fix "
+                                 f"jobs. Add an ordinary job: sae job add {task.id} {job_id} --kind implementation "
+                                 f"--reason \"<why>\"")
             if target["merged"]:
                 fail(EXIT_USAGE, f"{args.fix_of} is already merged; add a normal job instead.")
         require_reason(task, args.reason)
         needs = parse_needs(args.needs)
         job = new_job(args.kind, needs, args.difficulty, review=args.review, final=args.final, fix_of=args.fix_of)
         task.jobs[job_id] = job
+        notes = []
+        fixed = task.jobs.get(args.fix_of) if args.fix_of else None
+        if fixed is not None and fixed["kind"] in WRITER_KINDS and fixed["status"] == "parked" and fixed["review_rounds"]:
+            # The owner chose another fix round: the target's work is done, its next review follows the fix.
+            fixed["status"] = "done"
+            task.touch(fixed)
+            notes.append(f"{args.fix_of} is no longer parked: its next review round follows {job_id}.")
+        if args.review and not {"selected-jobs", "all-jobs"} & set(task.settings["review"]["points"]):
+            notes.append(f"warning: {job_id} is flagged for review, but job reviews are off "
+                         "(review points have neither selected-jobs nor all-jobs).")
         path = job_file(task, job_id)
         if not path.exists():
             name = "job-research.md" if args.kind == "research" else "job.md"
@@ -177,8 +198,8 @@ def cmd_job_add(args) -> int:
             write_atomic(path, text)
         task.event("job.added", job=job_id, kind=args.kind, needs=needs, difficulty=args.difficulty,
                    review=args.review, final=args.final, fix_of=args.fix_of, reason=args.reason)
-        emit(args, f"Added {job_id} ({args.kind}, {args.difficulty}). Job file: {path}",
-             {"job": job_id, "file": str(path)})
+        emit(args, "\n".join([f"Added {job_id} ({args.kind}, {args.difficulty}). Job file: {path}"] + notes),
+             {"job": job_id, "file": str(path), "notes": notes})
     return EXIT_OK
 
 
@@ -272,10 +293,12 @@ def register_job(sub, command):
                 f"Kinds: {', '.join(k for k in JOB_KINDS if k not in ('review', 'decision'))} (sae adds review jobs;\n"
                 "decision jobs come from sae decision new). ID: UPPER-KEBAB. --needs: jobs that must be done (and\n"
                 "merged, for writers) first. --review: review this job (selected-jobs). --final: the final validation.\n"
-                "--fix-of: an implementation job that fixes a writer job in its workspace. --reason: required during\n"
-                "execution.",
+                "--fix-of <ID>: an implementation job that fixes a writer job in its workspace (after its job review),\n"
+                "or answers a changes-required integration review round (an ordinary writer; when the round's fix\n"
+                "jobs are merged, sae adds the next round). --reason: required during execution.",
                 ["job add claims-status STATUS-API --kind implementation --needs STATUS-CONTRACT --difficulty hard --review",
-                 'job add claims-status STATUS-API-FIX-1 --kind implementation --fix-of STATUS-API --reason "REVIEW-STATUS-API: changes required"'],
+                 'job add claims-status STATUS-API-FIX-1 --kind implementation --fix-of STATUS-API --reason "REVIEW-STATUS-API: changes required"',
+                 'job add claims-status INTEGRATION-FIX-1 --kind implementation --fix-of REVIEW-INTEGRATION --reason "finding 1"'],
                 [0, 1], cmd_job_add)
     p.add_argument("task")
     p.add_argument("id")
@@ -284,7 +307,8 @@ def register_job(sub, command):
     p.add_argument("--difficulty", choices=DIFFICULTIES, default="normal")
     p.add_argument("--review", action="store_true")
     p.add_argument("--final", action="store_true")
-    p.add_argument("--fix-of", metavar="ID")
+    p.add_argument("--fix-of", metavar="ID", help="the writer job this fix repairs (it works on that job's branch), "
+                                               "or the integration review round whose findings it answers")
     p.add_argument("--reason")
     p = command(job_sub, "edit", "Change the scheduling fields of a pending job.", "--reason: required during execution.",
                 ['job edit claims-status STATUS-UI --needs STATUS-API --reason "UI needs the real endpoint"'], [0, 1],

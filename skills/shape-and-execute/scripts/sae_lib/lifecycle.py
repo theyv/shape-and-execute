@@ -27,10 +27,10 @@ from .common import (
 )
 from .config import cfg, load_config, new_task_settings, require_harness, settings_card
 from .gitutil import find_root, git, git_ok, git_user, run
-from .graph import parallel_possible
+from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
-from .reviews import check_finish_gates, last_verdict, merge_job
+from .reviews import check_finish_gates, finish_merges, merge_job
 from .tasks import (
     Task,
     append_event_to,
@@ -202,8 +202,13 @@ def final_report(task: Task, with_open: bool) -> str:
     lines += ["", "## Jobs", table(rows, "")]
     reviews = [e for e in events if e["type"] == "review.completed"]
     if reviews:
-        lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}: {e['verdict']} ({e.get('provider')}, "
-                                       f"{e.get('model')})" for e in reviews]
+        lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}"
+                                       + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
+                                       + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})" for e in reviews]
+    overridden = [e for e in events if e["type"] == "gate.overridden"]
+    if overridden:
+        lines += ["", "## Overridden gates"] + [f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
+                                                f"Reason: {e.get('reason')}" for e in overridden]
     agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"]
     lines += ["", "## To check before you merge"]
     lines += [f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
@@ -234,23 +239,27 @@ def cmd_finish(args) -> int:
     with open_task(root, args.task) as task:
         if task.phase != "executing":
             fail(EXIT_USAGE, f"The task is in {task.phase}; finish needs executing.")
-        jobs = task.jobs
-        check_finish_gates(task, args.with_open)
+        if args.override is not None and not args.override.strip():
+            fail(EXIT_USAGE, f"--override needs the owner's reason: sae finish {task.id} --override \"<reason>\"")
+        # 1. Gates, before anything merges: they judge the code that will be closed.
+        overridden = check_finish_gates(task, args.with_open, args.override)
         out: list[str] = []
+        # 2. Merge what the gates allowed (with --override also writers the checks do not cover).
         if task.info.get("git"):
             require_on_task_branch(task)
-            for job_id, job in list(jobs.items()):
-                if (job["kind"] in WRITER_KINDS and job["status"] == "done" and not job["merged"]
-                        and not job.get("fix_of") and last_verdict(task, job_id) != "changes-required"
-                        and not any(j["kind"] == "review" and j.get("target") == job_id and j["status"] != "done"
-                                    for j in jobs.values())):
-                    code = merge_job(task, job_id, config, out)
-                    if code != EXIT_OK:
-                        emit(args, "\n".join(out), {"exit": code, "messages": out})
-                        return code
+            for job_id in finish_merges(task):
+                code = merge_job(task, job_id, config, out)
+                if code != EXIT_OK:
+                    emit(args, "\n".join(out), {"exit": code, "messages": out})
+                    return code
+        for gate in overridden:
+            task.event("gate.overridden", gate=gate["gate"], jobs=gate["jobs"], reason=args.override)
+            out.append(f"Gate overridden: {gate['gate']} ({', '.join(gate['jobs'])}).")
+        # 3. Close: worktrees, branches, phase, task record, report.
+        if task.info.get("git"):
             kept = remove_task_worktrees(task, config)
-            for job_id, job in jobs.items():
-                if job["merged"] and not job.get("fix_of"):
+            for job_id, job in task.jobs.items():
+                if job["merged"] and not fix_target(task, job_id):
                     run(["git", "branch", "-d", job_branch(task, job_id)], root)
             if kept:
                 out.append("Worktrees kept (uncommitted changes): " + ", ".join(kept))
@@ -261,7 +270,8 @@ def cmd_finish(args) -> int:
         task.save()
         if task.info.get("git"):
             commit_task_record(task, out)
-        emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out})
+        emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out,
+                                                            "overridden": overridden})
     render_viewer_safely(root, [task.id])
     return EXIT_OK
 
@@ -333,11 +343,19 @@ def register_start(sub, command):
 def register_finish(sub, command):
     """Add the `finish` command to the parser."""
     p = command(sub, "finish", "Merge the rest, remove worktrees, commit the task record, print the final report.",
-                "Needs nothing running; nothing pending or parked unless --with-open; the final validation and a due\n"
-                "integration review done. Never pushes.", ["finish claims-status", "finish claims-status --with-open"],
+                "Gates, checked before anything merges: nothing running; nothing pending or parked unless --with-open;\n"
+                "no last review round (integration, or a job review of an unmerged job) says changes-required;\n"
+                "no stale checks (a round or final validation after a late merge has not run, or a done writer\n"
+                "that the checks would not cover is still unmerged); the final validation and the integration\n"
+                "review done. --override passes the verdict and stale-check gates with the owner's reason; it is\n"
+                "logged and listed in the final report. Never pushes.",
+                ["finish claims-status", "finish claims-status --with-open",
+                 'finish claims-status --override "owner accepts the remaining finding"'],
                 [0, 1, 3, 4], cmd_finish)
     p.add_argument("task")
     p.add_argument("--with-open", action="store_true", help="the user accepts open jobs; they are listed in the report")
+    p.add_argument("--override", metavar="REASON",
+                   help="the owner's reason to close despite changes-required or stale checks")
 
 
 def register_abandon(sub, command):

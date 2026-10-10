@@ -7,6 +7,7 @@ import json
 import re
 
 from .common import (
+    EXIT_GATE,
     EXIT_OK,
     EXIT_USAGE,
     HARD_STOPS_LINE,
@@ -28,10 +29,18 @@ from .common import (
 )
 from .config import cfg, load_config, settings_card
 from .gitutil import find_root, git
-from .graph import is_ready, kind_allowed_now, waits_for, writer_blocked
+from .graph import (
+    integration_parked,
+    is_ready,
+    kind_allowed_now,
+    last_round,
+    requires_changes,
+    waits_for,
+    writer_blocked,
+)
 from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
-from .reviews import materialize_integration_review
+from .reviews import fix_job_command, materialize_integration_review
 from .routing import resolve_model
 from .tasks import (
     Task,
@@ -89,7 +98,8 @@ def task_status_data(task: Task) -> dict:
             "layout": task.info.get("layout"), "last_change": task.info.get("last_change"),
             "settings": task.settings, "settings_card": settings_card(task.settings),
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
-            "warnings": warnings, "next": next_command(task)}
+            "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
+            "next": next_command(task)}
 
 
 def cmd_status(args) -> int:
@@ -112,6 +122,8 @@ def cmd_status(args) -> int:
             lines += ["", "Jobs:", table(rows)]
         if data["parked"]:
             lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+        if data["integration"]:
+            lines += ["", data["integration"]]
         if data["ready"]:
             lines += ["", "Ready: " + ", ".join(data["ready"])]
         if data["warnings"]:
@@ -153,6 +165,8 @@ def cmd_status(args) -> int:
 def next_text(task: Task, config: dict | None) -> str:
     data = next_data(task, config)
     lines = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE, ""]
+    if data["integration"]:
+        lines += [data["integration"], ""]
     if data["running"]:
         lines += ["Running:"] + [f"  {r['id']} — last change {age_text(r['last_change'])}" for r in data["running"]]
     if data["parked"]:
@@ -167,9 +181,28 @@ def next_text(task: Task, config: dict | None) -> str:
         lines += ["Failed:"] + [f"  {f['id']} — {f['summary']}" for f in data["failed"]]
     if data["all_done"]:
         lines.append(f"All jobs done. Run: sae finish {task.id}")
-    elif not (data["running"] or data["ready"] or data["parked"]):
+    elif not (data["running"] or data["ready"] or data["parked"] or data["integration"]):
         lines.append("Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open.")
     return "\n".join(lines).rstrip()
+
+
+def integration_notice(task: Task) -> str | None:
+    """The parked task, or a changes-required integration round that waits for fix jobs
+    ([INTEGRATION-REVIEW-ROUNDS]), with the ways forward."""
+    last = last_round(task, "integration")
+    if not last or not requires_changes(task.jobs[last]):
+        return None
+    forward = f"sae finish {task.id} --override \"<reason>\""
+    if integration_parked(task):
+        return (f"The task is parked for the owner: {last} still requires changes after a fix round.\n"
+                f"Nothing is dispatched until the owner chooses:\n"
+                f"  - more fix jobs: {fix_job_command(task, last)}\n"
+                f"  - or close anyway: {forward}")
+    if any(j.get("fix_of") == last for j in task.jobs.values()):
+        return None
+    return (f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):\n"
+            f"  {fix_job_command(task, last)}\n"
+            f"or, on the owner's word: {forward}")
 
 
 def next_data(task: Task, config: dict | None) -> dict:
@@ -200,8 +233,10 @@ def next_data(task: Task, config: dict | None) -> dict:
                 entry["blocked"] = writer_blocked(task, job_id, config)
             ready.append(entry)
     open_statuses = {j["status"] for j in task.jobs.values()} & {"running", "pending", "parked"}
+    notice = integration_notice(task)
     return {"running": running, "parked": parked, "ready": ready, "blocked": blocked, "failed": failed,
-            "all_done": not open_statuses and task.phase == "executing"}
+            "integration": notice, "parked_task": integration_parked(task),
+            "all_done": not open_statuses and not notice and task.phase == "executing"}
 
 
 def cmd_next(args) -> int:
@@ -228,13 +263,18 @@ def cmd_dispatch(args) -> int:
         if args.resume:
             if not (args.reason or "").strip():
                 fail(EXIT_USAGE, "--resume needs --reason.")
-            if job["status"] not in ("running", "parked", "failed"):
-                fail(EXIT_USAGE, f"{job_id} is {job['status']}; --resume is for running, parked or failed jobs.")
+            reopen = job["status"] == "done" and job["kind"] in ("research", "planning")  # [RESEARCH-FOLLOW-UP]
+            if job["status"] not in ("running", "parked", "failed") and not reopen:
+                fail(EXIT_USAGE, f"{job_id} is {job['status']}; --resume is for running, parked or failed jobs, "
+                                 "and for done research or planning jobs.")
             if not kind_allowed_now(task, job):
                 fail(EXIT_USAGE, f"{job['kind']} jobs do not run in phase {task.phase}.")
         else:
             if job["status"] != "pending":
                 fail(EXIT_USAGE, f"{job_id} is {job['status']}. To run it again: --resume --reason \"<why>\".")
+            parked = integration_parked(task)
+            if parked:
+                fail(EXIT_GATE, integration_notice(task))
             reasons = waits_for(task, job_id)
             if reasons:
                 fail(EXIT_USAGE, f"{job_id} is not ready: waits for {', '.join(reasons)}.")
@@ -244,7 +284,11 @@ def cmd_dispatch(args) -> int:
                 fail(EXIT_USAGE, f"{job_id} must wait: {blocked}.")
         model = resolve_model(task, job, config, harness=args.harness, provider=args.provider)
         workdir, branch = prepare_workspace(task, job_id, config)
-        head = git(workdir, "rev-parse", "HEAD") if (task.info.get("git") and job["kind"] in WRITER_KINDS) else None
+        head = None
+        if task.info.get("git") and job["kind"] in WRITER_KINDS:
+            head = git(workdir, "rev-parse", "HEAD")
+        elif task.info.get("git") and job.get("target") == "integration" and task.info.get("branch"):
+            head = git(task.root, "rev-parse", task.info["branch"])  # the next round's diff starts here
         attempt = {"n": len(job["attempts"]) + 1, "harness": model["harness"], "rung": model["rung"],
                    "model": model["model"], "effort": model["effort"], "started": iso(), "ended": None,
                    "tokens": None, "duration_s": None, "agent_ref": None, "reason": args.reason, "head": head}
@@ -264,6 +308,9 @@ def cmd_dispatch(args) -> int:
             follow = md_section(read_text(job_file(task, job_id), "") or "", "Follow-up questions")
             if has_content(follow):
                 extra.append(f"Read first: the \"Follow-up questions\" section of {job_file(task, job_id)}")
+            plan_review = last_round(task, "plan")
+            if job["kind"] == "planning" and plan_review and task.jobs[plan_review]["status"] == "done":
+                extra.append(f"Read first: the plan review {result_file(task, plan_review)}")
             prompt = "\n".join([f"RESUME {job_id} — reason: {args.reason}", *extra,
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
@@ -305,9 +352,13 @@ def register_dispatch(sub, command):
                 "Spawn a subagent with the printed PROMPT and MODEL (Codex: also the effort). For a review in the\n"
                 "other harness it prints COMMAND (run it in the background) and an IF IT FAILS line (run it when the\n"
                 "command exits non-zero or leaves no review). --resume runs a running, parked or failed job again\n"
-                "with --reason; the message also works for a fresh agent.",
-                ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed"],
-                [0, 1, 2, 4], cmd_dispatch)
+                "with --reason, or reopens a done research or planning job (a follow-up question; the planner\n"
+                "after a plan review); sae collect then reads the updated report or result. The message also\n"
+                "works for a fresh agent. Exit 3: the task is parked after a second changes-required\n"
+                "integration round.",
+                ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed",
+                 'dispatch claims-status PLAN --resume --reason "REVIEW-PLAN: changes required"'],
+                [0, 1, 2, 3, 4], cmd_dispatch)
     p.add_argument("task")
     p.add_argument("id")
     p.add_argument("--provider", choices=HARNESSES, help="review jobs: the harness that reviews")
