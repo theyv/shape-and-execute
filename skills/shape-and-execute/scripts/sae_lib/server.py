@@ -7,7 +7,7 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
   /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
-  /api/task?repo=K&task=ID         one task: files, events, routing, review marks, next
+  /api/task?repo=K&task=ID         one task: files, events, routing, review marks, waits, next
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
                          is kept in the URL, so relative CSS, scripts, images and links load
@@ -218,7 +218,13 @@ def computed(task, config: dict | None) -> dict:
     from .progress import next_data, task_status_data
     from .reviews import planned_reviews, review_mark
     from .routing import resolve_model
-    out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None}
+    from .graph import active_holds, waits_for
+    out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
+                 "waits": {}, "holds_active": []}
+    # readiness for the graph and job panels: the rules of `sae next`, never a copy in app.js
+    with contextlib.suppress(Exception):
+        out["waits"] = {i: waits_for(task, i) for i, j in task.jobs.items() if j["status"] == "pending"}
+        out["holds_active"] = active_holds(task)
     for job_id in task.jobs:
         with contextlib.suppress(Exception):
             out["review_marks"][job_id] = review_mark(task, job_id)

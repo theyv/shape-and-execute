@@ -29,6 +29,8 @@ no ES modules, no CDN, no web fonts, no external requests.
   `version`; the page re-renders only when it changes.
 - Writes: `post(route, body)` in `app.js` sends `POST /api/<route>` with the token in
   `X-SAE-Token`; the server answers with the command's `--json` output (`ok`, `result`, `error`).
+  The body names its `repo` (and `task`): the one the change was made for, captured when the
+  owner made it, never the selection when a queued save leaves; `post` refuses a body without it.
   Routes are `WRITE_ROUTES` in `server.py`; a new one is one entry there.
 - Polling: every 3 s while the open repository has an executing task, else every 30 s; paused
   while the tab is hidden.
@@ -38,7 +40,8 @@ no ES modules, no CDN, no web fonts, no external requests.
 ## Rules for changing it
 
 - The data shape comes from `repo_data`, `task_data` and `settings_data` in `server.py`; computed
-  values (routing, review marks, planned reviews, the ready list) come from the same functions as
+  values (routing, review marks, planned reviews, the ready list, each pending job's waiting
+  reasons, active holds) come from the same functions as
   the CLI. Do not recompute them in the page.
 - Colors of models, tiers and efforts come only from the palette in `app.js` (`modelColor`,
   `tierColor`, `effortWord`, `routeWords`) and the tokens in `app.css`: fixed and discrete, a

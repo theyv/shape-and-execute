@@ -34,7 +34,7 @@ var dead=t=>/^(done|abandoned)$/.test(t.state.task.phase),
  markTip=(t,id,m)=>{var r=m.reviewed&&reviewOf(t,id);
   return"<b>"+esc(cap1(m.reason))+".</b>"+(r?r.m?"<br>Review "+(r.m.ran?"ran":"planned")+" on "+esc(r.m.h)+" · "+mwords(t,r.m)+(r.m.ovr?' <span class="mut">(override)</span>':""):"<br>Review model: routing is incomplete.":"<br>Check <b>jobs</b> in the review points to review it.")},
  holdsOf=t=>t.state.task.holds||{},
- holdOn=(t,id)=>{var a=t.next&&t.next.holds_active;if(a)return a.includes(id);var j=JO(t,id),i=t.state.task;return!!j&&j.status==="done"&&(!WR[j.kind]||!(i.git&&i.layout==="worktrees")||j.merged)},
+ holdOn=(t,id)=>(t.holds_active||[]).includes(id), // graph.active_holds, served with the task
  holdCmd=(t,id)=>IDX.sae+" hold "+t.state.task.id+" "+id+" --release",
  holdBtn=(t,id)=>dead(t)||!JO(t,id)?"":own(holdsOf(t),id)?'<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="release" title="Remove the hold: dispatching continues.">Release hold</button>':
   '<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="set" title="Once this job is done, nothing new is dispatched until you release the hold. Running jobs finish.">Hold after</button>';
@@ -125,7 +125,7 @@ function node(t,id,ch,p,at,NW,NH){var js=JS(t),g=!js[id]&&!p,j=js[id]||(p?{kind:
    mk=!p&&(ch.added[id]!=null?"added":ch.changed[id]!=null?"changed":""),r=g||p?{}:revInfo(t,id),vp=r.v?Math.round(r.v.length*6.6+24):0,sm=g||p?0:staleM(t,id),
    right=[mk,r.x!=="review due"&&r.x,sm&&"no activity "+span(sm)].filter(Boolean).join(" · "),
    sub=j.kind+(/^(review|decision)$/.test(j.kind)?" → "+(j.target||""):j.difficulty?" · "+j.difficulty:""),
-   tip=id+" — "+s+(p?"\nPlanned: sae adds this review when "+(p.target==="integration"?"every writer job is merged":p.target+" is done")+". Not counted in progress.":"")+
+   tip=id+" — "+s+(s==="pending"&&waits(t,id).length?"\nWaits for: "+waits(t,id).join("; "):"")+(p?"\nPlanned: sae adds this review when "+(p.target==="integration"?"every writer job is merged":p.target+" is done")+". Not counted in progress.":"")+
     (g?". Removed after plan approval: "+ch.removed[id].reason:mk?". "+(mk==="added"?"Added":"Changed")+" after plan approval: "+(ch.added[id]||ch.changed[id]):"")+(sm?". No activity for "+span(sm)+". "+staleTip(t,id):""),
    room=Math.max(6,Math.floor((NW-30-vp-right.length*6.4)/7.3)),mt=x?trunc(x.m,Math.max(3,room-x.e.length-3-(x.ovr?11:0))):"",
    lab=x?'<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(x.ovr?'<tspan class="to"> · override</tspan>':""):"–",
@@ -219,19 +219,19 @@ var NOTE=null,OVR=null,
 function ovrOpen(btn){var t=T(),id=btn.dataset.id;if(!t)return;ovrClose();var x=modelOf(t,id),ms=t.models||{},cur=x&&x.ovr?[x.h,x.m,x.e].join("|"):"",
    opts=Object.keys(ms).map(h=>(ms[h]||[]).filter(m=>m.enabled!==false).map(m=>'<optgroup label="'+esc(h+" · "+m.model)+'">'+(m.efforts||[]).map(e=>{var v=[h,m.model,e].join("|");return'<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(m.model+" · "+e)+"</option>"}).join("")+"</optgroup>").join("")).join(""),
    r=btn.getBoundingClientRect(),m=D.createElement("div");
-  OVR={id:id,k:fkey(btn)};m.className="ovm";m.setAttribute("role","dialog");m.setAttribute("aria-label","Model of "+id);
+  OVR={id:id,k:fkey(btn),repo:S.repo,task:S.task};m.className="ovm";m.setAttribute("role","dialog");m.setAttribute("aria-label","Model of "+id);
   m.innerHTML='<div class="oh"><b class="mono">'+esc(id)+'</b><button class="btn ic sm" data-act="oclose" aria-label="Close">✕</button></div>'+
    '<div class="ink2">'+(x?(x.ovr?"Override: ":"Now: ")+esc(x.h)+" · "+mwords(t,x):"No model yet.")+(x&&x.routed?'<br><span class="mut">Routing: '+esc(x.routed.harness)+" · </span>"+mwords(t,{h:x.routed.harness,m:x.routed.model_entry,e:x.routed.effort}):"")+"</div>"+
    '<label class="ink2">Run it on<select data-act="ovs" aria-label="Model and effort for '+esc(id)+'"><option value=""'+(cur?"":" selected")+">routing (no override)</option>"+opts+"</select></label>"+
    '<div class="mut">Applies from the next dispatch. The server runs <span class="mono">sae job override</span>.</div><div class="om" role="status"></div>';
   D.body.appendChild(m);m.style.top=Math.min(r.bottom+6,W.innerHeight-m.offsetHeight-8)+"px";m.style.left=Math.max(8,Math.min(r.left,W.innerWidth-m.offsetWidth-8))+"px";
   m.querySelector("select").focus()}
-function ovrSave(sel){var t=T(),o=OVR,v=sel.value.split("|"),om=$(".ovm .om");if(!t||!o)return;sel.disabled=true;om.textContent="Saving…";
-  post("override",Object.assign({task:S.task},ovrBody(t,o.id),v[0]?{harness:v[0],model:v[1],effort:v[2]}:{clear:true})).then(r=>{
+function ovrSave(sel){var o=OVR,t=o&&o.repo===S.repo&&o.task===S.task?T():null,v=sel.value.split("|"),om=$(".ovm .om");if(!t)return;sel.disabled=true;om.textContent="Saving…";
+  post("override",Object.assign({repo:o.repo,task:o.task},ovrBody(t,o.id),v[0]?{harness:v[0],model:v[1],effort:v[2]}:{clear:true})).then(r=>{
     if(!r.ok){sel.disabled=false;om.textContent=(r.error||"Not saved.").split("\n")[0];om.className="om err";return}
     ovrClose(true);note((v[0]?"Override for "+o.id+": "+v.join(" · "):"Override for "+o.id+" cleared")+". It applies from the next dispatch.");loadTask()})}
 function holdSet(btn){var id=btn.dataset.id,rel=btn.dataset.v==="release";btn.disabled=true;
-  post("hold",{task:S.task,job:id,release:rel}).then(r=>{note(r.ok?(rel?"Released the hold after "+id+".":"Hold after "+id+": once it is done, nothing new is dispatched."):(r.error||"Not saved.").split("\n")[0],!r.ok);loadTask()})}
+  post("hold",{repo:S.repo,task:S.task,job:id,release:rel}).then(r=>{note(r.ok?(rel?"Released the hold after "+id+".":"Hold after "+id+": once it is done, nothing new is dispatched."):(r.error||"Not saved.").split("\n")[0],!r.ok);loadTask()})}
 D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dataset.act;
   if(ev.target.closest(".ovm"))ev.stopPropagation();else if(OVR&&a!=="ovr")ovrClose();
   if(a==="ovr"){ev.stopPropagation();if(OVR&&OVR.id===e.dataset.id)ovrClose(true);else ovrOpen(e)}

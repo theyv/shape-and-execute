@@ -85,9 +85,10 @@ function sxTag(sc,src,k,what){if(sc==="global"||!src)return"";
 /* ---------- saving ---------- */
 function sxMsg(){var m=SX.msg,cl="smsg"+(SX.err?" err":"");D.querySelectorAll(".smsg").forEach(e=>{e.className=cl;e.textContent=m;e.title=SX.cmd||""})}
 function sxSay(m,err,cmd){SX.msg=m;SX.err=!!err;SX.cmd=cmd||"";sxMsg()}
-// Task: POST set (sae set <task> k=v …); Project: POST project-set / project-unset. Saves run one after another.
+// Task: POST set (sae set <task> k=v …); Project: POST project-set / project-unset. Saves run one after another;
+// each carries the repository and task it was made for, so a queued one still goes there after a project switch.
 function sxSave(sc,pairs,unset){var id=S.task,rk=S.repo,route=sc==="task"?"set":unset?"project-unset":"project-set",
-  body=sc==="task"?{task:id,pairs:pairs}:unset?{keys:pairs}:{pairs:pairs};
+  body=sc==="task"?{repo:rk,task:id,pairs:pairs}:unset?{repo:rk,keys:pairs}:{repo:rk,pairs:pairs};
   sxSay("Saving…");
   SX.q=SX.q.then(()=>post(route,body)).then(r=>{if(S.repo!==rk)return;
     if(!r.ok)sxSay(r.error||"Not saved.",true,r.command);
@@ -104,7 +105,7 @@ function sxEdit(fn){var c=sxSaved();if(!c)return;if(!SX.draft||SX.draft.repo!==S
 function sxGlobalSave(){var dr=SX.draft,rk=S.repo;if(!dr||dr.repo!==rk)return;sxSay("Saving…");
   api("/api/settings?repo="+enc(rk),(d,e)=>{if(!d||!d.config)return sxSay(e||"The user config cannot be read.",true);
     var c=sxClone(d.config);c.defaults=dr.c.defaults;c.models=dr.c.models;c.routing=dr.c.routing;
-    post("global",{config:c}).then(r=>{if(!r.ok)sxSay(r.error||"Not saved.",true,r.command);
+    post("global",{repo:rk,config:c}).then(r=>{if(!r.ok)sxSay(r.error||"Not saved.",true,r.command);
       else{if(SX.draft===dr)SX.draft=null;sxSay("Saved the global config. It applies from the next dispatch; running jobs keep their model; new tasks copy the defaults.",false,r.command)}
       sxLoad(true);render();loadTask()})})}
 
