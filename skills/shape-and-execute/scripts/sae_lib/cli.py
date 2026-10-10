@@ -6,6 +6,7 @@ import argparse
 import sys
 
 from .common import EXIT_CODES_HELP, EXIT_USAGE, Parser, SaeError
+from .control import register_hold
 from .doctor import register_doctor
 from .findings import register_decision, register_finding, register_log
 from .lifecycle import register_abandon, register_finish, register_new, register_start
@@ -56,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     job = register_job(sub, command)
     register_next(sub, command)
     register_dispatch(sub, command)
+    register_hold(sub, command)
     register_collect(sub, command)
     register_merge(sub, command)
     decision = register_decision(sub, command)

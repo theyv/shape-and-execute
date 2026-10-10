@@ -117,28 +117,33 @@ def cmd_approve(args) -> int:
         if gate == "spec":
             task.info["phase"] = "planning"
         task.event(f"{gate}.approved", by=by)
-        follow = f"sae start {task.id}" if gate == "plan" else "planning: load references/modes/plan.md"
+        follow = (f"sae start {task.id}\n  (another session: sae start {task.id} --harness claude|codex)"
+                  if gate == "plan" else "planning: load references/modes/plan.md")  # [RESUME-HARNESS-HINT]
         emit(args, (report + "\n" if report else "") + f"{gate.capitalize()} approved by {by}. Next: {follow}",
              {"approved": gate, "by": by, "phase": task.phase, "warnings": warnings})
     return EXIT_OK
 
 
-def check_text(errors: list[str], warnings: list[str], added: list[str]) -> str:
+def check_text(errors: list[str], warnings: list[str], added: list[str], task_id: str | None = None) -> str:
+    """Lint lines; then the added reviews (sae approve) or, with `task_id`, the due ones (sae check)."""
     lines = [f"error: {e}" for e in errors] + [f"warning: {w}" for w in warnings]
-    lines += [f"Added {a}: dispatch it." for a in added]
+    if task_id:
+        lines += [f"{a} is due: sae dispatch {task_id} {a}" for a in added]
+    else:
+        lines += [f"Added {a}: dispatch it." for a in added]
     return "\n".join(lines)
 
 
 def cmd_check(args) -> int:
     root, _ = find_root()
-    with open_task(root, args.task) as task:
+    with open_task(root, args.task, write=False) as task:  # [READ-ONLY-COMMANDS]
         if task.phase in ("done", "abandoned"):
             fail(EXIT_USAGE, f"The task is {task.phase}.")
-        errors, warnings, added = run_check(task)
-        text = check_text(errors, warnings, added) or "Check passed: no errors, no warnings."
+        errors, warnings, due = run_check(task, write=False)
+        text = check_text(errors, warnings, due, task.id) or "Check passed: no errors, no warnings."
         if errors:
             text += f"\n{len(errors)} error(s)."
-        emit(args, text, {"errors": errors, "warnings": warnings, "added": added})
+        emit(args, text, {"errors": errors, "warnings": warnings, "due": due})
         return EXIT_GATE if errors else EXIT_OK
 
 
@@ -355,7 +360,8 @@ def register_approve(sub, command):
     """Add the `approve` command to the parser."""
     p = command(sub, "approve", "Record a gate approval: spec (shaping → planning) or plan.",
                 "Runs check first; lint errors refuse. Refuses while REVIEW-SPEC (or REVIEW-PLAN) exists and is not\n"
-                "collected; its verdict does not block. Plan approval also needs every planning and research job done.",
+                "collected; its verdict does not block. Plan approval also needs every planning and research job done.\n"
+                "After plan approval: sae start <task>; another session resumes with --harness claude|codex.",
                 ["approve claims-status spec", "approve claims-status plan"], [0, 1, 3], cmd_approve)
     p.add_argument("task")
     p.add_argument("gate", choices=("spec", "plan"))
@@ -363,11 +369,12 @@ def register_approve(sub, command):
 
 def register_check(sub, command):
     """Add the `check` command to the parser."""
-    p = command(sub, "check", "Lint the task and add due spec or plan reviews.",
-                "In shaping: requirement IDs in specs.md and in the intent's ## Acceptance; a clean check adds\n"
-                "REVIEW-SPEC when spec is a review point. Later: the graph (unknown needs, cycles, job files and\n"
-                "objectives, covers, requirement coverage, final jobs) and warnings (verify, scopes, hot files, brief\n"
-                "length, riskiest assumptions, objective length); a clean check in planning adds REVIEW-PLAN.",
+    p = command(sub, "check", "Lint the task and name a due spec or plan review. Read-only.",
+                "In shaping: requirement IDs in specs.md and in the intent's ## Acceptance; after a clean check\n"
+                "REVIEW-SPEC is due when spec is a review point. Later: the graph (unknown needs, cycles, job files\n"
+                "and objectives, covers, requirement coverage, final jobs) and warnings (verify, scopes, hot files,\n"
+                "brief length, riskiest assumptions, objective length); in planning REVIEW-PLAN is due after a clean\n"
+                "check. A due review is listed by sae next and added by sae dispatch. Writes nothing.",
                 ["check claims-status"], [0, 1, 3], cmd_check)
     p.add_argument("task")
 

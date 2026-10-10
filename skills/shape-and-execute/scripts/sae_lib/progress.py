@@ -27,17 +27,31 @@ from .common import (
     sae_prefix,
     stamp_time,
     table,
+    wrap,
+    wrap_parts,
 )
 from .config import cfg, load_config, settings_card
 from .gitutil import find_root, git
+from .control import (
+    hold_notices,
+    holds_data,
+    launch_card,
+    process_map,
+    record_card,
+)
 from .graph import (
+    active_holds,
+    add_due_review,
+    due_reviews,
     integration_parked,
     is_ready,
     kind_allowed_now,
     last_round,
     requires_changes,
+    release_command,
     waits_for,
     writer_blocked,
+    writer_slot_notice,
 )
 from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
@@ -59,9 +73,14 @@ from .viewer import stamped_items
 from .workspaces import prepare_workspace, workspace_of
 
 
+def ready_ids(task: Task) -> list[str]:
+    """Ready jobs, with a due spec or plan review that is not a job yet (07-cli-spec §6)."""
+    return [i for i in task.jobs if is_ready(task, i)] + due_reviews(task)
+
+
 def next_command(task: Task) -> str:
     phase, jobs = task.phase, task.jobs
-    ready = [i for i in jobs if is_ready(task, i)]
+    ready = ready_ids(task)
     if phase == "shaping":
         if ready:
             return f"sae dispatch {task.id} {ready[0]}"
@@ -96,6 +115,7 @@ def task_status_data(task: Task) -> dict:
                 warnings.append(f"{job_id}: running with no change for {age_text(job['last_change'])[:-4]} — check on it")
             else:
                 warnings.append(f"{job_id}: a result file exists — collect it")
+    ready += due_reviews(task)
     return {"task": task.id, "title": task.info["title"], "phase": task.phase, "branch": task.info.get("branch"),
             "worktree": task.info.get("worktree"), "home": task.info.get("home"), "folder": str(task.dir),
             "layout": task.info.get("layout"), "last_change": task.info.get("last_change"),
@@ -103,38 +123,47 @@ def task_status_data(task: Task) -> dict:
             "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
-            "next": next_command(task)}
+            "holds": holds_data(task), "map": process_map(task)["lines"], "next": next_command(task)}
 
 
 def cmd_status(args) -> int:
     root, _ = find_root()
     if args.task:
-        with open_task(root, args.task) as task:
+        with open_task(root, args.task, write=False) as task:  # [READ-ONLY-COMMANDS]
             data = task_status_data(task)
-        lines = [f"{data['title']}", f"{data['task']} · phase: {data['phase']}"
-                 + (f" · branch: {data['branch']}" if data["branch"] else "")
-                 + (f" · layout: {data['layout']}" if data["layout"] else ""),
-                 f"Settings: {data['settings_card']}", f"Last change: {age_text(data['last_change'])}"]
+            notices = hold_notices(task)
+        lines = ["\n\n".join(data["map"]), "", data["title"], f"{data['task']}",
+                 wrap_parts([f"phase: {data['phase']}"] + ([f"branch: {data['branch']}"] if data["branch"] else [])
+                            + ([f"layout: {data['layout']}"] if data["layout"] else []), indent="")]
         if data["worktree"]:
-            lines.insert(2, f"Task worktree: {data['worktree']}")
+            lines.append(f"Task worktree: {data['worktree']}")
+        lines += ["Settings:", wrap_parts(data["settings_card"].split(" · ")),
+                  f"Last change: {age_text(data['last_change'])}"]
         approvals = ", ".join(f"{k} by {v['by']}" for k, v in data["approvals"].items())
         if approvals:
-            lines.append(f"Approved: {approvals}")
+            lines.append(wrap(f"Approved: {approvals}"))
+        if data["holds"]:
+            lines += ["", "Holds:"] + [wrap(f"after {h['job']}" + (" (active)" if h["active"] else "")
+                                            + (f" — {h['reason']}" if h["reason"] else ""), "  ")
+                                       for h in data["holds"]]
         if data["jobs"]:
-            rows = [["ID", "kind", "status", "last change", "model"]]
+            lines += ["", "Jobs:"]
             for r in data["jobs"]:
                 status = r["status"] + (" ✓merged" if r["merged"] else "")
-                rows.append([r["id"], r["kind"], status, age_text(r["last_change"]), r["model"]])
-            lines += ["", "Jobs:", table(rows)]
+                lines.append(wrap_parts([r["id"], r["kind"], status, age_text(r["last_change"])]))
+                if r["model"] != "-":
+                    lines.append(wrap(r["model"], "    "))
         if data["parked"]:
-            lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+            lines += ["", "Parked:"] + [wrap(f"{p['id']} — {p['reason']}", "  ") for p in data["parked"]]
         if data["integration"]:
             lines += ["", data["integration"]]
+        if notices:
+            lines += [""] + notices
         if data["ready"]:
-            lines += ["", "Ready: " + ", ".join(data["ready"])]
+            lines += ["", wrap("Ready: " + ", ".join(data["ready"]))]
         if data["warnings"]:
-            lines += ["", "Warnings:"] + [f"  - {w}" for w in data["warnings"]]
-        lines += ["", f"Next: {data['next']}"]
+            lines += ["", "Warnings:"] + [wrap(f"- {w}", "  ") for w in data["warnings"]]
+        lines += ["", wrap(f"Next: {data['next']}")]
         emit(args, "\n".join(lines), data)
         return EXIT_OK
     tasks = []
@@ -178,27 +207,52 @@ def cmd_status(args) -> int:
     return EXIT_OK
 
 
-def next_text(task: Task, config: dict | None) -> str:
-    data = next_data(task, config)
-    lines = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE, ""]
+def reminder_lines(task: Task) -> list[str]:
+    """The mode with the classes to ask on, then the hard stops, within 72 columns."""
+    return [wrap(mode_line(task.settings["interaction"])), wrap(HARD_STOPS_LINE)]
+
+
+def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
+    """The `sae next` text. On a writable task (sae start) the start launch card it prints is
+    recorded; `sae next` itself is read-only and only prints it."""
+    data = data or next_data(task, config)
+    if task.writable and data["card"] is not None and data["card"].get("start"):
+        record_card(task, data["card"])
+    lines = ["\n\n".join(data["map"]), ""] + reminder_lines(task) + [""]
+    notices = hold_notices(task)
     if data["integration"]:
-        lines += [data["integration"], ""]
+        notices.append(data["integration"])
+    if data["slots"]:
+        notices.append(wrap(data["slots"]))
+    notices.append(f"Another session:\n  sae start {task.id} --harness claude|codex")  # [RESUME-HARNESS-HINT]
+    lines += notices + [""]
+    if data["card"] is not None:
+        lines += [data["card"]["text"], ""]
     if data["running"]:
-        lines += ["Running:"] + [f"  {r['id']} — last change {age_text(r['last_change'])}" for r in data["running"]]
+        lines += ["Running:"] + [wrap(f"{r['id']} — last change {age_text(r['last_change'])}", "  ")
+                                 for r in data["running"]]
     if data["parked"]:
-        lines += ["Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+        lines += ["Parked:"] + [wrap(f"{p['id']} — {p['reason']}", "  ") for p in data["parked"]]
     if data["ready"]:
-        rows = [[r["id"], r["kind"], r["difficulty"], r["model"], r["workspace"], r.get("blocked") or ""]
-                for r in data["ready"]]
-        lines += ["Ready (dispatch each: sae dispatch <task> <ID>):", table(rows)]
+        lines.append("Ready (dispatch each: sae dispatch <task> <ID>):")
+        for r in data["ready"]:
+            lines.append(wrap_parts([r["id"], r["kind"], r["difficulty"]]))
+            lines.append(wrap_parts([r["model"], r["workspace"]], indent="    "))
+            if r.get("blocked"):
+                lines.append(wrap(f"waits: {r['blocked']}", "    "))
     if data["blocked"]:
-        lines += ["Blocked:"] + [f"  {b['id']} — waits for {', '.join(b['waits_for'])}" for b in data["blocked"]]
+        lines += ["Blocked:"] + [wrap(f"{b['id']} — waits for {', '.join(b['waits_for'])}", "  ")
+                                 for b in data["blocked"]]
     if data["failed"]:
-        lines += ["Failed:"] + [f"  {f['id']} — {f['summary']}" for f in data["failed"]]
+        lines += ["Failed:"] + [wrap(f"{f['id']} — {f['summary']}", "  ") for f in data["failed"]]
     if data["all_done"]:
         lines.append(f"All jobs done. Run: sae finish {task.id}")
+    elif data["holds_active"]:
+        lines.append(wrap(f"Held: report to the owner. Release with: {release_command(task, data['holds_active'][0])}"))
+    elif task.phase in ("shaping", "planning") and not (data["running"] or data["ready"]):
+        lines.append(wrap(f"Next: {next_command(task)}"))
     elif not (data["running"] or data["ready"] or data["parked"] or data["integration"]):
-        lines.append("Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open.")
+        lines.append(wrap("Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open."))
     return "\n".join(lines).rstrip()
 
 
@@ -233,12 +287,12 @@ def next_data(task: Task, config: dict | None) -> dict:
             failed.append({"id": job_id, "summary": job_summary(task, job_id)})
         elif status == "pending":
             reasons = waits_for(task, job_id)
+            if reasons == [f"phase {task.phase}"] and task.phase in ("shaping", "planning"):
+                continue  # a job of a later phase: not blocked, just not yet
             if reasons:
                 blocked.append({"id": job_id, "waits_for": reasons})
                 continue
-            if config is None:
-                cfg(config, "routing")
-            model = resolve_model(task, job_id, config, exact=False)
+            model = resolve_model(task, job_id, cfg_or_fail(config), exact=False)
             workdir, _ = workspace_of(task, job_id, config)
             entry = {"id": job_id, "kind": job["kind"], "difficulty": model["difficulty"],
                      "model": short_text(model), "routing": model,
@@ -248,11 +302,27 @@ def next_data(task: Task, config: dict | None) -> dict:
             if job["kind"] in WRITER_KINDS:
                 entry["blocked"] = writer_blocked(task, job_id, config)
             ready.append(entry)
+    for review_id in due_reviews(task):
+        model = resolve_model(task, review_id, cfg_or_fail(config), exact=False)
+        ready.append({"id": review_id, "kind": "review", "difficulty": model["difficulty"], "due": True,
+                      "model": short_text(model), "routing": model,
+                      "workspace": f"{task_checkout_name(task)}, read-only"})
     open_statuses = {j["status"] for j in task.jobs.values()} & {"running", "pending", "parked"}
     notice = integration_notice(task)
+    card = launch_card(task, config, [r["id"] for r in ready])
     return {"running": running, "parked": parked, "ready": ready, "blocked": blocked, "failed": failed,
             "integration": notice, "parked_task": integration_parked(task),
+            "holds": holds_data(task), "holds_active": active_holds(task),
+            "slots": writer_slot_notice(task, config), "card": card,
+            "map": process_map(task)["lines"],
+            "resume": f"sae start {task.id} --harness claude|codex",
             "all_done": not open_statuses and not notice and task.phase == "executing"}
+
+
+def cfg_or_fail(config: dict | None) -> dict:
+    if config is None:
+        cfg(config, "routing")  # exits 2 with the setup hint
+    return config
 
 
 def task_checkout_name(task: Task) -> str:
@@ -264,15 +334,23 @@ def task_checkout_name(task: Task) -> str:
 def cmd_next(args) -> int:
     root, _ = find_root()
     config = load_config()
-    with open_task(root, args.task) as task:
-        if task.phase != "executing":
-            fail(EXIT_USAGE, f"The task is in {task.phase}. Next: {next_command(task)}")
-        out: list[str] = []
-        materialize_integration_review(task, out)
-        text = ("\n".join(out) + "\n" if out else "") + next_text(task, config)
-        data = next_data(task, config)
-        data["reminder"] = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
-        emit(args, text, data)
+    with open_task(root, args.task, write=False) as task:  # [READ-ONLY-COMMANDS]
+        if task.phase in ("done", "abandoned"):
+            fail(EXIT_USAGE, f"The task is {task.phase}.")
+        probe: list[str] = []
+        materialize_integration_review(task, probe)
+    out: list[str] = []
+    if probe:  # a round is due: the one case in which next changes the task
+        with open_task(root, args.task) as task:
+            materialize_integration_review(task, out)
+            data = next_data(task, config)
+            text = next_text(task, config, data)
+    else:
+        with open_task(root, args.task, write=False) as task:
+            data = next_data(task, config)
+            text = next_text(task, config, data)
+    data["reminder"] = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
+    emit(args, ("\n".join(out) + "\n" if out else "") + text, data)
     return EXIT_OK
 
 
@@ -281,6 +359,12 @@ def cmd_dispatch(args) -> int:
     config = load_config()
     with open_task(root, args.task) as task:
         job_id = args.id
+        due = [] if args.resume else due_reviews(task)
+        card = None
+        if not args.resume and (job_id in due or (job_id in task.jobs and is_ready(task, job_id))):
+            card = launch_card(task, config, ready_ids(task))  # the card sae next shows now
+        if job_id not in task.jobs and job_id in due:
+            add_due_review(task, job_id)  # a due spec or plan review is added by its dispatch
         job = task.job(job_id)
         if args.resume:
             if not (args.reason or "").strip():
@@ -297,6 +381,10 @@ def cmd_dispatch(args) -> int:
             parked = integration_parked(task)
             if parked:
                 fail(EXIT_GATE, integration_notice(task))
+            held = active_holds(task)
+            if held:
+                fail(EXIT_GATE, wrap(f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.")
+                     + "\n" + wrap(f"Release: {release_command(task, held[0])}", "  "))
             reasons = waits_for(task, job_id)
             if reasons:
                 fail(EXIT_USAGE, f"{job_id} is not ready: waits for {', '.join(reasons)}.")
@@ -316,6 +404,8 @@ def cmd_dispatch(args) -> int:
                    "tier": model["tier"], "started": iso(), "ended": None,
                    "tokens": None, "duration_s": None, "agent_ref": None, "reason": args.reason, "head": head}
         job["attempts"].append(attempt)
+        if card is not None and job_id in [b["id"] for b in card["jobs"]]:
+            record_card(task, card)
         job["status"] = "running"
         task.touch(job)
         task.event("job.dispatched", job=job_id, attempt=attempt["n"], harness=model["harness"],
@@ -355,18 +445,22 @@ def cmd_dispatch(args) -> int:
 
 def register_status(sub, command):
     """Add the `status` command to the parser."""
-    p = command(sub, "status", "Where things are. The first command after any context reset.",
+    p = command(sub, "status", "Where things are. The first command after any context reset. Read-only.",
                 "Without a task: every task, the backlog and the number of open findings.\n"
-                "With a task: settings card, phase, branch, jobs, parked jobs with reasons, ready jobs, warnings,\n"
-                "and the next suggested command.", ["status", "status claims-status --json"], [0, 1], cmd_status)
+                "With a task: the process map, settings card, phase, branch, holds, jobs, parked jobs with reasons,\n"
+                "ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
     p.add_argument("task", nargs="?")
 
 
 def register_next(sub, command):
     """Add the `next` command to the parser."""
-    p = command(sub, "next", "Reminder lines, then running, parked, ready and blocked jobs.",
-                "Read the two reminder lines every time. Ready jobs show harness · model · effort (with the source\n"
-                "when it is not global, or override) and the workspace kind.",
+    p = command(sub, "next", "Process map, reminder, notices, launch card, then running, ready and blocked jobs.",
+                "Read the reminder every time. Notices: an active hold and its release command, the parked task,\n"
+                "full writer slots, how to resume in another session. A launch card comes before research, the\n"
+                "planner, a spec, plan or integration review, and the start of execution; sae dispatch of a job\n"
+                "on it records it. Ready jobs show harness · model · effort (with the source when it is not\n"
+                "global, or override) and the workspace kind; a due spec or plan review is listed too.\n"
+                "Read-only, except when it adds a due integration review round.",
                 ["next claims-status"], [0, 1, 2], cmd_next)
     p.add_argument("task")
 
@@ -382,7 +476,8 @@ def register_dispatch(sub, command):
                 "command exits non-zero or leaves no review). --resume runs a running, parked or failed job again\n"
                 "with --reason, or reopens a done research or planning job (a follow-up question; the planner\n"
                 "after a plan review); sae collect then reads the updated report or result. The message also\n"
-                "works for a fresh agent. Exit 3: the task is parked after a second changes-required\n"
+                "works for a fresh agent. A due spec or plan review is added first. Exit 3: an active hold (the\n"
+                "message names the release command), or the task is parked after a second changes-required\n"
                 "integration round.",
                 ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed",
                  'dispatch claims-status PLAN --resume --reason "REVIEW-PLAN: changes required"'],

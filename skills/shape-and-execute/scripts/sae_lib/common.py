@@ -11,6 +11,7 @@ import re
 import shlex
 import sys
 import tempfile
+import textwrap
 import unicodedata
 from pathlib import Path
 
@@ -71,6 +72,7 @@ HARD_STOPS_LINE = ("Hard stops: no push/deploy, no secrets, no CI/permission cha
 # DL-73: the limit of failed verify re-runs per job. A settings.json without the key uses it;
 # `sae new` writes it into every new task unless config.defaults.max_verify_failures says otherwise.
 DEFAULT_MAX_VERIFY_FAILURES = 3
+OUTPUT_WIDTH = 72            # owner-facing text: cards, notices, hints ([NARROW-OUTPUT]); map lines excepted
 STALE_RUNNING_MINUTES = 60   # `sae status`: a running job without change this long → "check on it"
 BRIEF_MAX_LINES = 80         # `sae check`: warning above this length
 # Codex shell detection: the Codex shell tool sets these in every command it runs
@@ -203,6 +205,28 @@ def table(rows: list[list[str]], indent: str = "  ") -> str:
         return ""
     widths = [max(len(str(row[i])) for row in rows) for i in range(len(rows[0]))]
     return "\n".join(indent + "  ".join(str(c).ljust(w) for c, w in zip(row, widths)).rstrip() for row in rows)
+
+
+def wrap(text: str, indent: str = "", hang: str = "  ", width: int = OUTPUT_WIDTH) -> str:
+    """One owner-facing line wrapped within `width` columns; continuation lines get `hang`
+    after `indent` ([NARROW-OUTPUT])."""
+    return "\n".join(textwrap.wrap(text, width=width, initial_indent=indent, subsequent_indent=indent + hang,
+                                    break_long_words=False, break_on_hyphens=False)) or indent.rstrip()
+
+
+def wrap_parts(parts: list[str], indent: str = "  ", sep: str = " · ", width: int = OUTPUT_WIDTH) -> str:
+    """Joins `parts` with `sep`, breaking lines only between parts, each line within `width`
+    when every part fits ([NARROW-OUTPUT])."""
+    lines, current = [], ""
+    for part in parts:
+        candidate = f"{current}{sep}{part}" if current else part
+        if current and len(indent) + len(candidate) > width:
+            lines.append(indent + current)
+            candidate = part
+        current = candidate
+    if current:
+        lines.append(indent + current)
+    return "\n".join(lines)
 
 
 def sae_prefix() -> str:
