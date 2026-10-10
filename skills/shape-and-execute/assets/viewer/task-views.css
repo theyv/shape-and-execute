@@ -19,14 +19,35 @@
 .lsw{display:inline-block;width:12px;height:6px;border-radius:2px;background:var(--c);vertical-align:1px;margin-right:2px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--ink3)}
 .gwrap{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg)}.gwrap svg{display:block}
-.nd{cursor:pointer}.nd:focus{outline:none}.nb{fill:var(--s2);stroke:var(--line2)}.nd:hover .nb{stroke:var(--ink3)}.nd.k-ready .nb{stroke:var(--ready-l)}
-.nd.sel .nb{stroke:var(--acc);stroke-width:1.5}.nd:focus-visible .nb{stroke:var(--acc);stroke-width:2}
+/* graph nodes: border = job kind ([VIEWER-PLAN-FIRST]); status keeps its text pill */
+.nd{cursor:pointer}.nd:focus{outline:none}.nd.planned{cursor:default}
+.nb{fill:var(--s2);stroke:var(--kc,var(--line2));stroke-width:1.5}.nd:hover .nb{fill:var(--s3)}
+.ring{fill:none;stroke:none}.nd.sel .ring{stroke:var(--acc);stroke-width:1.5}.nd:focus-visible .ring{stroke:var(--acc);stroke-width:2}
+.nd.k-running .nb{stroke-dasharray:6 4;animation:march .9s linear infinite}
+@keyframes march{to{stroke-dashoffset:-20}}
+@media (prefers-reduced-motion:reduce){.nd.k-running .nb{animation:none}}
+.nd.planned{opacity:.6}.nd.planned .nb{fill:var(--bg);stroke-dasharray:2 3}.k-planned{--c:var(--ink3);--b:none;--l:var(--line2)}
 .nd.ghost{opacity:.6}.nd.ghost .nb{fill:none;stroke-dasharray:4 3}.nd.ghost .nid{text-decoration:line-through}
 .nd text{font-size:12px;fill:var(--ink3)}.nd .nid{font:600 12px var(--mono);fill:var(--ink)}.nd .nk{fill:var(--ink2)}.nd .nm{font-family:var(--mono)}
+/* model · effort: the routing colors, slightly muted on nodes */
+.nd .tm{fill:color-mix(in srgb,var(--mc) 78%,var(--ink3))}.nd .te{fill:color-mix(in srgb,var(--ec) 78%,var(--ink3))}.nd .te.u{text-decoration:underline}.nd .to{fill:var(--run)}
+.ml .hit{fill:transparent}.ml.ed{cursor:pointer}.ml.ed:hover .hit{fill:var(--hl);stroke:var(--line2)}.ml:focus{outline:none}.ml:focus-visible .hit{stroke:var(--acc);stroke-width:1.5}
 .sp rect{fill:var(--b);stroke:var(--l,none)}.nd .sp text{fill:var(--c);font-weight:500}
-.nbar{fill:var(--ink2)}.lgb{border-left:2px solid var(--ink2);padding-left:6px}.e{fill:none;stroke:var(--line2);stroke-width:1.25}.e.new{stroke:var(--ink2);stroke-width:2}.e.old{stroke:var(--ink3);stroke-dasharray:4 4}.e.tgt{stroke-dasharray:2 3}
+/* review and hold marks: no [?]; hover or focus shows why */
+.mk{cursor:help}.mk:focus{outline:none}.mk:focus-visible rect{stroke:var(--acc);stroke-width:1.5}
+.mk text{font-size:12px}.mk.on text{fill:var(--ink)}.mk.forced text{fill:var(--park)}.mk.off text{fill:var(--ink3);text-decoration:line-through}.mk.hold text{fill:var(--fail)}
+.mk rect{fill:var(--s3);stroke:var(--line2)}.mk.forced rect{fill:var(--park-b);stroke:none}.mk.off rect{fill:none;stroke:var(--line2);stroke-dasharray:3 2}.mk.hold rect{fill:none;stroke:var(--fail);stroke-dasharray:3 2}.mk.hold.on rect{fill:var(--fail-b);stroke-dasharray:none}
+.nbar{fill:var(--ink2)}.lgb{border-left:2px solid var(--ink2);padding-left:6px}.e{fill:none;stroke:var(--line2);stroke-width:1.25}.e.new{stroke:var(--ink2);stroke-width:2}.e.old{stroke:var(--ink3);stroke-dasharray:4 4}.e.tgt{stroke-dasharray:2 3}.e.pl{stroke-dasharray:3 3;opacity:.7}
+.legend.kinds{margin-top:8px}.ks{display:inline-block;width:14px;height:10px;border-radius:3px;border:1.5px solid var(--kc);margin-right:5px;vertical-align:-1px}.ks.run{border-style:dashed;border-color:var(--ink2)}.ks.pl{border-style:dotted;border-color:var(--ink3)}
+.hbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:12px;padding:8px 12px;border:1px solid var(--fail);border-radius:6px;background:var(--fail-b)}.hbar b{font-weight:600}
+.note{margin:0 0 12px;color:var(--ink2)}.note.err{color:var(--fail)}
+.tip .w{font-size:12px}
+/* the override dropdown of a node's model label ([JOB-MODEL-OVERRIDE]) */
+.ovm{position:fixed;z-index:35;display:flex;flex-direction:column;gap:8px;width:min(320px,calc(100% - 16px));padding:10px 12px;background:var(--s2);border:1px solid var(--line2);border-radius:6px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.ovm .oh{display:flex;justify-content:space-between;align-items:center;gap:8px}.ovm label{display:flex;flex-direction:column;gap:4px}.ovm select{width:100%;height:28px;padding:0 6px;border:1px solid var(--line2);border-radius:6px;background:var(--s1)}
+.ovm .btn.ic.sm{width:24px}.ovm .om:empty{display:none}.ovm .err{color:var(--fail)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
-.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 4px 0 8px;border:1px solid var(--line);border-radius:6px;background:var(--s1)}
+.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 4px 0 8px;border:1px solid var(--line);border-radius:6px;background:var(--s1)}.chip.planned{border-style:dotted;opacity:.75;padding-right:8px}
 @media (max-width:860px){
 .kpi{padding:8px 10px}.kpi b{font-size:16px}.kpi b span{font-size:12px}
 .ev{grid-template-columns:auto auto minmax(0,1fr);gap:2px 12px}.ev>:nth-child(3){grid-column:1/4;grid-row:2;white-space:normal}.ev>:nth-child(4){grid-column:3;grid-row:1;justify-self:end}

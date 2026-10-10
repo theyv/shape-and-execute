@@ -1,20 +1,67 @@
 /* sae viewer: the Plan graph and the other task tabs (TAB.*), the job panel. */
 "use strict";
-/* ---------- planned vs actual: graph changes after plan.approved ---------- */
+/* ---------- planned vs actual: graph changes after plan.approved; sae's own changes (by: sae) never count ---------- */
 function changes(t){var ev=t.events||[],ap=-1,r={added:{},removed:{},newE:{},oldE:{},changed:{}},needs={};
   ev.forEach((e,i)=>{if(e.type==="plan.approved")ap=i});
-  ev.forEach((e,i)=>{var a=ap>=0&&i>ap,c;
+  ev.forEach((e,i)=>{var a=ap>=0&&i>ap&&e.by!=="sae",c;
     if(e.type==="job.added"){needs[e.job]=e.needs||[];if(a&&e.kind!=="review")r.added[e.job]=e.reason||""}
     else if(e.type==="job.changed"){if(a)r.changed[e.job]=e.reason||"";if(c=(e.changes||{}).needs){needs[e.job]=c[1];if(a){c[1].forEach(n=>{if(!c[0].includes(n))r.newE[n+">"+e.job]=e.reason||""});c[0].forEach(n=>{if(!c[1].includes(n))r.oldE[n+">"+e.job]=e.reason||""})}}}
     else if(e.type==="job.removed"&&a)r.removed[e.job]={kind:e.kind,reason:e.reason||"",needs:needs[e.job]||[]}});
   return{r:r,ap:ap}}
 
+/* ---------- what will run: routing, planned reviews, review marks, holds (computed by the server, as the CLI) ---------- */
+var dead=t=>/^(done|abandoned)$/.test(t.state.task.phase),
+ // reviews that sae will add, drawn in their final place; spec and plan reviews sit with the shaping chips
+ planned=t=>(t.planned_reviews||[]).filter(p=>!own(JS(t),p.id)),
+ PLo=(t,id)=>planned(t).find(p=>p.id===id),
+ RT=(t,id)=>{var r=own(t.routing||{},id);return r&&!r.error?r:null},
+ // a model's color by its entry; an exact Codex version (cx-2-core) takes its family's color (core)
+ mcol=(t,h,m)=>{var L=(t.models||{})[h]||[];return modelColor(t.models,h,L.some(x=>x.model===m)?m:((L.find(x=>x.family&&String(m).endsWith("-"+x.model))||{}).model||m))},
+ // model · effort of a node: the last attempt, else what routing (or an override) will give
+ modelOf=(t,id)=>{var j=JO(t,id),a=j&&lastA(j),r=RT(t,id),p=PLo(t,id);
+  if(a&&a.model)return{h:a.harness||"",m:a.model,e:a.effort||"",ran:1};   // attempts of old tasks may lack the effort
+  if(r)return{h:r.harness,m:r.model_entry||r.model,e:r.effort||"",ovr:r.override,routed:r.routed,tier:r.tier,src:r.source};
+  return p&&p.model?{h:p.harness,m:p.model,e:p.effort||""}:null},
+ // colored words for tooltips and lists (the same palette as the routing panel)
+ mwords=(t,x)=>x?'<span class="w"><span class="wm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(x.m)+"</span>"+(x.e?"<i> · </i>"+effortWord(x.e):"")+"</span>":"–",
+ srcText=x=>!x?"":x.ovr?"override":x.ran?"":[x.tier&&"tier "+x.tier,x.src&&x.src!=="global"&&x.src].filter(Boolean).join(", "),
+ canOvr=(t,id)=>!dead(t)&&(!!PLo(t,id)||(JO(t,id)||{}).status==="pending"),
+ // the review of a job, existing or planned: its id and model
+ reviewOf=(t,id)=>{var rs=reviewsOf(t,id),k=rs.length?rs[rs.length-1]:"REVIEW-"+id;return{id:k,m:modelOf(t,k)}},
+ cap1=s=>String(s||"").replace(/^./,c=>c.toUpperCase()),
+ MKC={"review":"on","review · forced by settings":"forced","no review · forced by settings":"off"},
+ markOf=(t,id)=>{var m=own(t.review_marks||{},id);return m&&m.mark?m:null},
+ markTip=(t,id,m)=>{var r=m.reviewed&&reviewOf(t,id);
+  return"<b>"+esc(cap1(m.reason))+".</b>"+(r?r.m?"<br>Review "+(r.m.ran?"ran":"planned")+" on "+esc(r.m.h)+" · "+mwords(t,r.m)+(r.m.ovr?' <span class="mut">(override)</span>':""):"<br>Review model: routing is incomplete.":"<br>Check <b>jobs</b> in the review points to review it.")},
+ holdsOf=t=>t.state.task.holds||{},
+ holdOn=(t,id)=>{var a=t.next&&t.next.holds_active;if(a)return a.includes(id);var j=JO(t,id),i=t.state.task;return!!j&&j.status==="done"&&(!WR[j.kind]||!(i.git&&i.layout==="worktrees")||j.merged)},
+ holdCmd=(t,id)=>IDX.sae+" hold "+t.state.task.id+" "+id+" --release",
+ holdBtn=(t,id)=>dead(t)||!JO(t,id)?"":own(holdsOf(t),id)?'<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="release" title="Remove the hold: dispatching continues.">Release hold</button>':
+  '<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="set" title="Once this job is done, nothing new is dispatched until you release the hold. Running jobs finish.">Hold after</button>';
+
 /* ---------- graph: layer = longest path from a root, barycenter order ---------- */
 var preExec=(t,id)=>{var j=JS(t)[id];return j.kind==="review"?/^(spec|plan)$/.test(j.target):/^(research|planning)$/.test(j.kind)&&!j.needs.length&&!jf(t,o=>o.needs.includes(id)).length};
-function graph(t){var js=JS(t),ch=changes(t).r,ids=jf(t,(j,id)=>!preExec(t,id)),lay={},has={},inc={},up={},dn={},cols=[],pos={},xy={},E0=[];
-  var ghosts=Object.keys(ch.removed).filter(id=>!js[id]),nodes=ids.concat(ghosts),eg=(a,b,c,tip)=>{E0.push([a,b,c,tip]);(inc[b]=inc[b]||[]).push(a)};nodes.forEach(id=>{has[id]=1});
-  ids.forEach(id=>{var j=js[id],p=j.needs.filter(n=>has[n]);if(/^(decision|review)$/.test(j.kind)&&has[j.target]&&!p.includes(j.target))p.push(j.target);
-    p.forEach(x=>{var nw=ch.newE[x+">"+id];eg(x,id,(nw!=null?"new":"")+(j.needs.includes(x)?"":" tgt"),nw!=null?"Edge added after plan approval: "+nw:"")})});
+function graph(t){var js=JS(t),ch=changes(t).r,ids=jf(t,(j,id)=>!preExec(t,id)),pl=planned(t).filter(p=>!/^(spec|plan)$/.test(p.target)),PL={},
+   lay={},has={},inc={},up={},dn={},cols=[],pos={},xy={},E0=[],par={},at={},
+   ghosts=Object.keys(ch.removed).filter(id=>!js[id]),nodes=ids.concat(ghosts,pl.map(p=>p.id)),
+   eg=(a,b,c,tip)=>{if((inc[b]||[]).includes(a))return;E0.push([a,b,c,tip]);(inc[b]=inc[b]||[]).push(a)},
+   pa=(id,p,c)=>{if(!has[p]||p===id)return;var L=par[id]=par[id]||[];if(!L.some(x=>x[0]===p))L.push([p,c])},
+   ints=ids.filter(id=>js[id].kind==="review"&&js[id].target==="integration"),lastInt=ints[ints.length-1];
+  pl.forEach(p=>{PL[p.id]=p});nodes.forEach(id=>{has[id]=1});
+  (t.events||[]).forEach((e,i)=>{if(e.type==="job.added"&&at[e.job]==null)at[e.job]=i});
+  // parents: planner needs, then the edges sae generates ([GENERATED-JOB-EDGES]); "gen" edges are never plan changes
+  ids.forEach(id=>{var j=js[id],gen=j.generated?j.needs:(j.generated_needs||[]);
+    j.needs.forEach(n=>pa(id,n,gen.includes(n)?"gen":""));
+    if(/^(decision|review)$/.test(j.kind)&&js[j.target])pa(id,j.target,"tgt");
+    if(j.fix_of)pa(id,j.fix_of,"gen");
+    // a task of the old sae added the integration review without needs: it follows the writers added before it
+    if(j.kind==="review"&&j.target==="integration"&&!j.needs.length)ids.filter(k=>WR[js[k].kind]&&!(at[k]>at[id])).forEach(k=>pa(id,k,"gen"));
+    if(j.final&&lastInt)pa(id,lastInt,"gen")});
+  pl.forEach(p=>{(p.needs||[]).forEach(n=>pa(p.id,n,"pl"));(p.needed_by||[]).forEach(k=>pa(k,p.id,"pl"))});
+  // an integration review draws edges from the last writers only: the others reach it through them
+  var anc={},A=id=>{if(anc[id])return anc[id];var o=anc[id]={};(par[id]||[]).forEach(x=>{o[x[0]]=1;Object.assign(o,A(x[0]))});return o};
+  nodes.forEach(id=>{var j=js[id]||PL[id],P=par[id];if(j&&j.target==="integration"&&P)par[id]=P.filter(x=>x[1]===""||!P.some(y=>y[0]!==x[0]&&A(y[0])[x[0]]))});
+  nodes.forEach(id=>(par[id]||[]).forEach(x=>{var nw=x[1]===""||x[1]==="tgt"?ch.newE[x[0]+">"+id]:null;eg(x[0],id,(nw!=null?"new ":"")+x[1],nw!=null?"Edge added after plan approval: "+nw:"")}));
   ghosts.forEach(id=>ch.removed[id].needs.filter(n=>has[n]).forEach(x=>eg(x,id,"old")));
   Object.keys(ch.oldE).map(k=>k.split(">")).filter(e=>has[e[0]]&&has[e[1]]&&!(inc[e[1]]||[]).includes(e[0])).forEach(e=>eg(e[0],e[1],"old","Edge removed after plan approval: "+ch.oldE[e.join(">")]));
   var L=(id,seen)=>{if(lay[id]!=null)return lay[id];if(seen[id])return 0;seen[id]=1;var v=0;(inc[id]||[]).forEach(x=>{v=Math.max(v,L(x,seen)+1)});seen[id]=0;return lay[id]=v};
@@ -26,25 +73,42 @@ function graph(t){var js=JS(t),ch=changes(t).r,ids=jf(t,(j,id)=>!preExec(t,id)),
   var ix=()=>cols.forEach(c=>c.forEach((id,i)=>{pos[id]=i-(c.length-1)/2})),
    bary=(c,rel)=>{var b={};c.forEach(id=>{var r=(rel[id]||[]).filter(x=>pos[x]!=null);b[id]=r.length?r.reduce((s,x)=>s+pos[x],0)/r.length:pos[id]});c.sort((a,z)=>b[a]-b[z]||pos[a]-pos[z])};
   ix();for(var n=0;n<4;n++){for(var l=1;l<cols.length;l++){bary(cols[l],up);ix()}for(l=cols.length-2;l>=0;l--){bary(cols[l],dn);ix()}}
-  var NW=240,NH=68,DH=8,GX=40,GY=16,P=20,h=id=>id[0]==="~"?DH:NH,colH=c=>c.reduce((s,id)=>s+h(id)+GY,-GY),max=Math.max(NH,...cols.map(colH)),Hh=P*2+max,Wd=P*2+cols.length*NW+(cols.length-1)*GX;
+  // nodes with a review or hold mark get a fourth line; then every node is that tall
+  var tall=nodes.some(id=>markOf(t,id)||own(holdsOf(t),id)),NW=240,NH=tall?90:68,DH=8,GX=40,GY=16,P=20,h=id=>id[0]==="~"?DH:NH,colH=c=>c.reduce((s,id)=>s+h(id)+GY,-GY),max=Math.max(NH,...cols.map(colH)),Hh=P*2+max,Wd=P*2+cols.length*NW+(cols.length-1)*GX;
   cols.forEach((c,l)=>{var y=P+(max-colH(c))/2;c.forEach(id=>{xy[id]=[P+l*(NW+GX),y];y+=h(id)+GY})});
-  var cy=id=>xy[id][1]+h(id)/2,
-   port=(id,other,list)=>{if(id[0]==="~")return cy(id);var o=list[id].slice().sort((a,b)=>cy(a)-cy(b)),k=o.length,sp=Math.min(12,(NH-24)/Math.max(1,k-1));return cy(id)+(o.indexOf(other)-(k-1)/2)*sp},
+  var cy=id=>xy[id][1]+(id[0]==="~"?DH/2:34),
+   port=(id,other,list)=>{if(id[0]==="~")return cy(id);var o=list[id].slice().sort((a,b)=>cy(a)-cy(b)),k=o.length,sp=Math.min(12,44/Math.max(1,k-1));return cy(id)+(o.indexOf(other)-(k-1)/2)*sp},
    E=chains.map((c,n)=>{var e=E0[n],y0=port(c[0],c[1],dn),d="M"+(xy[c[0]][0]+NW)+" "+y0;
     for(var i=1;i<c.length;i++){var x0=xy[c[i-1]][0]+NW,x1=xy[c[i]][0],last=i===c.length-1,y1=last?port(c[i],c[i-1],up):cy(c[i]),m=(x1-x0)/2;
       d+="C"+(x0+m)+" "+y0+" "+(x1-m)+" "+y1+" "+x1+" "+y1+(last?"":"H"+(x1+NW));y0=y1}
     return'<path class="e '+e[2]+'" d="'+d+'">'+(e[3]?"<title>"+esc(e[3])+"</title>":"")+"</path>"});
-  var N=nodes.map(id=>{var g=!js[id],j=js[id]||{kind:ch.removed[id].kind,needs:[]},s=g?"removed":stOf(t,id),a=!g&&lastA(j),pw=Math.round(s.length*6.6+24),
-      mk=ch.added[id]!=null?"added":ch.changed[id]!=null?"changed":"",r=g?{}:revInfo(t,id),vp=r.v?Math.round(r.v.length*6.6+24):0,sm=g?0:staleM(t,id),right=[mk,r.x,sm&&"no activity "+span(sm)].filter(Boolean).join(" · "),
-      sub=j.kind+(/^(review|decision)$/.test(j.kind)?" → "+(j.target||""):j.difficulty?" · "+j.difficulty:""),
-      tip=id+" — "+s+(g?". Removed after plan approval: "+ch.removed[id].reason:mk?". "+(mk==="added"?"Added":"Changed")+" after plan approval: "+(ch.added[id]||ch.changed[id]):"")+(sm?". No activity for "+span(sm)+". "+staleTip(t,id):"");
-    return'<g class="nd k-'+s+(g?" ghost":"")+(S.job===id?" sel":"")+'" transform="translate('+xy[id]+')" tabindex="0" role="button" aria-label="'+esc(tip)+'"'+dataJ("job",id)+"><title>"+esc(tip)+"</title>"+
-      '<rect class="nb" width="'+NW+'" height="'+NH+'" rx="5"/>'+(mk?'<rect class="nbar" x="1" y="8" width="2" height="'+(NH-16)+'"/>':"")+'<text class="nid" x="10" y="21">'+esc(trunc(id,j.merged?17:19))+"</text>"+
-      (j.merged?'<text x="'+(NW-pw-24)+'" y="21">✓</text>':"")+'<g class="sp" transform="translate('+(NW-pw-8)+',7)"><rect width="'+pw+'" height="20" rx="4"/><text x="7" y="14">'+GL[s]+" "+s+"</text></g>"+
-      '<text class="nk" x="10" y="40">'+esc(trunc(sub,32))+'</text><text class="nm" x="10" y="58">'+esc(trunc(a?model(a):"–",Math.max(6,Math.floor((NW-30-vp-right.length*6.4)/7.3))))+"</text>"+
-      (vp?'<g class="sp k-'+VC[r.v]+'" transform="translate('+(NW-8-vp)+',44)"><rect width="'+vp+'" height="18" rx="4"/><text x="7" y="13">'+(r.v[0]==="c"?"✕ ":"✓ ")+r.v+"</text></g>":"")+
-      (right?'<text x="'+(NW-(vp?vp+14:10))+'" y="58" text-anchor="end">'+esc(right)+"</text>":"")+"</g>"});
-  return{svg:'<svg width="'+Wd+'" height="'+Hh+'" viewBox="0 0 '+Wd+" "+Hh+'" role="img" aria-label="Job graph">'+E.join("")+N.join("")+"</svg>",n:nodes.length,ch:ch}}
+  var N=nodes.map(id=>node(t,id,ch,PL[id],xy[id],NW,NH));
+  return{svg:'<svg width="'+Wd+'" height="'+Hh+'" viewBox="0 0 '+Wd+" "+Hh+'" role="group" aria-label="Job graph">'+E.join("")+N.join("")+"</svg>",n:nodes.length,ch:ch,pl:pl.length,edges:E0}}
+// one node: ID and status; kind and difficulty; model · effort (a button when it can change); review and hold marks
+function node(t,id,ch,p,at,NW,NH){var js=JS(t),g=!js[id]&&!p,j=js[id]||(p?{kind:"review",target:p.target,needs:[]}:{kind:ch.removed[id].kind,needs:[]}),
+   s=g?"removed":p?"planned":stOf(t,id),pw=Math.round(s.length*6.6+24),x=!g&&modelOf(t,id),ed=canOvr(t,id),
+   mk=!p&&(ch.added[id]!=null?"added":ch.changed[id]!=null?"changed":""),r=g||p?{}:revInfo(t,id),vp=r.v?Math.round(r.v.length*6.6+24):0,sm=g||p?0:staleM(t,id),
+   right=[mk,r.x!=="review due"&&r.x,sm&&"no activity "+span(sm)].filter(Boolean).join(" · "),
+   sub=j.kind+(/^(review|decision)$/.test(j.kind)?" → "+(j.target||""):j.difficulty?" · "+j.difficulty:""),
+   tip=id+" — "+s+(p?"\nPlanned: sae adds this review when "+(p.target==="integration"?"every writer job is merged":p.target+" is done")+". Not counted in progress.":"")+
+    (g?". Removed after plan approval: "+ch.removed[id].reason:mk?". "+(mk==="added"?"Added":"Changed")+" after plan approval: "+(ch.added[id]||ch.changed[id]):"")+(sm?". No activity for "+span(sm)+". "+staleTip(t,id):""),
+   room=Math.max(6,Math.floor((NW-30-vp-right.length*6.4)/7.3)),mt=x?trunc(x.m,Math.max(3,room-x.e.length-3-(x.ovr?11:0))):"",
+   lab=x?'<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(x.ovr?'<tspan class="to"> · override</tspan>':""):"–",
+   ltip=x&&x.ovr?"<b>Override for this job.</b><br>"+esc(x.h)+" · "+mwords(t,x)+(x.routed?"<br>Routing would pick "+esc(x.routed.harness)+" · "+mwords(t,{h:x.routed.harness,m:x.routed.model_entry,e:x.routed.effort}):"")+(ed?"<br>Click to change or clear it.":""):
+    x?"<b>"+(x.ran?"Last attempt":"Routing")+"</b>: "+esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":"")+(ed?"<br>Click to run it on another model.":""):"",
+   lw=Math.min(NW-20-vp-(right?right.length*6.4+8:0),Math.round(((x?mt.length+3+x.e.length+(x.ovr?11:0):1))*7.3+8)),
+   rm=!g&&!p&&markOf(t,id),hd=!g&&!p&&own(holdsOf(t),id),y4=66,m4="",cx=10;
+  if(rm){var w=Math.round(rm.mark.length*6.4+16);m4+='<g class="mk '+(MKC[rm.mark]||"on")+'" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc(rm.mark+": "+rm.reason)+'" data-tiph="'+esc(markTip(t,id,rm))+'"><rect width="'+w+'" height="18" rx="4"/><text x="8" y="13">'+esc(rm.mark)+"</text></g>";cx+=w+6}
+  if(hd){var on=holdOn(t,id),ht=on?"⏸ hold active":"⏸ hold after",hw=Math.round(ht.length*6.4+16);
+    [on?"⏸ active":"⏸ hold","⏸"].forEach(v=>{if(cx+hw>NW-8){ht=v;hw=Math.round(v.length*6.4+16)}}); // beside a long review mark; the tooltip says it all
+    m4+='<g class="mk hold'+(on?" on":"")+'" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc(on?"hold active":"hold after this job")+'" data-tiph="'+esc("<b>"+(on?"Hold active: nothing new is dispatched.":"Hold after "+id+": once it is done"+(WR[j.kind]?" and merged":"")+", nothing new is dispatched.")+"</b>"+(hd.reason?"<br>"+esc(hd.reason):"")+"<br>Release: "+esc(holdCmd(t,id)))+'"><rect width="'+hw+'" height="18" rx="4"/><text x="8" y="13">'+esc(ht)+"</text></g>"}
+  return'<g class="nd k-'+s+(g?" ghost":"")+(p?" planned":"")+(S.job===id?" sel":"")+'" style="--kc:var(--kd-'+esc(j.kind)+')" transform="translate('+at+')"'+(p?"":' tabindex="0" role="button"'+dataJ("job",id))+' aria-label="'+esc(tip)+'" data-tip="'+esc(tip)+'">'+
+    '<rect class="ring" x="-3" y="-3" width="'+(NW+6)+'" height="'+(NH+6)+'" rx="7"/><rect class="nb" width="'+NW+'" height="'+NH+'" rx="5"/>'+(mk?'<rect class="nbar" x="1" y="8" width="2" height="'+(NH-16)+'"/>':"")+'<text class="nid" x="10" y="21">'+esc(trunc(id,j.merged?17:19))+"</text>"+
+    (j.merged?'<text x="'+(NW-pw-24)+'" y="21">✓</text>':"")+'<g class="sp" transform="translate('+(NW-pw-8)+',7)"><rect width="'+pw+'" height="20" rx="4"/><text x="7" y="14">'+(p?"◌":GL[s])+" "+s+"</text></g>"+
+    '<text class="nk" x="10" y="40">'+esc(trunc(sub,32))+"</text>"+
+    '<g class="ml'+(ed?" ed":"")+'"'+(ed?' data-act="ovr" data-id="'+esc(id)+'" tabindex="0" role="button" aria-haspopup="dialog" aria-label="'+esc("Model of "+id+": "+(x?x.h+" · "+x.m+" · "+x.e+(x.ovr?", override":""):"none")+". Change")+'"':"")+(ltip?' data-tiph="'+esc(ltip)+'"':"")+'><rect class="hit" x="6" y="45" width="'+Math.max(16,lw)+'" height="18" rx="3"/><text class="nm" x="10" y="58">'+lab+"</text></g>"+
+    (vp?'<g class="sp k-'+VC[r.v]+'" transform="translate('+(NW-8-vp)+',44)"><rect width="'+vp+'" height="18" rx="4"/><text x="7" y="13">'+(r.v[0]==="c"?"✕ ":"✓ ")+r.v+"</text></g>":"")+
+    (right?'<text x="'+(NW-(vp?vp+14:10))+'" y="58" text-anchor="end">'+esc(right)+"</text>":"")+m4+"</g>"}
 
 /* ---------- tabs ---------- */
 var TAB={};
@@ -78,17 +142,68 @@ function report(t){var js=JS(t),i=t.state.task,fin=evs(t,/^task\.finished$/)[0]|
   var made=evs(t,/^(finding|backlog)\.created$/).map(e=>code(e.finding||e.file));if(made.length)rows.push(line("Findings and backlog items: "+made.join(", ")));
   rows.push(line(i.git?code(i.branch)+" (base "+esc(b.branch||"–")+" @ "+code(b.commit)+")"+(fin.commit?", head "+code(fin.commit):"")+". Nothing was pushed. Merge or open a merge request yourself.":"No git: the changes are in the working folder."));
   return sec("Final report",box(rows),agoH(fin.at))}
-TAB.plan=t=>{var js=JS(t),g=graph(t),ch=g.ch,pre=jf(t,(j,id)=>preExec(t,id)),n=o=>Object.keys(o).length;
-  var ln=(c,l)=>'<span><svg width="22" height="8" aria-hidden="true"><path class="e '+c+'" d="M0 4H22"/></svg> '+l+"</span>";
-  var out='<div class="gh"><h2 class="lbl">Graph</h2><div class="legend">'+["pending","ready","running","done","parked","failed"].map(pill).join("")+"<span>✓ merged</span>"+(n(ch.newE)?ln("new","edge added after approval"):"")+(n(ch.oldE)||n(ch.removed)?ln("old","removed after approval"):"")+(n(ch.added)||n(ch.changed)?'<span class="lgb">added or changed after approval</span>':"")+"</div></div>";
+var KINDS=["research","planning","implementation","integration","validation","review","decision"];
+TAB.plan=t=>{var js=JS(t),g=graph(t),ch=g.ch,pre=jf(t,(j,id)=>preExec(t,id)),pp=planned(t).filter(p=>/^(spec|plan)$/.test(p.target)),n=o=>Object.keys(o).length,
+   ln=(c,l)=>'<span><svg width="22" height="8" aria-hidden="true"><path class="e '+c+'" d="M0 4H22"/></svg> '+l+"</span>",
+   act=jf(t,(j,id)=>own(holdsOf(t),id)&&holdOn(t,id));
+  var out=NOTE&&NOTE.task===S.task?'<p class="note'+(NOTE.err?" err":"")+'" role="status">'+esc(NOTE.text)+"</p>":"";
+  if(act.length)out+='<div class="hbar" role="status"><b>⏸ Hold after '+act.map(esc).join(", ")+" is active.</b> Nothing new is dispatched until you release it; running jobs finish."+act.map(id=>holdBtn(t,id)).join("")+"</div>";
+  out+='<div class="gh"><h2 class="lbl">Graph</h2><div class="legend">'+["pending","ready","running","done","parked","failed"].map(pill).join("")+"<span>✓ merged</span>"+(g.pl||pp.length?pill("planned").replace(/<i[^>]*><\/i>/,'<i aria-hidden="true">◌</i>'):"")+"</div></div>";
   out+=g.n?'<div class="gwrap">'+g.svg+"</div>":box([],"No execution jobs yet.");
-  if(pre.length)out+='<div class="chips"><span class="mut">Shaping and planning</span>'+pre.map(id=>'<button class="chip"'+dataJ("job",id)+">"+code(id)+stp(t,id)+"</button>").join("")+"</div>";
+  out+='<div class="legend kinds" aria-label="Legend">'+KINDS.map(k=>'<span><i class="ks" style="--kc:var(--kd-'+k+')"></i>'+k+"</span>").join("")+'<span><i class="ks run"></i>running</span><span><i class="ks pl"></i>planned</span>'+
+   (n(ch.newE)?ln("new","edge added after approval"):"")+(n(ch.oldE)||n(ch.removed)?ln("old","removed after approval"):"")+(n(ch.added)||n(ch.changed)?'<span class="lgb">added or changed after approval</span>':"")+"</div>";
+  if(pre.length||pp.length)out+='<div class="chips"><span class="mut">Shaping and planning</span>'+pre.map(id=>'<button class="chip"'+dataJ("job",id)+">"+code(id)+stp(t,id)+"</button>").join("")+
+   pp.map(p=>{var x=modelOf(t,p.id);return'<span class="chip planned" title="Planned: sae adds this review when the '+esc(p.target)+' is ready for it.">'+code(p.id)+pill("planned").replace(/<i[^>]*><\/i>/,'<i aria-hidden="true">◌</i>')+
+    (canOvr(t,p.id)?'<button class="lnk" data-act="ovr" data-id="'+esc(p.id)+'" aria-haspopup="dialog" aria-label="Model of '+esc(p.id)+': change">'+mwords(t,x)+"</button>":mwords(t,x))+"</span>"}).join("")+"</div>";
+  if(t.state.task.phase==="executing")out+=nextUp(t);
   var gl=jf(t,(j,id)=>j.kind!=="review"&&!/^(INTEGRATE|DECISION)-/.test(id)).map(id=>{var o=stripC(section(front(t.files["jobs/"+id+".md"])[1],"Objective")).trim().split(/\r?\n/)[0];
     return'<button class="row two"'+dataJ("job",id)+"><span>"+code(id)+' <span class="ink2">— '+(o?inl(o):'<span class="mut">no objective</span>')+"</span></span></button>"});
   var pr=reviewsOf(t,"plan").map(k=>row("",stp(t,k),code(k),byM(lastA(js[k])),"",k));
   out+='<div class="cols"><div>'+sec("Jobs at a glance",box(gl,"No jobs yet."))+"</div><div>"+sec("Plan review",box(pr,"No plan review."))+"</div></div>";
   var dd=["plan.md","brief.md"].filter(f=>t.files[f]!=null);
   return out+(dd.length?sec("Documents",docs("d:",dd,t.files)):"")};
+// [VIEWER-NEXT-UP]: the ready list of `sae next` (the server runs the same code), running jobs, holds
+function nextUp(t){var nx=t.next;if(!nx)return"";if(nx.error)return sec("Next up",box([line('<span class="err">'+esc(nx.error)+"</span>")]));
+  var rt=r=>({h:r.harness,m:r.model_entry||r.model,e:r.effort,ovr:r.override,tier:r.tier,src:r.source}),rows=[],
+   hs=(nx.holds||[]).filter(h=>!(nx.holds_active||[]).includes(h.job));
+  (nx.ready||[]).forEach(r=>{var x=r.routing?rt(r.routing):null;
+    rows.push(row("fx",pill("ready"),J(r.id)+' <span class="ink2">'+esc(r.kind+(r.difficulty?" · "+r.difficulty:""))+"</span>",holdBtn(t,r.id),
+     (x?esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":""):esc(r.model||""))+(r.workspace?' <span class="mut">· '+esc(r.workspace)+"</span>":"")+(r.blocked?'<br><span class="mut">waits: '+esc(r.blocked)+"</span>":"")))});
+  (nx.running||[]).forEach(r=>{var x=modelOf(t,r.id);rows.push(row("fx",pill("running"),J(r.id)+sp(stale(t,r.id)),holdBtn(t,r.id),x?esc(x.h)+" · "+mwords(t,x):""))});
+  var h=sec("Next up",box(rows,(nx.holds_active||[]).length?"Nothing starts: a hold is active.":"No job is ready."),nx.slots?esc(nx.slots):"");
+  if(hs.length)h+=sec("Holds",box(hs.map(x=>row("",'<span class="tag">⏸ hold</span>',"after "+J(x.job)+(x.reason?' <span class="ink2">— '+esc(x.reason)+"</span>":""),holdBtn(t,x.job),"Active once "+esc(x.job)+" is done; then nothing new starts."))));
+  if(nx.integration)h+=sec("Integration review",'<div class="box pad"><pre class="cmd">'+esc(nx.integration)+"</pre></div>");
+  return h}
+
+/* ---------- per-job override ([JOB-MODEL-OVERRIDE]) and holds ([HOLD-AFTER-JOB]): both run the sae command on the server ---------- */
+var NOTE=null,OVR=null,
+ note=(text,err)=>{NOTE={task:S.task,text:text,err:!!err};render()},
+ ovrClose=f=>{var m=$(".ovm");if(m)m.remove();var o=OVR;OVR=null;if(f&&o)refocus(D,o.k)},
+ // a planned review of a job is overridden as "<job> --review"; the others by their own ID
+ ovrBody=(t,id)=>{var p=PLo(t,id);return p&&!/^(spec|plan|integration)$/.test(p.target)?{job:p.target,review:true}:{job:id}};
+function ovrOpen(btn){var t=T(),id=btn.dataset.id;if(!t)return;ovrClose();var x=modelOf(t,id),ms=t.models||{},cur=x&&x.ovr?[x.h,x.m,x.e].join("|"):"",
+   opts=Object.keys(ms).map(h=>(ms[h]||[]).filter(m=>m.enabled!==false).map(m=>'<optgroup label="'+esc(h+" · "+m.model)+'">'+(m.efforts||[]).map(e=>{var v=[h,m.model,e].join("|");return'<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(m.model+" · "+e)+"</option>"}).join("")+"</optgroup>").join("")).join(""),
+   r=btn.getBoundingClientRect(),m=D.createElement("div");
+  OVR={id:id,k:fkey(btn)};m.className="ovm";m.setAttribute("role","dialog");m.setAttribute("aria-label","Model of "+id);
+  m.innerHTML='<div class="oh"><b class="mono">'+esc(id)+'</b><button class="btn ic sm" data-act="oclose" aria-label="Close">✕</button></div>'+
+   '<div class="ink2">'+(x?(x.ovr?"Override: ":"Now: ")+esc(x.h)+" · "+mwords(t,x):"No model yet.")+(x&&x.routed?'<br><span class="mut">Routing: '+esc(x.routed.harness)+" · </span>"+mwords(t,{h:x.routed.harness,m:x.routed.model_entry,e:x.routed.effort}):"")+"</div>"+
+   '<label class="ink2">Run it on<select data-act="ovs" aria-label="Model and effort for '+esc(id)+'"><option value=""'+(cur?"":" selected")+">routing (no override)</option>"+opts+"</select></label>"+
+   '<div class="mut">Applies from the next dispatch. The server runs <span class="mono">sae job override</span>.</div><div class="om" role="status"></div>';
+  D.body.appendChild(m);m.style.top=Math.min(r.bottom+6,W.innerHeight-m.offsetHeight-8)+"px";m.style.left=Math.max(8,Math.min(r.left,W.innerWidth-m.offsetWidth-8))+"px";
+  m.querySelector("select").focus()}
+function ovrSave(sel){var t=T(),o=OVR,v=sel.value.split("|"),om=$(".ovm .om");if(!t||!o)return;sel.disabled=true;om.textContent="Saving…";
+  post("override",Object.assign({task:S.task},ovrBody(t,o.id),v[0]?{harness:v[0],model:v[1],effort:v[2]}:{clear:true})).then(r=>{
+    if(!r.ok){sel.disabled=false;om.textContent=(r.error||"Not saved.").split("\n")[0];om.className="om err";return}
+    ovrClose(true);note((v[0]?"Override for "+o.id+": "+v.join(" · "):"Override for "+o.id+" cleared")+". It applies from the next dispatch.");loadTask()})}
+function holdSet(btn){var id=btn.dataset.id,rel=btn.dataset.v==="release";btn.disabled=true;
+  post("hold",{task:S.task,job:id,release:rel}).then(r=>{note(r.ok?(rel?"Released the hold after "+id+".":"Hold after "+id+": once it is done, nothing new is dispatched."):(r.error||"Not saved.").split("\n")[0],!r.ok);loadTask()})}
+D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dataset.act;
+  if(ev.target.closest(".ovm"))ev.stopPropagation();else if(OVR&&a!=="ovr")ovrClose();
+  if(a==="ovr"){ev.stopPropagation();if(OVR&&OVR.id===e.dataset.id)ovrClose(true);else ovrOpen(e)}
+  else if(a==="oclose")ovrClose(true);
+  else if(a==="hold")holdSet(e)},true);
+D.addEventListener("change",ev=>{if(ev.target.dataset&&ev.target.dataset.act==="ovs")ovrSave(ev.target)});
+D.addEventListener("keydown",ev=>{if(ev.key==="Escape"&&OVR){ev.stopPropagation();ovrClose(true)}},true);
 function jobOrder(t){var js=JS(t),ids=Object.keys(js),lay={},kids={},base=[],out=[],seen={},
    att=id=>{var j=js[id],p=j.fix_of||((/^(review|decision)$/.test(j.kind)||/^INTEGRATE-/.test(id))&&j.target);return p&&js[p]&&p!==id?p:null},
    L=id=>lay[id]!=null?lay[id]:(lay[id]=0,lay[id]=Math.max(0,...js[id].needs.filter(n=>js[n]).map(n=>L(n)+1)));
@@ -167,7 +282,7 @@ TAB.timeline=t=>{var ap=changes(t).ap,ph="shaping",G={},order=[],P={"spec.approv
   var sel=ev.filter(x=>S.f==="all"||FT[S.f].test(x.e.type)).reverse();sel.forEach(x=>{if(!G[x.p]){G[x.p]=[];order.push(x.p)}G[x.p].push(x)});
   var gt=gantt(t),out=(gt?gt+'<div class="sec">':"<div>")+'<div class="gh"><h2 class="lbl">Events</h2><div class="seg" role="radiogroup" aria-label="Filter events">'+FILTERS.map(f=>'<button role="radio" aria-checked="'+(S.f===f[0])+'" data-act="filter" data-f="'+f[0]+'">'+f[1]+"<i>"+cnt(f[0])+"</i></button>").join("")+"</div></div></div>";
   if(!sel.length)return out+empty(ev.length?"No events of this kind.":"No events.");
-  return out+order.map(p=>sec('<i class="pd p-'+p+'" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>"+p,'<div class="box">'+G[p].map(x=>{var e=x.e,pva=ap>=0&&x.i>ap&&FT.graph.test(e.type)&&!(e.type==="job.added"&&e.kind==="review");
+  return out+order.map(p=>sec('<i class="pd p-'+p+'" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>"+p,'<div class="box">'+G[p].map(x=>{var e=x.e,pva=ap>=0&&x.i>ap&&FT.graph.test(e.type)&&e.by!=="sae"&&!(e.type==="job.added"&&e.kind==="review");
     return'<div class="ev'+(pva?" pva":"")+'"><span class="ink2" title="'+esc(e.at)+'">'+esc(fmt(e.at))+'</span><span class="mono ty '+fam(e.type)+'">'+esc(e.type)+"</span>"+(x=>'<span class="et" title="'+x.replace(/<[^>]+>/g,"")+'">'+x+"</span>")(evText(t,e))+"<span>"+(pva?'<span class="tag">planned vs actual</span>':"")+"</span></div>"}).join("")+"</div>",plural(G[p].length,"event"))).join("")};
 var rsn=e=>e.reason?' <span class="ink2">— '+esc(e.reason)+"</span>":"",
  vv=v=>esc(Array.isArray(v)?"["+v.join(", ")+"]":v),
@@ -194,7 +309,11 @@ var rsn=e=>e.reason?' <span class="ink2">— '+esc(e.reason)+"</span>":"",
   note:e=>esc(e.text)+(e.job?" · "+J(e.job):""),
   "finding.created":e=>"Finding "+code(e.finding),
   "task.finished":e=>"Task finished"+(e.branch?" on "+code(e.branch):"")+(e.commit?" @ "+code(e.commit):""),
-  "task.abandoned":e=>"Abandoned: "+esc(e.reason)};
+  "task.abandoned":e=>"Abandoned: "+esc(e.reason),
+  "hold.set":e=>"Hold after "+J(e.job)+" set"+(e.by==="viewer"?" in the viewer":"")+rsn(e),
+  "hold.released":e=>"Hold after "+J(e.job)+" released"+(e.by==="viewer"?" in the viewer":""),
+  "override.set":e=>"Override for "+code(e.job)+": "+esc([e.harness,e.model,e.effort].filter(Boolean).join(" · "))+(e.by==="viewer"?" (in the viewer)":"")+rsn(e),
+  "override.cleared":e=>"Override for "+code(e.job)+" cleared"+(e.by==="viewer"?" (in the viewer)":"")+rsn(e)};
 EV["plan.checked"]=EV["spec.checked"];EV["plan.approved"]=EV["spec.approved"];
 var evText=(t,e)=>(EV[e.type]||(e=>esc(JSON.stringify(e))))(e,t);
 TAB.reviews=t=>{var js=JS(t),ids=jf(t,j=>j.kind==="review");if(!ids.length)return empty("No reviews yet.");
@@ -203,12 +322,15 @@ TAB.reviews=t=>{var js=JS(t),ids=jf(t,j=>j.kind==="review");if(!ids.length)retur
     return row("fv",stp(t,id),code(id)+' <span class="ink2">on '+esc(j.target)+(j.round?" · round "+j.round:"")+"</span>",byM(lastA(j)),fs.join("")||(txt?"No numbered findings.":"No review file yet."),id)}))};
 TAB.decisions=t=>{var js=JS(t),dj=jf(t,j=>j.kind==="decision"),ev=evs(t,FT.decisions).reverse(),d=s=>esc(s||"–");
   return sec("Decision jobs",dj.length?tbl("","ID,For,Status,Question or decision",dj.map(k=>{var j=js[k],q=js[j.target]?ask(t,j.target):"";return tr([["mono nw",esc(k)],["mono nw",esc(j.target)],["nw",jpill(t,k)],["w",j["class"]?esc(j.decision)+' <span class="mut">· '+esc(j["class"])+" · "+esc(j.recommendation)+"</span>":'<span class="ink2">'+(q||"–")+"</span>"]],' class="r1'+(S.job===k?" open":"")+'"'+dataJ("job",k)+' tabindex="0"')})):box([],"No decision jobs."))+
-   sec("Decisions and amendments",ev.length?tbl("","When,Type,Class,By,Summary",ev.map(e=>tr([["ink2 nw",esc(fmt(e.at))],esc(e.type)+" "+code(e.id),d(e["class"]),'<span class="tag">'+d(e.by)+"</span>",["w",esc(e.summary)+(e.job?" · "+J(e.job):"")]]))):box([],"No decisions or amendments logged."))};
-TAB.spec=t=>{var f=t.files,has=[["intent","intent.md"],["spec","specs.md"]].filter(d=>f[d[1]]!=null);if(!has.length)return empty("No intent.md.");
+   drafts()+sec("Decisions and amendments",ev.length?tbl("","When,Type,Class,By,Summary",ev.map(e=>tr([["ink2 nw",esc(fmt(e.at))],esc(e.type)+" "+code(e.id),d(e["class"]),'<span class="tag">'+d(e.by)+"</span>",["w",esc(e.summary)+(e.job?" · "+J(e.job):"")]]))):box([],"No decisions or amendments logged."))};
+// [VIEWER-DECISIONS-AND-PROTOTYPES]: decision-record drafts of the repository (.tasks/adr/), readable here
+function drafts(){var L=IDX.drafts||[];return sec("Decision-record drafts",L.length?'<div class="box docs">'+L.map(d=>dt("a:"+d.file,d.title,'<p class="mut mono">'+esc(d.file)+(d.type?" · "+esc(d.type):"")+" · "+esc(d.status||"proposed")+(d.source?" · from "+esc(slug(d.source)):"")+"</p>"+md(d.text,{meta:false}))).join("")+"</div>":box([],"No drafts in .tasks/adr/."),IDX.open_drafts?IDX.open_drafts+" open":"")}
+var protos=t=>(t.prototypes||[]).length?sec("Prototypes",'<div class="box">'+t.prototypes.map(p=>'<div class="row two"><a class="mono" href="'+esc(p.url)+'" target="_blank" rel="noopener">'+esc(p.path.replace(/^prototypes\//,""))+'</a><span class="r">'+esc(num(p.size))+" B</span></div>").join("")+"</div>","open in a new tab"):"";
+TAB.spec=t=>{var f=t.files,has=[["intent","intent.md"],["spec","specs.md"]].filter(d=>f[d[1]]!=null);if(!has.length)return protos(t)+empty("No intent.md.");
   var d=(has.find(x=>x[0]===S.doc)||has[has.length-1]),am=evs(t,/^amendment$/).length;
   var rv=reviewsOf(t,"spec").map(k=>"<span>Spec review "+J(k)+" "+stp(t,k)+" "+byM(lastA(JS(t)[k]))+"</span>").join("");
   return'<div class="gh"><div class="seg" role="radiogroup" aria-label="Document">'+has.map(x=>'<button role="radio" aria-checked="'+(d===x)+'" data-act="doc" data-d="'+x[0]+'">'+x[1]+"</button>").join("")+'</div><div class="legend">'+(rv||"<span>No spec review.</span>")+(am?"<span>"+plural(am,"amendment")+"</span>":"")+"</div></div>"+
-    '<div class="sec">'+md(f[d[1]],{amend:true})+"</div>"};
+    protos(t)+'<div class="sec">'+md(f[d[1]],{amend:true})+"</div>"};
 TAB.findings=()=>{var fs=IDX.findings||[],cr=String(IDX.closed_findings||"").split(/\r?\n/).filter(l=>/^\s*-\s/.test(l)).map(l=>{var p=l.replace(/^\s*-\s*/,"").split(" · ");return p.length>3?[p[0],p[1],p.slice(2,-1).join(" · "),p[p.length-1]]:["","",p.join(" · "),""]}).reverse();
   return sec("Open findings",fs.length?tbl("","Type,Title,Source,Confidence,Filed",fs.map(f=>{var op=S.job==="f:"+f.file;
     return tr(['<span class="tag">'+esc(f.type||"–")+"</span>",["w",esc(f.title)],["mono ink2 nw",esc(f.source?slug(f.source):"–")],["ink2",esc(f.confidence||"–")],["ink2 nw",agoH(f.created)]],' class="r1'+(op?" open":"")+'"'+dataJ("row","f:"+f.file)+' tabindex="0" aria-expanded="'+op+'"')+
@@ -217,7 +339,7 @@ TAB.findings=()=>{var fs=IDX.findings||[],cr=String(IDX.closed_findings||"").spl
 function jobBody(t,id){var js=JS(t),j=own(js,id),f=t.files;
   if(!j){var g=own(changes(t).r.removed,id)||{},rf="jobs/"+id+".removed.md";return dl([["Status",pill("removed")],["Reason",esc(g.reason)]])+(f[rf]!=null?docs("j:",[rf],f):"")}
   var rs=reviewsOf(t,id),dj=jf(t,o=>o.kind==="decision"&&o.target===id),out=dl([["Status",jpill(t,id)],["Summary",esc(j.summary)],["Decision request",j.status==="parked"&&ask(t,id)],["Waits for",j.status==="pending"&&esc(waits(t,id).join(", "))],
-    ["Needs",j.needs.map(J).join(", ")],["Target",j.target&&tgt(t,j.target)],["Fix of",J(j.fix_of)],["Reviews",rs.map(k=>J(k)+" "+stp(t,k)).join(" ")],["Decision jobs",dj.map(J).join(", ")],["Commits",(j.commits||[]).map(c=>code(c.slice(0,7))).join(" ")],["Last change",agoH(j.last_change)]].map(p=>[p[0],p[1]||""]));
+    ["Needs",j.needs.map(J).join(", ")],["Target",j.target&&tgt(t,j.target)],["Fix of",J(j.fix_of)],["Reviews",rs.map(k=>J(k)+" "+stp(t,k)).join(" ")],["Decision jobs",dj.map(J).join(", ")],["Hold",dead(t)?"":(own(holdsOf(t),id)?'<span class="tag">⏸ '+(holdOn(t,id)?"hold active":"hold after this job")+"</span> ":"")+holdBtn(t,id)],["Commits",(j.commits||[]).map(c=>code(c.slice(0,7))).join(" ")],["Last change",agoH(j.last_change)]].map(p=>[p[0],p[1]||""]));
   if(j.attempts.length)out+=sec("Attempts",tbl("nw","~#,Model,Harness,Started,~Duration,~Tokens,Reason",j.attempts.map(a=>tr([["n",a.n],["mono",esc(model(a))],esc(a.harness+" "+tierOf(a)),["ink2",esc(fmt(a.started))],["n",esc(dur(a.duration_s)||(a.ended?"–":"running"))],["n",a.tokens?num(a.tokens):"–"],esc(a.reason||"")]))));
   var dd=[...new Set(["jobs/"+id+".md",resultPath(id,j),"jobs/"+id+".verify.log"].concat(dj.map(k=>"decisions/"+k+".md")))].filter(d=>f[d]!=null);
   return out+sec("Files",dd.length?docs("j:",dd,f):box([],"No files yet."))}

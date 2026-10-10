@@ -23,6 +23,7 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 :focus-visible{outline:2px solid var(--acc);outline-offset:1px}
 .mono,code,pre{font-family:var(--mono);font-size:12px}
 .app{display:grid;grid-template:44px 1fr/256px minmax(0,1fr);height:100vh}
+.meta .wt{display:inline-flex;align-items:center;gap:4px}.meta .wt .cpi{width:22px;height:22px}
 .top{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--s1);min-width:0}
 .crumb{display:flex;align-items:center;gap:8px;min-width:0;white-space:nowrap}.crumb b{font-weight:600}.crumb span{color:var(--ink3)}.crumb .t{color:var(--ink2);overflow:hidden;text-overflow:ellipsis}
 .live{margin-left:auto;color:var(--ink3);font-size:12px;white-space:nowrap;cursor:default}.live .sm{display:none}
@@ -44,13 +45,16 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 .pd{display:inline-flex;justify-content:center;align-items:center;width:10px;flex-shrink:0;color:var(--pc);font-size:11px;font-style:normal;line-height:1}.pd:empty:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--pc)}
 .p-shaping{--pc:var(--ph-s)}.p-planning{--pc:var(--ph-p)}.p-executing{--pc:var(--ph-e)}.p-done{--pc:var(--done)}.p-abandoned{--pc:var(--ink3)}
 .php{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px 0 6px;border:1px solid var(--line2);border-radius:4px;font-size:12px;color:var(--pc);white-space:nowrap}
-.menu{display:none;border:0;background:none;padding:4px;margin-left:-4px;color:var(--ink2)}.scrim{display:none}
+.menu{border:0;background:none;padding:4px;margin-left:-4px;color:var(--ink2);border-radius:4px}.menu:hover{color:var(--ink);background:var(--hl)}.scrim{display:none}
+@media (min-width:861px){.main{grid-column:2}.app.sc{grid-template-columns:0 minmax(0,1fr)}.app.sc .side{display:none}}
 h1{font-size:20px;line-height:1.3;font-weight:600;margin:0}
 .th{display:flex;gap:16px;align-items:flex-start;justify-content:space-between}.acts{display:flex;gap:8px;flex-shrink:0}
 .meta{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:6px;color:var(--ink2);font-size:12px}
 .tabs{display:flex;gap:20px;margin-top:16px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
 .tabs button{border:0;background:none;padding:8px 0;color:var(--ink2);white-space:nowrap}
 .tabs button:hover,.tabs [aria-selected=true]{color:var(--ink)}.tabs [aria-selected=true]{box-shadow:inset 0 -2px 0 var(--acc)}
+/* the tab strip scrolls, so an outline would be clipped to two vertical bars: keyboard focus tints the label instead */
+.tabs button:focus-visible{outline:none;color:var(--ink);background:var(--hl);border-radius:4px 4px 0 0}
 .tabs i,.seg i{font-style:normal;color:var(--ink3);margin-left:6px;font-size:12px}
 .tc{padding-top:20px}.tc>.sec:first-child{margin-top:0}
 .btn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--line2);border-radius:6px;background:var(--s2);white-space:nowrap}
@@ -89,7 +93,7 @@ tr.r1{cursor:pointer}tr.r1:hover{background:var(--hl)}tr.open{background:var(--s
 .md :is(h1,h2,h3,h4,h5,h6){color:var(--ink);font-weight:600;line-height:1.35;margin:16px 0 6px;font-size:13px}
 .md h1{font-size:20px;line-height:1.3;margin:24px 0 12px}.md h2{font-size:16px;margin:32px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}.md h3{font-size:14px;margin:20px 0 6px}.md :is(h4,h5,h6){color:var(--ink2)}
 .md strong{color:var(--ink);font-weight:600}.md p{margin:6px 0}.md ul,.md ol{margin:4px 0;padding-left:20px}.md li{margin:3px 0}
-.md li.cb{list-style:none;display:flex;gap:8px;margin-left:-20px}.ck{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-top:3px;border:1px solid var(--line2);border-radius:3px;font-size:10px;line-height:1;color:var(--ink)}.ck.on{background:var(--s3)}
+.md li.cb{list-style:none;position:relative;margin-left:-20px;padding-left:22px}.md li.cb>.ck{position:absolute;left:0;top:0}.ck{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-top:3px;border:1px solid var(--line2);border-radius:3px;font-size:10px;line-height:1;color:var(--ink)}.ck.on{background:var(--s3)}
 .cbs input{accent-color:var(--acc)}.nyw{margin:4px 0 0}
 .md code{background:var(--s3);padding:1px 4px;border-radius:4px}
 .md pre{background:var(--s1);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto}.md pre code{background:none;padding:0}
@@ -112,7 +116,7 @@ pre.log,pre.cmd{margin:0 0 12px;background:var(--bg);border:1px solid var(--line
 .cpi{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:6px;background:none;color:var(--ink3)}.cpi:hover{background:var(--s3);color:var(--ink)}.cpi svg{fill:none;stroke:currentColor;stroke-width:1.3}
 @media (max-width:1100px){.cols{grid-template-columns:minmax(0,1fr);gap:0}}
 @media (max-width:860px){
-.app{grid-template-columns:minmax(0,1fr)}.top{grid-column:1}.menu{display:block}
+.app{grid-template-columns:minmax(0,1fr)}.top{grid-column:1}
 .side{position:fixed;top:44px;bottom:0;left:0;width:min(300px,86%);z-index:20;transform:translateX(-102%);transition:transform .15s}
 .app.so .side{transform:none}.app.so~.scrim{display:block;position:fixed;inset:44px 0 0;background:var(--scrim);z-index:19}
 .wrap{padding:16px 16px 48px}.th{flex-direction:column;gap:12px}
