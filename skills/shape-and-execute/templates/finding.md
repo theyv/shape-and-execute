@@ -8,7 +8,7 @@ paths: []
 # <title>
 
 ## Observation
-<!-- What you saw. -->
+<observation>
 
 ## Evidence
 
