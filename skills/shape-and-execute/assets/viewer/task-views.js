@@ -149,7 +149,7 @@ TAB.plan=t=>{var js=JS(t),g=graph(t),ch=g.ch,pre=jf(t,(j,id)=>preExec(t,id)),pp=
   var out=NOTE&&NOTE.task===S.task?'<p class="note'+(NOTE.err?" err":"")+'" role="status">'+esc(NOTE.text)+"</p>":"";
   if(act.length)out+='<div class="hbar" role="status"><b>⏸ Hold after '+act.map(esc).join(", ")+" is active.</b> Nothing new is dispatched until you release it; running jobs finish."+act.map(id=>holdBtn(t,id)).join("")+"</div>";
   out+='<div class="gh"><h2 class="lbl">Graph</h2><div class="legend">'+["pending","ready","running","done","parked","failed"].map(pill).join("")+"<span>✓ merged</span>"+(g.pl||pp.length?pill("planned").replace(/<i[^>]*><\/i>/,'<i aria-hidden="true">◌</i>'):"")+"</div></div>";
-  out+=g.n?'<div class="gwrap">'+g.svg+"</div>":box([],"No execution jobs yet.");
+  out+=g.n?'<div class="gwrap" data-task="'+esc(S.task)+'">'+g.svg+"</div>":box([],"No execution jobs yet.");
   out+='<div class="legend kinds" aria-label="Legend">'+KINDS.map(k=>'<span><i class="ks" style="--kc:var(--kd-'+k+')"></i>'+k+"</span>").join("")+'<span><i class="ks run"></i>running</span><span><i class="ks pl"></i>planned</span>'+
    (n(ch.newE)?ln("new","edge added after approval"):"")+(n(ch.oldE)||n(ch.removed)?ln("old","removed after approval"):"")+(n(ch.added)||n(ch.changed)?'<span class="lgb">added or changed after approval</span>':"")+"</div>";
   if(pre.length||pp.length)out+='<div class="chips"><span class="mut">Shaping and planning</span>'+pre.map(id=>'<button class="chip"'+dataJ("job",id)+">"+code(id)+stp(t,id)+"</button>").join("")+

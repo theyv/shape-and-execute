@@ -199,10 +199,12 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
    '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
   if(t)h+=headerCard(t); // settings.js: the settings card, editable in place
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0];return'<button role="tab" id="tab-'+x[0]+'" aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(cnt[x[0]]?"<i>"+cnt[x[0]]+"</i>":"")+"</button>"}).join("")+"</div>";
-  var gs=$(".gts"),gl=gs&&gs.scrollLeft;
+  // innerHTML re-creates the scroll boxes: the Plan graph keeps its scroll (both axes) for the same task
+  var gs=$(".gts"),gl=gs&&gs.scrollLeft,gw=$(".gwrap"),gv=gw&&gw.dataset.task===S.task?[gw.scrollLeft,gw.scrollTop]:null;
   m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
-  if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth}
+  if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth;
+  if(gv&&(gw=$(".gwrap"))){gw.scrollLeft=gv[0];gw.scrollTop=gv[1]}}
 function renderPanel(){var p=$("#panel"),t=T(),h="",x='<button class="btn ic" data-act="close" aria-label="Close">✕</button>';
   var dft=S.bl&&IDX&&(IDX.drafts||[]).find(x=>x.file===S.bl);
   if(dft)h='<div class="ph"><h2 class="sans">'+esc(dft.title)+"</h2>"+x+'</div><div class="meta">'+code(dft.file)+"<span>"+esc((dft.type||"draft")+" · "+(dft.status||"proposed"))+"</span>"+(dft.source?"<span>from "+code(dft.source)+"</span>":"")+"</div>"+'<div class="sec">'+md(dft.text,{meta:false})+"</div>";
