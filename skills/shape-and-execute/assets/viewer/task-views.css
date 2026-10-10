@@ -18,8 +18,10 @@
 .gx .dl{fill:var(--ink2)}.gx .brk{fill:none;stroke:var(--ink3);stroke-width:1.2}.gx .pl{stroke:var(--pc);stroke-width:2}.gx .pt{fill:var(--pc)}.gx .now{stroke:var(--ink3);stroke-dasharray:2 2}
 .lsw{display:inline-block;width:12px;height:6px;border-radius:2px;background:var(--c);vertical-align:1px;margin-right:2px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--ink3)}
-/* dot grid ([AMEND-4]): on the scrolled content, so it moves with the graph; quieter than the edges (--line2) */
-.gwrap{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--bg) radial-gradient(circle,var(--line) 1px,transparent 1.3px) 0 0/16px 16px local}.gwrap svg{display:block}
+/* graph canvas ([AMEND-4]): gvMount sets the dot grid's size and position from pan and zoom; dots in --line, quieter than the edges (--line2) */
+.gwrap{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:6px;cursor:grab;touch-action:none;user-select:none;
+  background:var(--bg) radial-gradient(circle,var(--line) 1px,transparent 1.3px) 0 0/16px 16px}
+.gwrap.drag{cursor:grabbing}.gz{position:absolute;right:8px;bottom:8px;display:flex;gap:4px}.gz .btn{background:var(--s1)}.gz .btn.ic{width:24px}.gwrap svg{display:block}
 /* graph nodes: border = job kind ([VIEWER-PLAN-FIRST]); status keeps its text pill */
 .nd{cursor:pointer}.nd:focus{outline:none}.nd.planned{cursor:default}
 .nb{fill:var(--s2);stroke:var(--kc,var(--line2));stroke-width:1.5}.nd:hover .nb{fill:var(--s3)}
