@@ -9,10 +9,16 @@ Keep the start short and concrete. The deep work comes after research.
 
 1. `sae new "<short title>"`. For a backlog item: `sae new "<short title>" --from <file>`;
    the item becomes `intent.md`. Note the task ID.
-2. Write `intent.md` at once from the user's note. Keep every detail; cut repetition and
+2. Give the user the viewer link that `sae new` prints. When it prints a start command
+   instead (a sandbox without local sockets), give the user that command for their own
+   terminal; in Codex, also suggest running Codex with full access (`--yolo`).
+3. Write `intent.md` at once from the user's note. Keep every detail; cut repetition and
    filler. Short sentences. Use the template sections; delete empty ones. A backlog item's
-   intent is already written, but it may be outdated: check it against the code in step 3.
-3. Read the repository instructions (AGENTS.md, CLAUDE.md) and `.tasks/repo/profile.md` if
+   intent is already written, but it may be outdated: check it against the code in step 5.
+4. Show the settings card (`sae status <task>`) with one sentence about the interaction mode:
+   what it lets agents decide alone during execution, and that the user can change it any
+   time (in the chat, or in the viewer).
+5. Read the repository instructions (AGENTS.md, CLAUDE.md) and `.tasks/repo/profile.md` if
    they exist. Look at the code area the note names, only enough to ask good questions.
 
 ## 2. First round
@@ -37,16 +43,17 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
    orchestration rather than in knowledge.
    `sae job add <task> <TOPIC-ID> --kind research --difficulty normal|hard`
 2. Fill `jobs/<TOPIC-ID>.md`: the questions, what is already known, the limits.
-3. For each job: `sae dispatch <task> <TOPIC-ID>`, then spawn a subagent with the printed
-   prompt and model. Run them in parallel.
-4. Use the wait:
-   - show the settings card (`sae status <task>`) and ask for changes: interaction mode,
-     levels for planning, execution and review, review points and provider. Apply them with
-     `sae set`;
+3. `sae next <task>` prints the launch card for the batch. Show it and wait (ok, change,
+   refine first, skip).
+4. For each job: `sae dispatch <task> <TOPIC-ID>`, then spawn a subagent with the printed
+   prompt, model and effort. Run them in parallel.
+5. Use the wait:
+   - ask for settings changes: interaction mode, levels for planning, execution and review,
+     review points and provider. Apply what the user asks with `sae set`;
    - ask grill questions that do not depend on the research.
-5. When a subagent finishes: `sae collect <task> <TOPIC-ID>` (add `--tokens`, `--duration-s`
+6. When a subagent finishes: `sae collect <task> <TOPIC-ID>` (add `--tokens`, `--duration-s`
    and `--agent-ref` when your harness reports them). Read the report.
-6. Follow-up questions — the ones you have after putting the reports together, or later during
+7. Follow-up questions — the ones you have after putting the reports together, or later during
    grilling — go to the research agent that holds the context:
    - write them under `## Follow-up questions` in that topic's job file;
    - `sae dispatch <task> <TOPIC-ID> --resume --reason "follow-up questions"`;
@@ -64,9 +71,12 @@ under `## Acceptance` and skip the spec.
   acceptance checks.
 - Describe final behavior, not implementation.
 - Decisions: `### [DECISION-...]` with decision, reason, basis and `[human]`, `[agent]` or
-  `[joint]`.
+  `[joint]`. Quote the user's words where they carry the "why": decision records are drafted
+  from them later.
 - Research basis: link the reports that support decisions. Do not copy them.
 - No traceability table: `sae check` computes coverage.
+- Mockups and throwaway prototypes for this task go to `.tasks/<task-id>/prototypes/`, never
+  into the repository.
 
 ## 5. Grill the draft
 
@@ -94,12 +104,19 @@ goes there without one.
 Before approval, list your riskiest `[agent]` assumptions: the ones you made instead of the
 user.
 
+**Task difficulty.** Before the first review or planner launch, set the task's size and risk:
+`sae set <task> task-difficulty=hard` for a large or risky task (default `normal`). The spec,
+plan and integration reviews and the planner run on it; the launch card shows it, and the
+user may change it there.
+
 ## 6. Spec review (when `spec` is a review point and `specs.md` exists)
 
-When grilling is done: `sae check <task>`. A clean check adds `REVIEW-SPEC`.
-`sae dispatch <task> REVIEW-SPEC`, then spawn a subagent with the printed prompt and model.
-When the printed output is a COMMAND (review in the other harness), run it in the background;
-when it fails, run the IF IT FAILS line printed with it. Collect it.
+When grilling is done: `sae check <task>`. A clean check makes `REVIEW-SPEC` due.
+`sae next <task>` prints its launch card: show it and wait (ok, change, refine first, skip;
+skip turns the `spec` review point off with `sae set`). Then `sae dispatch <task> REVIEW-SPEC`
+and spawn a subagent with the printed prompt, model and effort. When the printed output is a
+COMMAND (review in the other harness), run it in the background; when it fails, run the
+IF IT FAILS line printed with it. Collect it.
 
 Turn its findings into the last grill round: for each, say whether you would change the spec
 and why. The user decides. Update `specs.md` and `intent.md`. The verdict never blocks the
@@ -108,4 +125,5 @@ gate, and there is no second review unless the user asks for one.
 ## 7. Approval
 
 When the user approves: `sae approve <task> spec` (it refuses while a due `REVIEW-SPEC` is not
-collected). Then load [plan.md](plan.md) — planning phase and plan gate.
+collected). Then load [plan.md](plan.md) — planning phase, plan gate and decision-record
+drafts.

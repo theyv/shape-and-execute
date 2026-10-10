@@ -24,6 +24,9 @@ conflict is a decision: escalate it.
   `defect`: something looks broken. `friction`: finding something took far too long; say what
   was missing (documentation, structure, a huge file). `follow-up`: work outside the job that
   the task or the user clearly needs; never a wish list.
+- **Review findings are claims.** When your job answers a review (your prompt points to it),
+  check each finding against the code before you change anything. Do not implement a finding
+  you believe wrong: list it under `## Disputed findings` in your result, with the reason.
 - Commit on your branch at meaningful checkpoints. Read [commit-message.md](../commit-message.md)
   before your first commit. Never push. Never switch branches.
 
@@ -62,7 +65,7 @@ decision at length.
 
 Write the result at the path in your prompt (template `templates/job-result.md`): frontmatter
 `status`, `summary`, `validation`, `changes`; then the validation evidence, decisions you took
-that the code does not make obvious (`[agent]`), risks, findings you filed. Work for later goes
+that the code does not make obvious (`[agent]`), disputed findings, risks, findings you filed. Work for later goes
 into a `follow-up` finding, not into the result. Keep it short: the code is the source of
 truth.
 
