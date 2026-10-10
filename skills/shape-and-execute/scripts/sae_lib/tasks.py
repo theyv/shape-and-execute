@@ -24,6 +24,9 @@ from .gitutil import git, git_ok, worktree_paths
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 
 
+CLOSED_PHASES = ("done", "abandoned")  # no command writes into these records ([FINISHED-TASKS-READ-ONLY])
+
+
 def tasks_dir(root: Path) -> Path:
     return root / ".tasks"
 
@@ -137,6 +140,7 @@ class Task:
         self.dirty = False
         self.saved = False
         self.writable = True    # False: opened read-only; save() refuses ([READ-ONLY-COMMANDS])
+        self.closed = False     # loaded as done or abandoned: save() refuses ([FINISHED-TASKS-READ-ONLY])
 
     # paths
     @property
@@ -178,6 +182,15 @@ class Task:
         self.root = root
         self.dir = tasks_dir(root) / self.id
 
+    def move_into_done(self) -> None:
+        """[DONE-FOLDER]: `.tasks/<id>/` → `.tasks/done/<id>/` in the same checkout."""
+        dest = tasks_dir(self.root) / "done" / self.id
+        if dest.exists():
+            fail(EXIT_USAGE, f"{dest} exists already. Move it away, then run the command again.")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        self.dir.rename(dest)
+        self.dir = dest
+
     def job(self, job_id: str) -> dict:
         if job_id not in self.jobs:
             fail(EXIT_USAGE, f"No job {job_id} in task {self.id}.")
@@ -197,8 +210,9 @@ class Task:
         if errors:
             fail(EXIT_USAGE, f"{self.settings_path}: " + "; ".join(errors))
         self.settings = settings
-        if read_only:
-            return
+        self.closed = self.phase in CLOSED_PHASES
+        if read_only or self.closed:
+            return  # a read-only load or a finished record logs no settings change
         seen = self.info.get("settings_seen")
         if seen != settings:
             changes = settings_diff(seen or {}, settings)
@@ -228,6 +242,8 @@ class Task:
     def save(self) -> None:
         if not self.writable:
             raise RuntimeError(f"task {self.id} was opened read-only")
+        if self.closed:
+            refuse_closed(self.id, self.phase)
         self.info["last_change"] = iso()
         write_json(self.state_path, self.state)
         if self.new_events:
@@ -239,10 +255,16 @@ class Task:
         self.saved = True
 
     def write_settings(self, settings: dict) -> None:
+        if self.closed:
+            refuse_closed(self.id, self.phase)
         write_json(self.settings_path, settings)
         self.settings = settings
         self.info["settings_seen"] = settings
         self.dirty = True
+
+
+def refuse_closed(task_id: str, phase: str):
+    fail(EXIT_USAGE, f"The task is {phase}; its record is read-only: {task_id}.")
 
 
 @contextlib.contextmanager
@@ -253,8 +275,14 @@ def open_task(root: Path, ref: str, write: bool = True):
 
     `write=False` ([READ-ONLY-COMMANDS]): no lock file, no settings-change event, no save and
     no viewer render, so the command runs without write access. Changes made in the block are
-    dropped; a command that finds it must change the task opens it again with `write=True`."""
+    dropped; a command that finds it must change the task opens it again with `write=True`.
+
+    A writing open of a done or abandoned task is refused ([FINISHED-TASKS-READ-ONLY]); a
+    read-only open may load it, and its `save()` refuses either way. A block may still close
+    an active task (finish, abandon)."""
     copy = find_task(root, ref)
+    if write and task_phase(copy) in CLOSED_PHASES:
+        refuse_closed(copy.task_id, task_phase(copy))
     task = Task(copy.checkout, copy.task_id, copy.folder)
     if not write:
         task.writable = False
@@ -270,13 +298,25 @@ def open_task(root: Path, ref: str, write: bool = True):
         changed = task.saved
     if changed:
         from .viewer import render_viewer_safely  # late import: viewer imports this module
+        from .workspaces import sweep_merged_task_worktrees
+        sweep_merged_task_worktrees(root)  # writing commands only ([TASK-WORKTREE-LIFECYCLE])
         render_viewer_safely(root, [task.id])
 
 
-def append_event_to(root: Path, ref: str, type_: str, **fields) -> None:
-    """Appends one event to another task (backlog and finding sources)."""
+def task_phase(copy: TaskCopy) -> str:
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        return read_json(copy.folder / "state.json")["task"]["phase"]
+    return ""
+
+
+def append_event_to(root: Path, ref: str, type_: str, **fields) -> bool:
+    """Appends one event to another task (finding and decision-draft sources). A finished or
+    abandoned task gets nothing ([FINISHED-TASKS-READ-ONLY]). Returns whether it was written."""
+    if task_phase(find_task(root, ref)) in CLOSED_PHASES:
+        return False
     with open_task(root, ref) as task:
         task.event(type_, **fields)
+    return True
 
 
 def ensure_tasks_folder(root: Path) -> None:
