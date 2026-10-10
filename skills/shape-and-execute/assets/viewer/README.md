@@ -23,7 +23,8 @@ no ES modules, no CDN, no web fonts, no external requests.
 - `sae view [<task>] [--open]` starts the server or reuses the running one and prints
   `http://127.0.0.1:<port>/#repo=<key>&task=<id>&tab=plan`. `sae new` prints the same link.
 - Reads: `GET /api/projects`, `/api/repo?repo=K`, `/api/task?repo=K&task=ID`,
-  `/api/settings?repo=K[&task=ID]`, `/api/file?…` (prototype files). The server reads every
+  `/api/settings?repo=K[&task=ID]`. Prototype files: `/proto/<repo>/<task>/<path>` (sandboxed;
+  the URL keeps the folder structure, so relative assets load). The server reads every
   worktree and `.tasks/done/` at each request; no data files are generated. Each answer has a
   `version`; the page re-renders only when it changes.
 - Writes: `post(route, body)` in `app.js` sends `POST /api/<route>` with the token in

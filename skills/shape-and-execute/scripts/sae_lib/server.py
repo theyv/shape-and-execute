@@ -9,7 +9,8 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
   /api/task?repo=K&task=ID         one task: files, events, routing, review marks, next
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config
-  /api/file?repo=K&task=ID&path=prototypes/…   a prototype file (sandboxed)
+  /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
+                         is kept in the URL, so relative CSS, scripts, images and links load
   POST /api/<route>      a write route of WRITE_ROUTES; body JSON {repo, …}
 """
 
@@ -200,8 +201,16 @@ def prototype_files(folder: Path, key: str, task_id: str) -> list[dict]:
     for path in sorted(p for p in base.rglob("*") if p.is_file() and not p.name.startswith(".")):
         name = path.relative_to(folder).as_posix()
         out.append({"path": name, "size": path.stat().st_size,
-                    "url": "/api/file?" + urllib.parse.urlencode({"repo": key, "task": task_id, "path": name})})
+                    "url": prototype_url(key, task_id, path.relative_to(base).as_posix())})
     return out
+
+
+PROTO_PREFIX = "/proto/"
+
+
+def prototype_url(key: str, task_id: str, inner: str) -> str:
+    """/proto/<repo>/<task>/<path under prototypes/>: a prototype's relative links stay inside it."""
+    return PROTO_PREFIX + "/".join(urllib.parse.quote(part, safe="") for part in [key, task_id, *inner.split("/")])
 
 
 def computed(task, config: dict | None) -> dict:
@@ -330,14 +339,21 @@ def settings_data(key: str, task_id: str | None) -> dict:
             "routing": routing, "codex_catalog": codex_catalog()}
 
 
-def prototype_path(key: str, task_id: str | None, path: str | None) -> Path:
+def prototype_path(url_path: str) -> Path:
+    """The file of /proto/<repo>/<task>/<path>; a folder serves its index.html. Only files
+    under the task's prototypes/ are served: `..`, encoded or not, and symlinks out are 404."""
     from .tasks import locate_tasks
-    root = repo_by_key(key)
-    copy = locate_tasks(root).get(task_id or "")
-    if copy is None or not path:
+    parts = [urllib.parse.unquote(p) for p in url_path[len(PROTO_PREFIX):].split("/")]
+    if len(parts) < 3 or not parts[0] or not parts[1] or any("\0" in p or "\\" in p for p in parts):
+        raise RequestError(404, "No such file.")
+    root = repo_by_key(parts[0])
+    copy = locate_tasks(root).get(parts[1])
+    if copy is None:
         raise RequestError(404, "No such file.")
     base = (copy.folder / "prototypes").resolve()
-    target = (copy.folder / path).resolve()
+    target = base.joinpath(*[p for p in parts[2:] if p]).resolve()
+    if target.is_dir():
+        target = target / "index.html"
     if base not in target.parents or not target.is_file():
         raise RequestError(404, "Only files under the task's prototypes/ are served.")
     return target
@@ -512,8 +528,8 @@ class ViewerHandler(http.server.BaseHTTPRequestHandler):
                 return self.send_json(200, versioned(task_data(q.get("repo"), q.get("task"))))
             if path == "/api/settings":
                 return self.send_json(200, versioned(settings_data(q.get("repo"), q.get("task"))))
-            if path == "/api/file":
-                target = prototype_path(q.get("repo"), q.get("task"), q.get("path"))
+            if path.startswith(PROTO_PREFIX):
+                target = prototype_path(path)
                 kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
                 if kind.startswith("text/") or kind in ("application/json", "image/svg+xml"):
                     kind += "; charset=utf-8"
@@ -586,21 +602,21 @@ def serve() -> int:
     except PermissionError as exc:
         print(f"sae viewer: cannot listen on 127.0.0.1: {exc}", file=sys.stderr)
         return 1
-    write_private(state_path("viewer.json"), {"port": server.port, "token": token})
-    write_private(state_path("viewer.pid"), {"pid": os.getpid(), "port": server.port, "version": server.version,
-                                             "started": server.started})
-    idle = idle_limit()
+    try:  # from here on, any failure still closes the socket and removes viewer.pid
+        write_private(state_path("viewer.json"), {"port": server.port, "token": token})
+        write_private(state_path("viewer.pid"), {"pid": os.getpid(), "port": server.port, "version": server.version,
+                                                 "started": server.started})
+        idle = idle_limit()
 
-    def watch_idle():
-        while True:
-            time.sleep(min(30.0, max(0.1, idle / 4)))
-            if time.monotonic() - server.last_request > idle:
-                server.shutdown()
-                return
+        def watch_idle():
+            while True:
+                time.sleep(min(30.0, max(0.1, idle / 4)))
+                if time.monotonic() - server.last_request > idle:
+                    server.shutdown()
+                    return
 
-    threading.Thread(target=watch_idle, daemon=True).start()
-    signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
-    try:
+        threading.Thread(target=watch_idle, daemon=True).start()
+        signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
         server.serve_forever(poll_interval=0.2)
     finally:
         server.server_close()

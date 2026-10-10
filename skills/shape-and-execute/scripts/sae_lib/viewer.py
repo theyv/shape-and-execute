@@ -47,6 +47,14 @@ class NoSockets(Exception):
     """Binding a local port is not allowed here (a sandbox without network)."""
 
 
+class NoStateFolder(Exception):
+    """The state folder cannot be written here (a sandbox that confines writes to the workspace)."""
+
+
+# What a sandbox answers to a forbidden write; any other OSError is a real failure.
+FORBIDDEN_ERRNOS = (errno.EPERM, errno.EACCES, errno.EROFS)
+
+
 # ---------------------------------------------------------------- state folder
 
 def state_dir() -> Path:
@@ -86,8 +94,9 @@ def state_lock(name: str):
 
 
 def idle_limit() -> float:
+    """SAE_VIEWER_IDLE_S when it is a number (tests), else the built-in four hours."""
     with contextlib.suppress(ValueError, TypeError):
-        return max(0.5, float(os.environ[IDLE_ENV]))
+        return max(0.5, float(os.environ.get(IDLE_ENV, DEFAULT_IDLE_S)))
     return float(DEFAULT_IDLE_S)
 
 
@@ -251,6 +260,20 @@ def ensure_server() -> dict:
         return start_server()
 
 
+def start_for(root: Path) -> tuple[dict, dict]:
+    """(known-list entry, running server) for `root`. Sockets are checked before any state write,
+    so a sandbox reaches the fallback ([EDGE-NO-SOCKETS]); raises NoSockets or NoStateFolder
+    where the sandbox forbids either."""
+    check_sockets()
+    try:
+        entry = remember_repo(root, touch=True)
+        return entry, ensure_server()
+    except OSError as exc:
+        if exc.errno in FORBIDDEN_ERRNOS:
+            raise NoStateFolder(f"{state_dir()}: {exc.strerror or exc}") from exc
+        raise
+
+
 def viewer_url(info: dict, repo: str | None = None, task_id: str | None = None) -> str:
     hash_parts = [f"repo={repo}"] if repo else []
     if task_id:
@@ -278,11 +301,13 @@ def viewer_link(root: Path, task_id: str) -> tuple[str | None, str]:
     if os.environ.get(VIEWER_SWITCH_ENV) == "off":
         return None, f"Viewer: {command}"
     try:
-        entry = remember_repo(root, touch=True)
-        url = viewer_url(ensure_server(), entry["key"], task_id)
+        entry, info = start_for(root)
+        url = viewer_url(info, entry["key"], task_id)
         return url, f"Viewer: {url}"
     except NoSockets:
         return None, f"Viewer: cannot start here (no local sockets). In your terminal:\n  {command}"
+    except NoStateFolder:
+        return None, f"Viewer: cannot start here (state folder not writable). In your terminal:\n  {command}"
     except Exception as exc:  # the viewer never fails `sae new`
         return None, f"Viewer: not started ({str(exc).splitlines()[0]}). In your terminal:\n  {command}"
 
@@ -309,12 +334,13 @@ def cmd_view(args) -> int:
     if args.task:
         from .tasks import resolve_task
         task_id = resolve_task(root, args.task)
-    entry = remember_repo(root, touch=True)
     try:
-        info = ensure_server()
-    except NoSockets:
+        entry, info = start_for(root)
+    except (NoSockets, NoStateFolder) as exc:
         command = start_command(root, task_id)
-        print("The viewer cannot start here: this sandbox forbids local sockets.\n"
+        why = ("this sandbox forbids local sockets" if isinstance(exc, NoSockets)
+               else f"this sandbox forbids writing the state folder ({exc})")
+        print(f"The viewer cannot start here: {why}.\n"
               f"Run this in your own terminal:\n  {command}", file=sys.stderr)
         if args.json:
             print(json.dumps({"url": None, "command": command}))

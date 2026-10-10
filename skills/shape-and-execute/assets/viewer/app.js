@@ -13,7 +13,7 @@ var TABS=[["overview","Overview"],["plan","Plan"],["jobs","Jobs"],["timeline","T
  FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/},
  FAM=[["f-fail",/^(job\.verify_failed|merge\.conflict)$/],["f-job",/^(job|merge)\./],["f-review",/^review\./],["f-decision",/^(decision|amendment)$/],["f-gate",/^(spec|plan|execution|task)\./]],
  STALE=60, // minutes; mirrors STALE_RUNNING_MINUTES in sae_lib/common.py
- S={repo:null,task:null,tab:"overview",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,ED=null,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
+ S={repo:null,task:null,tab:"overview",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,ED=null,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
  TOKEN=(D.querySelector('meta[name="sae-token"]')||{}).content||"", // embedded by the server; sent with every change
  own=(o,k)=>o&&k!=null&&Object.prototype.hasOwnProperty.call(o,k)?o[k]:undefined,
  LSg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSs=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -229,10 +229,11 @@ function loadTask(cb){var id=S.task,rk=S.repo;if(!id||!rk)return cb&&cb();
   api("/api/task?repo="+enc(rk)+"&task="+enc(id),(t,err)=>{try{if(S.task!==id||S.repo!==rk)return;
     var ch=(t?t.version:"")!==(tsig[id]||"")||err!==(MISS[id]||"");if(t){TASKS[id]=t;tsig[id]=t.version}MISS[id]=err;if(ch)render()}finally{cb&&cb()}})}
 var fastPoll=()=>!!(IDX&&IDX.tasks.some(t=>t.phase==="executing"));
-function poll(){clearTimeout(timer);if(D.hidden)return;
-  api("/api/projects",(p,err)=>{var rk=S.repo;if(p){if(p.version!==psig){psig=p.version;PROJ=p.projects}if(!PROJ.some(x=>x.key===S.repo))S.repo=(PROJ[0]||{}).key||null}
-    if(!S.repo){IDX=null;ERR=err;render();return sched()}if(S.repo!==rk){IDX=null;isig=""}
-    api("/api/repo?repo="+enc(S.repo),(d,err2)=>{try{ERR=err2;if(d&&d.version!==isig){isig=d.version;IDX=d;pickTask();writeHash()}if(d||err2)render()}finally{loadTask(sched)}})})}
+// a newer poll (a project switch starts one) supersedes the older: its answers are dropped, never drawn
+function poll(){clearTimeout(timer);if(D.hidden)return;var seq=++PSEQ;
+  api("/api/projects",(p,err)=>{if(seq!==PSEQ)return;var rk=S.repo;if(p){if(p.version!==psig){psig=p.version;PROJ=p.projects}if(!PROJ.some(x=>x.key===S.repo))S.repo=(PROJ[0]||{}).key||null}
+    if(!S.repo){IDX=null;ERR=err;render();return sched()}if(S.repo!==rk){IDX=null;isig=""}var asked=S.repo;
+    api("/api/repo?repo="+enc(asked),(d,err2)=>{if(seq!==PSEQ||S.repo!==asked)return;try{ERR=err2;if(d&&d.version!==isig){isig=d.version;IDX=d;pickTask();writeHash()}if(d||err2)render()}finally{loadTask(sched)}})})}
 function sched(){clearTimeout(timer);if(!D.hidden)timer=setTimeout(poll,fastPoll()?3000:30000)}
 function go(patch){var tk=S.task,rk=S.repo;Object.assign(S,patch);writeHash();if(S.repo!==rk){IDX=null;isig="";render();return poll()}render();if(S.task!==tk)loadTask()}
 function copy(text,btn){var o=btn.innerHTML,done=()=>{btn.innerHTML=btn.className==="cpi"?"✓":"Copied";setTimeout(()=>{btn.innerHTML=o},1200)},
