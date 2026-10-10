@@ -6,12 +6,13 @@ import contextlib
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
-from .common import EXIT_GIT, WRITER_KINDS, fail, read_text, warn, write_atomic
+from .common import EXIT_GIT, TASK_ID_RE, WRITER_KINDS, fail, read_json, read_text, warn, write_atomic
 from .config import worktree_root
 from .gitutil import git, git_ok, main_worktree, repo_cache_name, run
-from .tasks import Task, tasks_dir
+from .tasks import CLOSED_PHASES, Task, tasks_dir
 
 TASK_WORKTREE_NAME = "task"  # job IDs are upper case, so it never collides
 
@@ -189,28 +190,246 @@ def prepare_workspace(task: Task, job_id: str, config: dict | None) -> tuple[Pat
     return workdir, branch
 
 
-def remove_worktree(task: Task, path: Path) -> bool:
-    if not path.exists():
-        return True
-    proc = run(["git", "worktree", "remove", str(path)], task.root)
+# Removal and preservation ([WORKTREE-CLEANUP], [TASK-WORKTREE-LIFECYCLE], 07-cli-spec §7.4).
+# Automatic removal runs `git worktree remove` without --force, and only on worktrees proven
+# clean; only `sae doctor --discard` forces it.
+
+
+def unpreserved_work(worktree: Path, copies_from: list[Path] | tuple = ()) -> list[str]:
+    """Tracked changes and untracked files that are not ignored. Ignored files (setup copies,
+    dependencies) do not count, nor an untracked file byte-identical to the same path in one of
+    `copies_from` (the files `sae start` copies into the task worktree)."""
+    proc = run(["git", "status", "--porcelain", "-z", "--untracked-files=all"], worktree)
     if proc.returncode != 0:
-        warn(f"worktree kept (it has changes): {path}")
+        return [f"(git status failed: {proc.stderr.strip()})"]
+    work, entries = [], proc.stdout.split("\0")
+    i = 0
+    while i < len(entries):
+        entry = entries[i]
+        i += 1
+        if not entry:
+            continue
+        code, path = entry[:2], entry[3:]
+        if code[0] in "RC":
+            i += 1  # -z puts the rename source in the next field
+        if code == "??" and setup_copy(worktree, path, copies_from):
+            continue
+        work.append(path)
+    return work
+
+
+def setup_copy(worktree: Path, path: str, copies_from) -> bool:
+    mine = worktree / path
+    for source in copies_from:
+        other = Path(source) / path
+        if other.resolve() != mine.resolve() and other.is_file() and mine.is_file() \
+                and other.read_bytes() == mine.read_bytes():
+            return True
+    return False
+
+
+def work_text(work: list[str]) -> str:
+    return ", ".join(work[:5]) + (f" and {len(work) - 5} more" if len(work) > 5 else "")
+
+
+def remove_empty_cache_folders(worktree: Path) -> None:
+    """`<task-id>/` and `<repo>-<hash8>/` of the worktree cache, when nothing else is left."""
+    for folder in (worktree.parent, worktree.parent.parent):
+        with contextlib.suppress(OSError):
+            folder.rmdir()
+
+
+def remove_clean_worktree(repo: Path, path: Path, copies_from: list[Path] | tuple = ()) -> str | None:
+    """Removes a worktree that holds no unpreserved work. Returns why it stays, or None."""
+    if not path.exists():
+        run(["git", "worktree", "prune"], repo)
+        remove_empty_cache_folders(path)
+        return None
+    work = unpreserved_work(path, copies_from)
+    if work:
+        return f"it holds uncommitted work: {work_text(work)}"
+    proc = run(["git", "status", "--porcelain", "-z", "--untracked-files=all"], path)
+    for entry in proc.stdout.split("\0"):
+        if entry.startswith("?? "):  # only proven copies are left: delete them, or git refuses
+            (path / entry[3:]).unlink()
+    proc = run(["git", "worktree", "remove", str(path)], repo)
+    if proc.returncode != 0:
+        return f"git refused to remove it: {(proc.stderr or proc.stdout).strip()}"
+    run(["git", "worktree", "prune"], repo)
+    remove_empty_cache_folders(path)
+    return None
+
+
+def task_copy_sources(task_info: dict, repo: Path) -> list[Path]:
+    """Where the task worktree's untracked copies came from: the home checkout, the main worktree."""
+    sources = [Path(task_info["home"])] if task_info.get("home") else []
+    return sources + [main_worktree(repo)]
+
+
+def keep_worktree(task: Task, path: Path, reason: str) -> str:
+    warn(f"worktree kept, {reason}: {path}")
+    task.event("worktree.kept", path=str(path), reason=reason)
+    return f"{path}: {reason}"
+
+
+def remove_worktree(task: Task, path: Path) -> bool:
+    """A job worktree after its merge: removed unless it holds work, which is kept with a reason."""
+    reason = remove_clean_worktree(task.root, path)
+    if reason:
+        keep_worktree(task, path, reason)
         return False
     return True
 
 
-def remove_task_worktrees(task: Task, config: dict | None) -> list[str]:
+def remove_task_worktrees(task: Task, config: dict | None, with_task_worktree: bool = False) -> list[str]:
+    """Job worktrees at finish and abandon (and the task worktree at abandon) under the
+    preservation rule. A failed job's worktree stays for inspection. Returns "<path>: <reason>"
+    for each kept worktree."""
     if not task.info.get("git") or config is None or "worktrees" not in config:
         return []
     folder = task_worktrees_dir(task, config)
     kept = []
     if folder.is_dir():
         for path in sorted(folder.iterdir()):
+            if not path.is_dir():
+                continue
             if path.name == TASK_WORKTREE_NAME:
-                continue  # the task worktree stays after finish for the owner's tests
-            if path.is_dir() and not remove_worktree(task, path):
-                kept.append(str(path))
-        with contextlib.suppress(OSError):
-            folder.rmdir()
+                if not with_task_worktree:
+                    continue  # the task worktree stays after finish for the owner's tests
+                reason = remove_clean_worktree(task.root, path, task_copy_sources(task.info, task.root))
+            elif task.jobs.get(path.name, {}).get("status") == "failed":
+                reason = "the job failed: kept for inspection"
+            else:
+                reason = remove_clean_worktree(task.root, path)
+            if reason:
+                kept.append(keep_worktree(task, path, reason))
+        remove_empty_cache_folders(folder / TASK_WORKTREE_NAME)
     git(task.root, "worktree", "prune", check=False)
     return kept
+
+
+def sae_worktrees(repo: Path) -> list[tuple[Path, str, str]]:
+    """(path, task ID, name) of every registered worktree in this repository's cache folder:
+    `<root>/<repo>-<hash8>/<task-id>/task|<JOB-ID>`."""
+    listing = git(repo, "worktree", "list", "--porcelain", check=False)
+    cache = repo_cache_name(repo)
+    found = []
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            path = Path(line[len("worktree "):])
+            if path.parent.parent.name == cache and TASK_ID_RE.match(path.parent.name):
+                found.append((path, path.parent.name, path.name))
+    return found
+
+
+def record_in(worktree: Path, task_id: str) -> dict | None:
+    """The task's state as the worktree holds it: `.tasks/done/<id>/` or `.tasks/<id>/`."""
+    for folder in (tasks_dir(worktree) / "done" / task_id, tasks_dir(worktree) / task_id):
+        with contextlib.suppress(OSError, ValueError):
+            return read_json(folder / "state.json")
+    return None
+
+
+def merged_into_base(repo: Path, task_id: str, info: dict) -> str | None:
+    """The base branch when `task/<id>` is merged into it, else None."""
+    base = (info.get("base") or {}).get("branch")
+    branch = info.get("branch") or f"task/{task_id}"
+    if not base or not git_ok(repo, "rev-parse", "--verify", "--quiet", f"refs/heads/{base}"):
+        return None
+    return base if git_ok(repo, "merge-base", "--is-ancestor", f"refs/heads/{branch}", f"refs/heads/{base}") else None
+
+
+def sweep_merged_task_worktrees(repo: Path, quiet: bool = False) -> tuple[list[str], list[str]]:
+    """[TASK-WORKTREE-LIFECYCLE]: removes the task worktree of a finished task whose branch is
+    merged into its base, and deletes that branch, when the worktree holds no unpreserved work.
+    Runs in writing commands and `sae doctor`, never in read-only ones. Writes nothing into the
+    finished task. Returns (removed lines, kept lines); kept lines are also printed."""
+    if not git_ok(repo, "rev-parse", "--git-dir"):
+        return [], []
+    removed, kept = [], []
+    for path, task_id, name in sae_worktrees(repo):
+        if name != TASK_WORKTREE_NAME or not path.is_dir():
+            continue
+        state = record_in(path, task_id)
+        info = (state or {}).get("task") or {}
+        if info.get("phase") != "done":
+            continue
+        base = merged_into_base(repo, task_id, info)
+        if not base:
+            continue
+        reason = remove_clean_worktree(repo, path, task_copy_sources(info, repo))
+        if reason:
+            line = f"{path}: task branch merged into {base}, but {reason}"
+            kept.append(line)
+            if not quiet:
+                warn(f"task worktree kept, {line}. Commit or move it, or: sae doctor --discard {path}")
+            continue
+        branch = info.get("branch") or f"task/{task_id}"
+        # `-D` after the ancestry check above: `-d` compares with the HEAD of the checkout that runs
+        # sae, which need not be the base branch. Nothing unmerged is lost.
+        deleted = git_ok(repo, "branch", "-D", branch)
+        line = (f"Removed the task worktree of {task_id} ({branch} is merged into {base})"
+                + (f" and deleted {branch}." if deleted else f"; {branch} stays."))
+        removed.append(line)
+        if not quiet:
+            print(line, file=sys.stderr)
+    return removed, kept
+
+
+def leftover_reason(repo: Path, path: Path, task_id: str, name: str, located: dict) -> tuple[str, bool]:
+    """Why a worktree in the cache is still there ([WORKTREE-CLEANUP]: `sae doctor` lists it),
+    and whether it needs the owner (it holds work, its job failed, or its task is closed)."""
+    copy = located.get(task_id)
+    state = None
+    if copy is not None:
+        with contextlib.suppress(OSError, ValueError):
+            state = read_json(copy.folder / "state.json")
+    state = state or record_in(path, task_id) or {}
+    info, jobs = state.get("task") or {}, state.get("jobs") or {}
+    phase = info.get("phase") or "unknown"
+    work = unpreserved_work(path, task_copy_sources(info, repo) if name == TASK_WORKTREE_NAME else [])
+    held = f"; it holds uncommitted work: {work_text(work)}" if work else ""
+    closed = phase in CLOSED_PHASES
+    if name == TASK_WORKTREE_NAME:
+        if phase == "done":
+            base = merged_into_base(repo, task_id, info)
+            if base:
+                return f"task finished and merged into {base}{held}", True
+            return (f"task finished; {info.get('branch') or 'its branch'} is not merged into "
+                    f"{(info.get('base') or {}).get('branch') or 'its base'} yet (test here, then merge){held}",
+                    bool(work))
+        return f"task worktree of a task in {phase}{held}", bool(work) or closed
+    job = jobs.get(name) or {}
+    if job.get("status") == "failed":
+        return f"job {name} failed: kept for inspection{held}", True
+    status = "merged" if job.get("merged") else job.get("status") or "not in the task's record"
+    return f"job {name} is {status}, task in {phase}{held}", bool(work) or closed
+
+
+def discard_worktree(repo: Path, target: Path, located: dict) -> list[str]:
+    """`sae doctor --discard`: removes one worktree of this repository's cache although it holds
+    work, after saying what is lost. Its branch stays."""
+    target = target.resolve()
+    match = next(((p, t, n) for p, t, n in sae_worktrees(repo) if p.resolve() == target), None)
+    if match is None:
+        fail(EXIT_GIT, f"{target} is not a sae worktree of this repository. sae doctor lists them.")
+    path, task_id, name = match
+    copy = located.get(task_id)
+    if copy is not None and copy.live and copy.checkout.resolve() == target:
+        phase = ""
+        with contextlib.suppress(OSError, ValueError, KeyError):
+            phase = read_json(copy.folder / "state.json")["task"]["phase"]
+        if phase not in CLOSED_PHASES:
+            fail(EXIT_GIT, f"{target} holds the live folder of {task_id} ({phase}). Run sae abandon "
+                           f"{task_id} --reason \"...\" first, or finish the task.")
+    work = unpreserved_work(path)
+    lost = [f"Discarding {path}."]
+    lost.append(f"Lost: {work_text(work)}." if work else "It holds no uncommitted work.")
+    branch = git(path, "branch", "--show-current", check=False)
+    proc = run(["git", "worktree", "remove", "--force", str(path)], repo)  # the owner's explicit word
+    if proc.returncode != 0:
+        fail(EXIT_GIT, f"git worktree remove failed: {(proc.stderr or proc.stdout).strip()}")
+    run(["git", "worktree", "prune"], repo)
+    remove_empty_cache_folders(path)
+    lost.append(f"Branch {branch} stays." if branch else "No branch was checked out there.")
+    return lost

@@ -24,6 +24,9 @@ from .gitutil import git, git_ok, worktree_paths
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 
 
+CLOSED_PHASES = ("done", "abandoned")  # no command writes into these records ([FINISHED-TASKS-READ-ONLY])
+
+
 def tasks_dir(root: Path) -> Path:
     return root / ".tasks"
 
@@ -177,6 +180,15 @@ class Task:
         self.root = root
         self.dir = tasks_dir(root) / self.id
 
+    def move_into_done(self) -> None:
+        """[DONE-FOLDER]: `.tasks/<id>/` → `.tasks/done/<id>/` in the same checkout."""
+        dest = tasks_dir(self.root) / "done" / self.id
+        if dest.exists():
+            fail(EXIT_USAGE, f"{dest} exists already. Move it away, then run the command again.")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        self.dir.rename(dest)
+        self.dir = dest
+
     def job(self, job_id: str) -> dict:
         if job_id not in self.jobs:
             fail(EXIT_USAGE, f"No job {job_id} in task {self.id}.")
@@ -254,13 +266,25 @@ def open_task(root: Path, ref: str):
         changed = task.saved
     if changed:
         from .viewer import render_viewer_safely  # late import: viewer imports this module
+        from .workspaces import sweep_merged_task_worktrees
+        sweep_merged_task_worktrees(root)  # writing commands only ([TASK-WORKTREE-LIFECYCLE])
         render_viewer_safely(root, [task.id])
 
 
-def append_event_to(root: Path, ref: str, type_: str, **fields) -> None:
-    """Appends one event to another task (backlog and finding sources)."""
+def task_phase(copy: TaskCopy) -> str:
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        return read_json(copy.folder / "state.json")["task"]["phase"]
+    return ""
+
+
+def append_event_to(root: Path, ref: str, type_: str, **fields) -> bool:
+    """Appends one event to another task (finding and decision-draft sources). A finished or
+    abandoned task gets nothing ([FINISHED-TASKS-READ-ONLY]). Returns whether it was written."""
+    if task_phase(find_task(root, ref)) in CLOSED_PHASES:
+        return False
     with open_task(root, ref) as task:
         task.event(type_, **fields)
+    return True
 
 
 def ensure_tasks_folder(root: Path) -> None:
