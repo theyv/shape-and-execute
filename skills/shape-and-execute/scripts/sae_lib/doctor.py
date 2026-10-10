@@ -12,11 +12,11 @@ from pathlib import Path
 
 from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
-from .gitutil import find_root, git, git_ok, hash8, run
+from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .setup_mode import codex_cap_text, codex_subagent_cap
 from .tasks import tasks_dir
 from .viewer import render_viewer_safely
-from .workspaces import copy_worktree_includes, run_setup_script
+from .workspaces import setup_worktree
 
 
 def cmd_doctor(args) -> int:
@@ -69,15 +69,20 @@ def doctor_repo(config: dict | None, check) -> None:
     check(folder_ok, f".tasks/ writable in {root}", "Fix the folder permissions.")
     check((folder / "repo" / "profile.md").exists() or None, "repo profile .tasks/repo/profile.md",
           "Setup mode drafts it from the repository (optional).")
+    if is_git:
+        hooks = hooks_found(root)
+        if hooks:
+            check(None, f"git hooks found: {hooks}",
+                  "sae runs its own git operations without hooks. Move dependency installs from a hook into "
+                  ".tasks/repo/setup.sh, which runs in every new worktree.")
     if is_git and config is not None and git_ok(root, "rev-parse", "--verify", "--quiet", "HEAD"):
         branch = f"sae-doctor-{file_stamp()}"
-        path = worktree_root(config) / f"{root.name}-{hash8(root)}" / "_doctor"
+        path = worktree_root(config) / repo_cache_name(root) / "_doctor"
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             git(root, "worktree", "add", "--quiet", "-b", branch, str(path), "HEAD")
-            copy_worktree_includes(root, path)
             log = Path(tempfile.gettempdir()) / f"sae-doctor-setup-{hash8(root)}.log"
-            run_setup_script(root, path, "_doctor", "_doctor", log)
+            setup_worktree(root, path, "_doctor", "_doctor", log)
             git(path, "commit", "--quiet", "--allow-empty", "-m", "sae doctor: throwaway commit")
             check(True, "throwaway worktree: create, setup.sh, commit")
         except SaeError as exc:
@@ -91,6 +96,17 @@ def doctor_repo(config: dict | None, check) -> None:
     target = render_viewer_safely(root, None)
     check(target is not None, f"viewer rendered: {target.resolve().as_uri() if target else 'failed'}",
           "See the warning above.")
+
+
+def hooks_found(root: Path) -> str:
+    """A hooks path (`core.hooksPath`) or hook scripts in the repository's hooks folder."""
+    configured = configured_hooks_path(root)
+    if configured:
+        return f"core.hooksPath = {configured}"
+    folder = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False) or ".") / "hooks"
+    scripts = sorted(p.name for p in folder.iterdir() if p.is_file() and not p.name.endswith(".sample")) \
+        if folder.is_dir() else []
+    return f"{folder}: {', '.join(scripts)}" if scripts else ""
 
 
 def register_doctor(sub, command):

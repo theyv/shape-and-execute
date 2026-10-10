@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import re
+from pathlib import Path
 
 from .common import (
     EXIT_GATE,
@@ -47,8 +48,9 @@ from .tasks import (
     job_file,
     job_summary,
     last_model,
-    list_task_ids,
+    locate_tasks,
     open_task,
+    picked_up_items,
     parked_reason,
     result_file,
     tasks_dir,
@@ -95,6 +97,7 @@ def task_status_data(task: Task) -> dict:
             else:
                 warnings.append(f"{job_id}: a result file exists — collect it")
     return {"task": task.id, "title": task.info["title"], "phase": task.phase, "branch": task.info.get("branch"),
+            "worktree": task.info.get("worktree"), "home": task.info.get("home"), "folder": str(task.dir),
             "layout": task.info.get("layout"), "last_change": task.info.get("last_change"),
             "settings": task.settings,
             "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
@@ -112,6 +115,8 @@ def cmd_status(args) -> int:
                  + (f" · branch: {data['branch']}" if data["branch"] else "")
                  + (f" · layout: {data['layout']}" if data["layout"] else ""),
                  f"Settings: {data['settings_card']}", f"Last change: {age_text(data['last_change'])}"]
+        if data["worktree"]:
+            lines.insert(2, f"Task worktree: {data['worktree']}")
         approvals = ", ".join(f"{k} by {v['by']}" for k, v in data["approvals"].items())
         if approvals:
             lines.append(f"Approved: {approvals}")
@@ -133,29 +138,39 @@ def cmd_status(args) -> int:
         emit(args, "\n".join(lines), data)
         return EXIT_OK
     tasks = []
-    for task_id in reversed(list_task_ids(root)):
+    located = locate_tasks(root)
+    for task_id in sorted(located, reverse=True):
+        copy = located[task_id]
         with contextlib.suppress(OSError, json.JSONDecodeError, KeyError):
-            state = read_json(tasks_dir(root) / task_id / "state.json")
+            state = read_json(copy.folder / "state.json")
             statuses = [j["status"] for j in state["jobs"].values()]
             tasks.append({"id": task_id, "title": state["task"]["title"], "phase": state["task"]["phase"],
                           "last_change": state["task"].get("last_change"), "running": statuses.count("running"),
-                          "parked": statuses.count("parked")})
+                          "parked": statuses.count("parked"), "location": str(copy.checkout),
+                          "folder": str(copy.folder)})
+    picked = picked_up_items(located)
     backlog = []
     for path in stamped_items(tasks_dir(root) / "backlog"):
         meta, body = split_frontmatter(read_text(path, ""))
         backlog.append({"file": rel(path, root), "title": re.sub(r"^Intent:\s*", "", first_heading(body) or path.stem),
-                        "source": meta.get("source"), "created": stamp_time(path.name)})
+                        "source": meta.get("source"), "created": stamp_time(path.name),
+                        "picked_up_by": picked.get(rel(path, root))})
     findings = len(stamped_items(tasks_dir(root) / "findings"))
     lines = []
     if tasks:
         rows = [["task", "phase", "title", "last change", "running", "parked"]]
         rows += [[t["id"], t["phase"], t["title"], age_text(t["last_change"]), str(t["running"]), str(t["parked"])]
                  for t in tasks]
+        elsewhere = [t for t in tasks if Path(t["location"]).resolve() != root.resolve()]
         lines += ["Tasks:", table(rows)]
+        if elsewhere:
+            lines += ["Locations:"] + [f"  {t['id']}: {t['location']}" for t in elsewhere]
     else:
         lines.append("No tasks.")
     if backlog:
-        rows = [[b["file"], b["title"], age_text(b["created"]), f"from {b['source']}" if b["source"] else ""]
+        rows = [[b["file"], b["title"], age_text(b["created"]),
+                 (f"from {b['source']}" if b["source"] else "")
+                 + (f" picked up by {b['picked_up_by']}" if b["picked_up_by"] else "")]
                 for b in backlog]
         lines += ["", "Backlog:", table(rows)]
     lines += ["", f"Open findings: {findings}"]
@@ -227,8 +242,9 @@ def next_data(task: Task, config: dict | None) -> dict:
             workdir, _ = workspace_of(task, job_id, config)
             entry = {"id": job_id, "kind": job["kind"], "difficulty": model["difficulty"],
                      "model": short_text(model), "routing": model,
-                     "workspace": "worktree" if workdir != task.root else
-                                  ("repo root, writes" if job["kind"] in WRITER_KINDS else "repo root, read-only")}
+                     "workspace": "job worktree" if workdir != task.root else
+                                  (f"{task_checkout_name(task)}, writes" if job["kind"] in WRITER_KINDS
+                                   else f"{task_checkout_name(task)}, read-only")}
             if job["kind"] in WRITER_KINDS:
                 entry["blocked"] = writer_blocked(task, job_id, config)
             ready.append(entry)
@@ -237,6 +253,12 @@ def next_data(task: Task, config: dict | None) -> dict:
     return {"running": running, "parked": parked, "ready": ready, "blocked": blocked, "failed": failed,
             "integration": notice, "parked_task": integration_parked(task),
             "all_done": not open_statuses and not notice and task.phase == "executing"}
+
+
+def task_checkout_name(task: Task) -> str:
+    if task.worktree:
+        return "task worktree"
+    return "home checkout" if task.info.get("git") else "folder"
 
 
 def cmd_next(args) -> int:
@@ -298,7 +320,7 @@ def cmd_dispatch(args) -> int:
         task.touch(job)
         task.event("job.dispatched", job=job_id, attempt=attempt["n"], harness=model["harness"],
                    model=model["model"], effort=model["effort"], source=model["source"], tier=model["tier"],
-                   workspace=rel(workdir, root) or ".",
+                   workspace=rel(workdir, task.root) or ".",
                    reason=args.reason)
         external = job["kind"] == "review" and model["harness"] != task.info.get("orchestrator_harness")
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
