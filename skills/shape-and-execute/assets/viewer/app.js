@@ -202,7 +202,9 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
   m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
-  if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth}
+  if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth;
+  // the Plan graph canvas applies its stored pan and zoom to the new elements ([AMEND-4])
+  if(typeof gvMount==="function")gvMount()}
 function renderPanel(){var p=$("#panel"),t=T(),h="",x='<button class="btn ic" data-act="close" aria-label="Close">✕</button>';
   var dft=S.bl&&IDX&&(IDX.drafts||[]).find(x=>x.file===S.bl);
   if(dft)h='<div class="ph"><h2 class="sans">'+esc(dft.title)+"</h2>"+x+'</div><div class="meta">'+code(dft.file)+"<span>"+esc((dft.type||"draft")+" · "+(dft.status||"proposed"))+"</span>"+(dft.source?"<span>from "+code(dft.source)+"</span>":"")+"</div>"+'<div class="sec">'+md(dft.text,{meta:false})+"</div>";

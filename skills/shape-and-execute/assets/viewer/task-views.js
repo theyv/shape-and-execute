@@ -64,7 +64,12 @@ function graph(t){var js=JS(t),ch=changes(t).r,ids=jf(t,(j,id)=>!preExec(t,id)),
   nodes.forEach(id=>(par[id]||[]).forEach(x=>{var nw=x[1]===""||x[1]==="tgt"?ch.newE[x[0]+">"+id]:null;eg(x[0],id,(nw!=null?"new ":"")+x[1],nw!=null?"Edge added after plan approval: "+nw:"")}));
   ghosts.forEach(id=>ch.removed[id].needs.filter(n=>has[n]).forEach(x=>eg(x,id,"old")));
   Object.keys(ch.oldE).map(k=>k.split(">")).filter(e=>has[e[0]]&&has[e[1]]&&!(inc[e[1]]||[]).includes(e[0])).forEach(e=>eg(e[0],e[1],"old","Edge removed after plan approval: "+ch.oldE[e.join(">")]));
-  var L=(id,seen)=>{if(lay[id]!=null)return lay[id];if(seen[id])return 0;seen[id]=1;var v=0;(inc[id]||[]).forEach(x=>{v=Math.max(v,L(x,seen)+1)});seen[id]=0;return lay[id]=v};
+  // [AMEND-4] a job added during execution without parents starts in the column of the rightmost job
+  // dispatched (running or done) before it was added; from the event log, so it never moves later
+  var ev=t.events||[],ap=ev.findIndex(e=>e.type==="plan.approved"),
+   floor=(id,seen)=>{if(inc[id]||!js[id]||ap<0||!(at[id]>ap))return 0;var v=0;
+    ev.slice(0,at[id]).forEach(e=>{if(e.type==="job.dispatched"&&has[e.job]&&e.job!==id)v=Math.max(v,L(e.job,seen))});return v};
+  var L=(id,seen)=>{if(lay[id]!=null)return lay[id];if(seen[id])return 0;seen[id]=1;var v=floor(id,seen);(inc[id]||[]).forEach(x=>{v=Math.max(v,L(x,seen)+1)});seen[id]=0;return lay[id]=v};
   nodes.forEach(id=>{L(id,{})});
   // a long edge gets one waypoint per layer it crosses, so it never passes under a node
   var chains=E0.map((e,n)=>{var c=[e[0]];for(var k=lay[e[0]]+1;k<lay[e[1]];k++){var d="~"+n+"~"+k;lay[d]=k;c.push(d)}c.push(e[1]);
@@ -83,7 +88,37 @@ function graph(t){var js=JS(t),ch=changes(t).r,ids=jf(t,(j,id)=>!preExec(t,id)),
       d+="C"+(x0+m)+" "+y0+" "+(x1-m)+" "+y1+" "+x1+" "+y1+(last?"":"H"+(x1+NW));y0=y1}
     return'<path class="e '+e[2]+'" d="'+d+'">'+(e[3]?"<title>"+esc(e[3])+"</title>":"")+"</path>"});
   var N=nodes.map(id=>node(t,id,ch,PL[id],xy[id],NW,NH));
-  return{svg:'<svg width="'+Wd+'" height="'+Hh+'" viewBox="0 0 '+Wd+" "+Hh+'" role="group" aria-label="Job graph">'+E.join("")+N.join("")+"</svg>",n:nodes.length,ch:ch,pl:pl.length,edges:E0}}
+  return{svg:'<svg width="'+Wd+'" height="'+Hh+'" viewBox="0 0 '+Wd+" "+Hh+'" role="group" aria-label="Job graph">'+E.join("")+N.join("")+"</svg>",inner:E.join("")+N.join(""),w:Wd,h:Hh,layer:lay,n:nodes.length,ch:ch,pl:pl.length,edges:E0}}
+
+/* ---------- graph canvas ([AMEND-4]): the view {x, y, k} lives per task in GV, so a refresh keeps it ---------- */
+var GV={},GZ=[.2,2],gvK=k=>Math.min(GZ[1],Math.max(GZ[0],k)),
+ gvT=v=>"translate("+v.x+" "+v.y+") scale("+v.k+")",
+ gvFit=(W,H,w,h)=>{var k=gvK(Math.min(1,(W-32)/w,(H-32)/h));return{x:(W-w*k)/2,y:(H-h*k)/2,k:k}},
+ // zoom by factor f around the point (px, py) of the canvas: that point stays under the pointer
+ gvZoom=(v,px,py,f)=>{var k=gvK(v.k*f),r=k/v.k;return{x:px-(px-v.x)*r,y:py-(py-v.y)*r,k:k}};
+function gvCanvas(g){var v=GV[S.task];
+  return'<div class="gwrap" data-task="'+esc(S.task)+'" data-w="'+g.w+'" data-h="'+g.h+'" style="height:min(70vh,'+Math.max(260,g.h+40)+'px)">'+
+   '<svg class="gcv" width="100%" height="100%" role="group" aria-label="Job graph"><g class="gv"'+(v?' transform="'+gvT(v)+'"':"")+">"+g.inner+"</g></svg>"+
+   '<div class="gz"><button class="btn ic sm" data-gz="in" aria-label="Zoom in">+</button><button class="btn ic sm" data-gz="out" aria-label="Zoom out">−</button>'+
+   '<button class="btn sm" data-gz="fit" aria-label="Fit the whole graph">fit</button></div></div>'}
+// after each render: the first open of a task fits the graph; then the stored view is applied
+function gvMount(){var w=$(".gwrap");if(!w||w.dataset.task!==S.task)return;var W=w.clientWidth,H=w.clientHeight;
+  if(!GV[S.task]){if(!(W>0&&H>0))return;GV[S.task]=gvFit(W,H,+w.dataset.w,+w.dataset.h)}
+  var v=GV[S.task],g=w.querySelector(".gv");if(g)g.setAttribute("transform",gvT(v));
+  // the dot grid follows pan and zoom: dots move closer when zoomed out
+  w.style.backgroundSize=16*v.k+"px "+16*v.k+"px";w.style.backgroundPosition=v.x+"px "+v.y+"px"}
+var gvSet=v=>{GV[S.task]=v;gvMount()},gvDrag=null;
+D.addEventListener("wheel",e=>{var w=e.target.closest&&e.target.closest(".gwrap"),v=GV[S.task];if(!w||!v)return;e.preventDefault();
+  var r=w.getBoundingClientRect();
+  // Cmd+scroll (Ctrl+scroll elsewhere, and trackpad pinch) zooms around the pointer; plain scroll pans
+  gvSet(e.ctrlKey||e.metaKey?gvZoom(v,e.clientX-r.left,e.clientY-r.top,Math.exp(-e.deltaY*.0015)):{x:v.x-e.deltaX,y:v.y-e.deltaY,k:v.k})},{passive:false});
+D.addEventListener("pointerdown",e=>{var w=e.target.closest&&e.target.closest(".gwrap"),v=GV[S.task];
+  if(!w||!v||e.button!==0||e.target.closest(".nd,.gz"))return;gvDrag={x:e.clientX,y:e.clientY,v:v};w.classList.add("drag")});
+D.addEventListener("pointermove",e=>{if(gvDrag)gvSet({x:gvDrag.v.x+e.clientX-gvDrag.x,y:gvDrag.v.y+e.clientY-gvDrag.y,k:gvDrag.v.k})});
+D.addEventListener("pointerup",()=>{if(!gvDrag)return;gvDrag=null;var w=$(".gwrap");if(w)w.classList.remove("drag")});
+D.addEventListener("click",e=>{var b=e.target.closest&&e.target.closest("[data-gz]"),w=$(".gwrap"),v=GV[S.task];if(!b||!w||!v)return;
+  var W=w.clientWidth,H=w.clientHeight,z=b.dataset.gz;
+  gvSet(z==="fit"?gvFit(W,H,+w.dataset.w,+w.dataset.h):gvZoom(v,W/2,H/2,z==="in"?1.25:.8))});
 // one node: ID and status; kind and difficulty; model · effort (a button when it can change); review and hold marks
 function node(t,id,ch,p,at,NW,NH){var js=JS(t),g=!js[id]&&!p,j=js[id]||(p?{kind:"review",target:p.target,needs:[]}:{kind:ch.removed[id].kind,needs:[]}),
    s=g?"removed":p?"planned":stOf(t,id),pw=Math.round(s.length*6.6+24),x=!g&&modelOf(t,id),ed=canOvr(t,id),
@@ -149,7 +184,7 @@ TAB.plan=t=>{var js=JS(t),g=graph(t),ch=g.ch,pre=jf(t,(j,id)=>preExec(t,id)),pp=
   var out=NOTE&&NOTE.task===S.task?'<p class="note'+(NOTE.err?" err":"")+'" role="status">'+esc(NOTE.text)+"</p>":"";
   if(act.length)out+='<div class="hbar" role="status"><b>⏸ Hold after '+act.map(esc).join(", ")+" is active.</b> Nothing new is dispatched until you release it; running jobs finish."+act.map(id=>holdBtn(t,id)).join("")+"</div>";
   out+='<div class="gh"><h2 class="lbl">Graph</h2><div class="legend">'+["pending","ready","running","done","parked","failed"].map(pill).join("")+"<span>✓ merged</span>"+(g.pl||pp.length?pill("planned").replace(/<i[^>]*><\/i>/,'<i aria-hidden="true">◌</i>'):"")+"</div></div>";
-  out+=g.n?'<div class="gwrap">'+g.svg+"</div>":box([],"No execution jobs yet.");
+  out+=g.n?gvCanvas(g):box([],"No execution jobs yet.");
   out+='<div class="legend kinds" aria-label="Legend">'+KINDS.map(k=>'<span><i class="ks" style="--kc:var(--kd-'+k+')"></i>'+k+"</span>").join("")+'<span><i class="ks run"></i>running</span><span><i class="ks pl"></i>planned</span>'+
    (n(ch.newE)?ln("new","edge added after approval"):"")+(n(ch.oldE)||n(ch.removed)?ln("old","removed after approval"):"")+(n(ch.added)||n(ch.changed)?'<span class="lgb">added or changed after approval</span>':"")+"</div>";
   if(pre.length||pp.length)out+='<div class="chips"><span class="mut">Shaping and planning</span>'+pre.map(id=>'<button class="chip"'+dataJ("job",id)+">"+code(id)+stp(t,id)+"</button>").join("")+
