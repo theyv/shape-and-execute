@@ -7,13 +7,12 @@ var TABS=[["overview","Overview"],["plan","Plan"],["jobs","Jobs"],["timeline","T
  WR={implementation:1,integration:1},RTP={shaping:"spec",planning:"plan"},
  KBP={shaping:["research","review"],planning:["planning","research","review"],executing:["research","implementation","integration","validation","review","decision"]},
  MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","max"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
- SK={interaction:["interaction"],research:["levels","research"],planning:["levels","planning"],execution:["levels","execution"],"review-level":["levels","review"],review:["review","points"],reviewer:["review","provider"],"max-verify-failures":["max_verify_failures"]},
  GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
  FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"]],
  FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/},
  FAM=[["f-fail",/^(job\.verify_failed|merge\.conflict)$/],["f-job",/^(job|merge)\./],["f-review",/^review\./],["f-decision",/^(decision|amendment)$/],["f-gate",/^(spec|plan|execution|task)\./]],
  STALE=60, // minutes; mirrors STALE_RUNNING_MINUTES in sae_lib/common.py
- S={repo:null,task:null,tab:"overview",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,ED=null,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
+ S={repo:null,task:null,tab:"overview",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
  TOKEN=(D.querySelector('meta[name="sae-token"]')||{}).content||"", // embedded by the server; sent with every change
  own=(o,k)=>o&&k!=null&&Object.prototype.hasOwnProperty.call(o,k)?o[k]:undefined,
  LSg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSs=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -193,8 +192,8 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   if(t){cnt.jobs=Object.keys(js).length;cnt.timeline=(t.events||[]).length;cnt.reviews=jf(t,j=>j.kind==="review").length;cnt.decisions=evs(t,FT.decisions).length+jf(t,j=>j.kind==="decision").length}
   cnt.findings=(IDX.findings||[]).length;
   h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.checkout?'<span title="'+esc(it.checkout)+'">in '+code("…/"+it.checkout.split(/[\\\/]/).slice(-2).join("/"))+"</span>":"")+"</div></div>"+
-   '<div class="acts">'+(/done|abandoned/.test(it.phase)?"":'<button class="btn" data-act="settings"'+(s?"":" disabled")+">Edit settings</button>")+'<button class="btn ic" data-act="help" aria-label="About settings" aria-expanded="false">?</button></div></div>';
-  if(t)h+='<div class="card" aria-label="Settings">'+(s?setPairs(t,s).map(p=>"<div><span>"+p[0]+"</span> <b>"+esc(p[1])+"</b></div>").join(""):"<span>settings.json is missing or invalid</span>")+"</div>";
+   '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
+  if(t)h+=headerCard(t); // settings.js: the settings card, editable in place
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0];return'<button role="tab" id="tab-'+x[0]+'" aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(cnt[x[0]]?"<i>"+cnt[x[0]]+"</i>":"")+"</button>"}).join("")+"</div>";
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
   m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
@@ -247,7 +246,7 @@ var side=o=>$("#app").classList.toggle("so",o),
  openPanel=(patch,e,ev)=>{if(!panelOn()||!e.closest("#panel"))OPENER=fkey(e);go(patch);if(ev.detail===0&&panelOn()){var c=$("#panel [data-act=close]");if(c)c.focus()}};
 D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),p=$("#pop");if(!p.hidden&&!ev.target.closest("#pop")&&!(e&&e.dataset.act==="help"))p.hidden=true;
   var a=e&&e.dataset.act,id=e&&e.dataset.id,d=e&&e.dataset;
-  if(panelOn()&&!ev.target.closest("#panel,#dlg,#pop")&&!/^(job|bl|row|theme|fold|side|copy|help)$/.test(a)){closePanel();if(!e)return}
+  if(panelOn()&&!ev.target.closest("#panel,#pop")&&!/^(job|bl|row|theme|fold|side|copy|help)$/.test(a)){closePanel();if(!e)return}
   if(!e)return;
   if(a==="task"){side(false);go({task:id,job:null,bl:null})}
   else if(a==="tab"){side(false);go({tab:d.tab,job:S.tab===d.tab?S.job:null,bl:null})}
@@ -261,19 +260,11 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),p=$("#pop"
   else if(a==="side")side();
   else if(a==="theme"){D.documentElement.dataset.theme=d.m;LSs("sae-theme",d.m);renderTop()}
   else if(a==="copy")copy(d.copy,e);
-  else if(a==="settings")openSettings();
-  else if(a==="help")help(e);
-  else if(a==="dclose")$("#dlg").close();
-  else if(a==="sv")setv(d.k,d.v);
-  else if(a==="save")save()});
-D.addEventListener("change",ev=>{var e=ev.target,a=e.dataset&&e.dataset.act,F=ED&&ED.cur;if(a==="proj")return go({repo:e.value,task:null,job:null,bl:null});if(!F)return;
-  if(a==="sel")setv(e.dataset.k,e.value);
-  else if(a==="pt"){F.review=F.review.filter(x=>x!==e.dataset.k);if(e.checked)F.review.push(e.dataset.k);setv()}});
-D.addEventListener("input",ev=>{var e=ev.target;if(!ED||!e.dataset||e.dataset.act!=="num")return;var v=+e.value;
-  ED.bad=!(e.value!==""&&v===Math.round(v)&&v>=1&&v<=10);if(!ED.bad)ED.cur[e.dataset.k]=String(v);ED.msg=ED.bad?"The verify limit is an integer from 1 to 10.":"";ED.err=ED.bad;ED.path="";syncDlg()});
+  else if(a==="help")help(e)}); // settings.js handles its own controls (data-act sx…, hc…)
+D.addEventListener("change",ev=>{var e=ev.target,a=e.dataset&&e.dataset.act;if(a==="proj")go({repo:e.value,task:null,job:null,bl:null})});
 D.addEventListener("toggle",ev=>{var k=ev.target.dataset&&ev.target.dataset.k;if(k&&ev.target.tagName==="DETAILS"){if(ev.target.open)OPEN[k]=1;else delete OPEN[k];LSs("sae-open",JSON.stringify(OPEN))}},true);
 D.addEventListener("keydown",ev=>{var e=ev.target,k=ev.key,i,n=TABS.length;
-  if(k==="Escape"){$("#tip").hidden=true;if(!$("#pop").hidden)$("#pop").hidden=true;else if($("#app").classList.contains("so"))side(false);else if(!$("#dlg").open&&panelOn())closePanel();return}
+  if(k==="Escape"){$("#tip").hidden=true;if(!$("#pop").hidden)$("#pop").hidden=true;else if($("#app").classList.contains("so"))side(false);else if(panelOn())closePanel();return}
   if((k==="Enter"||k===" ")&&e.matches("g.nd,tr[data-act]")){ev.preventDefault();e.dispatchEvent(new MouseEvent("click",{bubbles:true}))}
   else if(e.getAttribute("role")==="tab"&&/^(ArrowLeft|ArrowRight|Home|End)$/.test(k)){i=TABS.findIndex(x=>x[0]===S.tab);i=k==="Home"?0:k==="End"?n-1:(i+(k==="ArrowRight"?1:-1)+n)%n;ev.preventDefault();go({tab:TABS[i][0],job:null});$("#tab-"+TABS[i][0]).focus()}
   else if(e.closest("#side")&&/^Arrow(Down|Up)$/.test(k)){var L=[...D.querySelectorAll("#side [data-nav]")],j=L.indexOf(e);if(j>=0){ev.preventDefault();L[Math.max(0,Math.min(L.length-1,j+(k==="ArrowDown"?1:-1)))].focus()}}});
@@ -289,7 +280,6 @@ W.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(S.tab===
 W.addEventListener("hashchange",()=>{var tk=S.task,rk=S.repo;readHash();if(S.repo!==rk){IDX=null;isig="";render();return poll()}pickTask();render();if(S.task!==tk)loadTask()});
 D.addEventListener("visibilitychange",()=>{if(D.hidden)clearTimeout(timer);else poll()});
 setInterval(()=>D.querySelectorAll("[data-ago]").forEach(e=>{e.textContent=ago(e.dataset.ago)}),30000);
-$("#dlg").addEventListener("close",()=>{ED=null;var p=$("#pop");p.hidden=true;D.body.appendChild(p)});
 
 // classic scripts: task-views.js and settings.js are loaded when the document is parsed
 D.addEventListener("DOMContentLoaded",()=>{readHash();render();poll()});
