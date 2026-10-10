@@ -36,13 +36,17 @@ from .progress import next_text
 from .reviews import check_finish_gates, finish_merges, merge_job
 from .routing import resolve_model
 from .tasks import (
+    CLOSED_PHASES,
     Task,
-    append_event_to,
+    TaskCopy,
     ensure_tasks_folder,
+    find_task,
+    list_task_ids,
+    locate_tasks,
     open_task,
     parked_reason,
-    resolve_task,
     result_file,
+    task_phase,
     tasks_dir,
     template,
 )
@@ -53,6 +57,7 @@ from .workspaces import (
     remove_task_worktrees,
     require_on_task_branch,
     setup_worktree,
+    sweep_merged_task_worktrees,
     task_worktree_path,
     uncommitted_outside_tasks,
 )
@@ -98,6 +103,7 @@ def cmd_new(args) -> int:
     if from_item:
         event["from"] = from_item
     write_atomic(folder / "events.jsonl", json.dumps(event, ensure_ascii=False) + "\n")
+    sweep_merged_task_worktrees(root)
     render_viewer_safely(root, [task_id])
     text = (f"Task: {task_id}\nFolder: {folder}\nIntent: {folder / 'intent.md'}\n"
             f"Settings: {settings_card(settings)}")
@@ -109,18 +115,24 @@ def cmd_new(args) -> int:
 
 
 def new_backlog_item(args, root: Path, title: str, slug: str) -> int:
-    source = resolve_task(root, args.source) if args.source else None
-    ensure_tasks_folder(root)
-    path = tasks_dir(root) / "backlog" / f"{file_stamp()}--{slug}.md"
+    """The source is recorded only in the item ([FINISHED-TASKS-READ-ONLY]). The item goes to the
+    checkout that holds a live source task's folder, so that task's finish commits it; for a
+    finished source, or none, to the current checkout."""
+    source, target = None, root
+    if args.source:
+        copy = find_task(root, args.source)
+        source = copy.task_id
+        if copy.live and task_phase(copy) not in CLOSED_PHASES:
+            target = copy.checkout
+    ensure_tasks_folder(target)
+    path = tasks_dir(target) / "backlog" / f"{file_stamp()}--{slug}.md"
     if path.exists():
         fail(EXIT_USAGE, f"{path} exists. Choose another --slug.")
     body = template("intent.md").replace("<title>", title)
     front = f"---\nsource: {source}   # the task during which the owner deferred the work\n---\n\n" if source else ""
     write_atomic(path, front + body)
-    if source:
-        append_event_to(root, source, "backlog.created", file=rel(path, root))
-    else:
-        render_viewer_safely(root, [])
+    sweep_merged_task_worktrees(root)
+    render_viewer_safely(root, [])
     emit(args, f"Backlog item: {path}", {"file": str(path), "source": source})
     return EXIT_OK
 
@@ -357,6 +369,7 @@ def final_report(task: Task, with_open: bool) -> str:
             lines += ["", "## Open items"] + [f"- {i}: {j['status']} — {j.get('summary') or parked_reason(task, i)}"
                                               for i, j in open_items]
     created = [e.get("finding") or e.get("file") for e in events if e["type"] in ("finding.created", "backlog.created")]
+    created += [rel(p, task.root) for p in sourced_items(task, ("backlog",)) if rel(p, task.root) not in created]
     if created:
         lines += ["", "## Findings and backlog items from this task"] + [f"- {c}" for c in created]
     lines += ["", "## Branch"]
@@ -399,38 +412,92 @@ def cmd_finish(args) -> int:
             for job_id, job in task.jobs.items():
                 if job["merged"] and not fix_target(task, job_id):
                     run(["git", "branch", "-d", job_branch(task, job_id)], task.root)
-            if kept:
-                out.append("Worktrees kept (uncommitted changes): " + ", ".join(kept))
+            out += [f"Worktree kept: {line}" for line in kept]
+            if task.worktree:
+                out.append(f"The task worktree stays for your tests: {task.worktree}. Once you merge "
+                           f"{task.info['branch']}, sae doctor or the next writing sae command removes it.")
         report = final_report(task, args.with_open)
         head = git(task.root, "rev-parse", "--short", "HEAD") if task.info.get("git") else None
         task.info["phase"] = "done"
         task.event("task.finished", branch=task.info.get("branch"), commit=head)
         task.save()
+        moved = move_finished_tasks(task)  # [DONE-FOLDER]; on the task branch only
         if task.info.get("git"):
-            commit_task_record(task, out)
+            commit_task_record(task, moved, out)
         emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out,
                                                             "overridden": overridden})
     render_viewer_safely(root, [task.id])
     return EXIT_OK
 
 
-def commit_task_record(task: Task, out: list[str]) -> None:
-    root = task.root
-    paths = [f".tasks/{task.id}"]
-    for folder in ("findings", "backlog"):
-        for path in stamped_items(tasks_dir(root) / folder):
+def sourced_items(task: Task, folders=("findings", "backlog", "adr")) -> list[Path]:
+    """Findings, backlog items and decision drafts in the task's checkout whose source is this task."""
+    found = []
+    for folder in folders:
+        base = tasks_dir(task.root) / folder
+        items = sorted(base.glob("*.md")) if folder == "adr" and base.is_dir() else stamped_items(base)
+        for path in items:
             source = str(split_frontmatter(read_text(path, ""))[0].get("source") or "")
             if source == task.id or source.startswith(task.id + "/"):
-                paths.append(rel(path, root))
+                found.append(path)
+    return found
+
+
+def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
+    """`sae finish` ([DONE-FOLDER], DL-117): moves this task's folder into `.tasks/done/`, and every
+    other task at the top of `.tasks/` whose phase is done or abandoned, tracked or not, from this
+    checkout and from the home checkout. Tasks in any other phase are live and stay. Returns
+    (old path, new path, tracked) of each moved record."""
+    task.move_into_done()
+    root = task.root
+    located = locate_tasks(root)
+    checkouts = [root]
+    home = Path(task.info.get("home") or root)
+    if task.info.get("git") and home.is_dir() and home.resolve() != root.resolve():
+        checkouts.append(home)  # `abandon` returns records there, untracked
+    tracked = set(git(root, "ls-files", "--", ".tasks", check=False).splitlines()) if task.info.get("git") else set()
+    moved = []
+    for checkout in checkouts:
+        for other in list_task_ids(checkout):
+            source, dest = tasks_dir(checkout) / other, tasks_dir(root) / "done" / other
+            counting = located.get(other)
+            if other == task.id or dest.exists() or counting is None or task_phase(counting) not in CLOSED_PHASES \
+                    or task_phase(TaskCopy(other, checkout, source, True, "")) not in CLOSED_PHASES:
+                continue
+            old, new = f".tasks/{other}", f".tasks/done/{other}"
+            in_git = checkout == root and f"{old}/state.json" in tracked
+            if in_git:
+                git(root, "mv", "--", old, new)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source), str(dest))
+            moved.append((old, new, in_git))
+    return moved
+
+
+def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list[str]) -> None:
+    root = task.root
+    paths = [f".tasks/done/{task.id}"] + [rel(p, root) for p in sourced_items(task)]
     for extra in (".tasks/repo", ".tasks/.gitignore", ".tasks/.gitattributes"):
         if (root / extra).exists():
             paths.append(extra)
+    paths += [new for _, new, _ in moved]
     git(root, "add", "--", *paths)
+    paths += [old for old, _, in_git in moved if in_git]  # an untracked old path is unknown to git
     staged = git(root, "diff", "--cached", "--name-only", "--", *paths)
     if not staged:
         return
     git(root, "commit", "--quiet", "-m", f"{task.id}: task record", "-m", f"Task: {task.id}", "--", *paths)
-    out.append(f"Committed the task record on {task.info['branch']}.")
+    out.append(f"Committed the task record in .tasks/done/{task.id}/ on {task.info['branch']}"
+               + (f", with {len(moved)} earlier finished task(s) moved to .tasks/done/." if moved else "."))
+    home = Path(task.info.get("home") or root)
+    if home.is_dir() and home.resolve() != root.resolve():
+        committed = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", check=False).splitlines()
+        blocking = [p for p in committed if (home / p).is_file()
+                    and not git_ok(home, "ls-files", "--error-unmatch", "--", p)]
+        if blocking:
+            out.append(f"Before you merge, delete these untracked copies in {home}; the task record "
+                       "commits them, and git refuses to overwrite untracked files: " + ", ".join(blocking))
 
 
 def cmd_abandon(args) -> int:
@@ -439,14 +506,33 @@ def cmd_abandon(args) -> int:
     with open_task(root, args.task) as task:
         if task.phase in ("done", "abandoned"):
             fail(EXIT_USAGE, f"The task is {task.phase}.")
-        kept = remove_task_worktrees(task, config)
         task.info["phase"] = "abandoned"
         task.event("task.abandoned", reason=args.reason)
-        text = f"Abandoned {task.id}. Branches are kept."
-        if kept:
-            text += "\nWorktrees kept (uncommitted changes): " + ", ".join(kept)
-        emit(args, text, {"task": task.id, "kept_worktrees": kept})
+        lines = [f"Abandoned {task.id}. Branches are kept."]
+        in_worktree = bool(task.worktree) and task.root.resolve() == task.worktree.resolve()
+        if in_worktree:
+            lines += move_back_home(task)
+            in_worktree = task.root.resolve() == task.worktree.resolve()
+        kept = remove_task_worktrees(task, config, with_task_worktree=not in_worktree)
+        lines += [f"Worktree kept: {line}" for line in kept]
+        emit(args, "\n".join(lines), {"task": task.id, "folder": str(task.dir), "kept_worktrees": kept})
     return EXIT_OK
+
+
+def move_back_home(task: Task) -> list[str]:
+    """`sae abandon`: the task folder, and the untracked findings, backlog items and drafts that
+    came with it, go back to the home checkout, still untracked; the task worktree can then go."""
+    home = Path(task.info.get("home") or "")
+    if not task.info.get("home") or not home.is_dir() or (tasks_dir(home) / task.id).exists():
+        return [f"The task folder stays in the task worktree (no home checkout to move it to): {task.dir}"]
+    worktree = task.root
+    for source in [task.dir] + source_items(task, worktree):
+        dest = home / source.relative_to(worktree)
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(dest))
+    task.move_to(home)
+    return [f"Moved the task folder back to {task.dir}."]
 
 
 def register_new(sub, command):

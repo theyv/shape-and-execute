@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import platform
 import shlex
@@ -14,9 +15,9 @@ from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .setup_mode import codex_cap_text, codex_subagent_cap
-from .tasks import tasks_dir
+from .tasks import locate_tasks, tasks_dir
 from .viewer import render_viewer_safely
-from .workspaces import setup_worktree
+from .workspaces import discard_worktree, leftover_reason, sae_worktrees, setup_worktree, sweep_merged_task_worktrees
 
 
 def cmd_doctor(args) -> int:
@@ -52,14 +53,52 @@ def cmd_doctor(args) -> int:
         cap = codex_subagent_cap()
         check(cap["ok"], codex_cap_text(cap).splitlines()[0],
               f"Set [agents] max_threads = {cap['recommended']} in {cap['config']} (setup mode can do it).")
+    discarded = doctor_worktrees(config if config_ok else None, check, args.discard)
     if args.repo:
         doctor_repo(config if config_ok else None, check)
-    lines = [f"{mark} {text}" + (f"\n    fix: {fix}" if fix else "") for mark, text, fix in checks]
+    lines = discarded + [f"{mark} {text}" + (f"\n    fix: {fix}" if fix else "") for mark, text, fix in checks]
     failed = [c for c in checks if c[0] == "✗"]
     emit(args, "\n".join(lines), {"checks": [{"ok": m != "✗", "mark": m, "text": t, "fix": f} for m, t, f in checks]})
     if not config_ok:
         return EXIT_CONFIG
     return EXIT_USAGE if failed else EXIT_OK
+
+
+def doctor_worktrees(config: dict | None, check, discard: str | None) -> list[str]:
+    """`--discard`, then the sweep of merged task worktrees, then every leftover worktree of this
+    repository with the reason it stays ([WORKTREE-CLEANUP], 07-cli-spec §7.4). Returns the
+    lines of a discard."""
+    root, is_git = find_root()
+    if not is_git:
+        if discard:
+            raise SaeError(EXIT_USAGE, "--discard needs a git repository: run it in the repository.")
+        return []
+    discarded = discard_worktree(root, Path(discard), locate_tasks(root)) if discard else []
+    removed, _ = sweep_merged_task_worktrees(root, quiet=True)
+    for line in removed:
+        check(True, line)
+    located = locate_tasks(root)
+    registered = sae_worktrees(root)
+    for path, task_id, name in registered:
+        reason, attention = leftover_reason(root, path, task_id, name, located)
+        check(None if attention else True, f"worktree {path}\n    why it stays: {reason}",
+              f"Commit or move what you need, then: sae doctor --discard {shlex.quote(str(path))}")
+    if config is not None:
+        cache = worktree_root(config) / repo_cache_name(root)
+        known = {p.resolve() for p, _, _ in registered}
+        for folder in sorted(cache.glob("*/*")) if cache.is_dir() else []:
+            if folder.is_dir() and not folder.parent.name.startswith("_") and folder.resolve() not in known:
+                check(None, f"folder kept: {folder}\n    why: not a git worktree any more",
+                      "Look inside, then delete it by hand if nothing in it matters.")
+        for folder in sorted(cache.glob("*")) if cache.is_dir() else []:
+            if folder.is_dir():
+                with contextlib.suppress(OSError):
+                    folder.rmdir()  # empty task folders of the cache
+        with contextlib.suppress(OSError):
+            cache.rmdir()
+    if not registered:
+        check(True, "no leftover worktrees")
+    return discarded
 
 
 def doctor_repo(config: dict | None, check) -> None:
@@ -113,6 +152,13 @@ def register_doctor(sub, command):
     """Add the `doctor` command to the parser."""
     p = command(sub, "doctor", "Check the environment; prints a fix for each problem.",
                 "Python, config, worktree root, git, harness detection, the other harness CLI, the Codex subagent cap.\n"
-                "--repo also checks .tasks/, the repo profile, a throwaway worktree (setup.sh, commit) and the viewer.",
-                ["doctor", "doctor --repo"], [0, 1, 2], cmd_doctor)
-    p.add_argument("--repo", action="store_true")
+                "In a git repository: removes the task worktrees of finished tasks whose branch is merged (when\n"
+                "they hold no uncommitted work), then lists every leftover worktree with the reason it stays.\n"
+                "--repo also checks .tasks/, the repo profile, a throwaway worktree (setup.sh, commit) and the viewer.\n"
+                "--discard <worktree> removes one sae worktree although it holds work, after printing what is\n"
+                "lost; its branch stays. It refuses the task worktree of a task that is not finished or abandoned.",
+                ["doctor", "doctor --repo", "doctor --discard ~/Library/Caches/shape-and-execute/worktrees/app-1a2b3c4d/"
+                 "2026-10-06-1430--claims-status/task"], [0, 1, 2, 4], cmd_doctor)
+    p.add_argument("--repo", action="store_true", help="also check this repository's setup")
+    p.add_argument("--discard", metavar="WORKTREE",
+                   help="remove this sae worktree although it holds work (the owner's explicit word)")
