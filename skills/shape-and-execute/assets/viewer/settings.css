@@ -1,17 +1,61 @@
-/* sae viewer: settings dialog, help popover, the settings card in the task header */
-.card{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:12px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--s1);font-size:12px}
-.card span{color:var(--ink3)}.card b{font-weight:500}
-dialog{background:var(--s1);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:0;width:min(680px,calc(100% - 24px));max-height:calc(100% - 24px)}
-dialog::backdrop{background:var(--scrim)}
-.dh{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}.dh h2{font-size:14px;font-weight:600;margin:0}
-.srow{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:8px 16px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
-.srow:first-child{border-top:0}.srow .k>span{display:block;font:12px var(--mono);color:var(--ink3)}
-.srow .c{display:flex;flex-direction:column;gap:6px;align-items:flex-start}.cbs{display:flex;gap:14px;flex-wrap:wrap}.cbs label{display:flex;gap:6px;align-items:center}.cbs input{margin:0}
-select,input[type=number]{height:28px;padding:0 8px;border:1px solid var(--line2);border-radius:6px;background:var(--s2)}input[type=number]{width:72px}
-.df{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line)}
-.dmsg{padding:8px 16px 0;font-size:12px;color:var(--ink2)}.dmsg .dp{margin-top:2px;color:var(--ink3);overflow-wrap:anywhere}.df .pick{margin-right:auto;font-size:12px;color:var(--ink2)}
-.pop{position:fixed;z-index:30;width:min(400px,calc(100% - 24px));background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:12px 14px}
-.pop p{margin:0 0 8px}.pop p:last-child{margin:0}
+/* sae viewer: the settings card in the task header, the Settings tab (Task, Project, Global),
+   the routing panel, the model lists and the [?] popover. Colors come from app.css (--c*, --e-*). */
+.card{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-top:12px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--s1);font-size:12px}
+.card>div{display:flex;align-items:center;gap:6px}.card span{color:var(--ink3)}.card b{font-weight:500}
+.card select{height:22px;padding:0 4px;font-size:12px;border-color:var(--line);background:var(--s1)}
+.card label{display:flex;align-items:center;gap:3px;color:var(--ink)}.card input{margin:0;accent-color:var(--acc)}
+.card .smsg{flex-basis:100%;padding:0}.card .smsg:empty{display:none}
+select,input[type=number]{height:26px;padding:0 6px;border:1px solid var(--line2);border-radius:6px;background:var(--s2);font-size:12px;max-width:100%}input[type=number]{width:64px}
+select:disabled,input:disabled{opacity:.6}
+/* the Settings tab */
+.sbox{overflow:visible}
+.stabs{margin-top:0;padding:0 16px;align-items:center}.stabs .sp{flex:1}
+.smsg{padding:8px 16px 0;font-size:12px;color:var(--ink2);overflow-wrap:anywhere}.smsg:empty{display:none}.smsg.err{color:var(--fail)}
+.cfgerr{margin:8px 16px 0;color:var(--park);font-size:12px}
+.draft{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:8px 16px 0;padding:8px 10px;border:1px solid var(--park);border-radius:6px;background:var(--s2);font-size:12px}
+.draft>span{flex:1;min-width:200px}
+.sg{padding:14px 16px 16px;border-top:1px solid var(--line)}.sbox>.sg:first-of-type,.smsg+.sg{border-top:0}
+.sh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}.sh h3{margin:0;font-size:13px;font-weight:600}.sh .d{color:var(--ink3);font-size:12px}
+.btn.hq{width:20px;height:20px;font-size:11px;color:var(--ink2);flex-shrink:0}
+.srow{display:grid;grid-template-columns:190px minmax(0,1fr);gap:8px 16px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.sh+.srow{border-top:0}.srow .k{display:flex;gap:6px;align-items:center;font-weight:500;min-height:28px}
+.srow .c{display:flex;flex-direction:column;gap:6px;align-items:flex-start;min-width:0}
+.inh{font-size:11px;color:var(--ink3)}.inh.set{color:var(--acc)}.inh .lnk{font-size:11px;color:var(--ink2)}
+.cbs{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.cbs .cb{display:flex;gap:4px;align-items:center}.cbs label{display:flex;gap:6px;align-items:center}.cbs input{margin:0}
+.jsub{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.note{font-size:12px;color:var(--ink3);margin:0}.mdesc{font-size:12px;color:var(--ink2);max-width:620px;margin:0}
+.seg button:disabled{cursor:default;opacity:.6}
+.tgl{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);border:0;background:none;padding:0}
+.tgl i{position:relative;width:28px;height:16px;border-radius:8px;background:var(--line2)}
+.tgl i:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ink);transition:transform .12s}
+.tgl[aria-checked=true] i{background:var(--acc-bg)}.tgl[aria-checked=true] i:after{transform:translateX(12px);background:#fff}
+/* tiers in one row; greyed out while "tiers in cells" is off */
+.tiers{padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-bottom:14px}
+.tiers.off .trow{opacity:.4;filter:grayscale(1);pointer-events:none}
+.trow{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;overflow-x:auto}
+.tcard{padding:8px;border-radius:6px;background:color-mix(in srgb,var(--mc) var(--tint),transparent);box-shadow:inset 0 3px 0 var(--mc);display:flex;flex-direction:column;gap:4px;min-width:0}
+.tcard .h{display:flex;justify-content:space-between;font-size:12px}.tcard .h b{font:600 12px var(--mono);color:var(--mc)}.tcard .h span{color:var(--ink3)}
+/* routing tables: one dropdown of model · effort per cell, the cell tinted by its model or tier */
+.rph+.rph{margin-top:14px}.pht{display:flex;gap:8px;align-items:baseline;margin:0 0 4px}.pht span{color:var(--ink3);font-size:12px}
+table.rt{table-layout:fixed;min-width:560px}.rt th{padding:6px 8px;border-bottom:0}.rt th:first-child{width:90px}
+.rt td{padding:4px;border-top:1px solid var(--line);vertical-align:middle}.rt td.lv{padding:7px 8px;font-weight:500;white-space:nowrap}
+.rt td.na div{height:100%;min-height:56px;display:flex;align-items:center;justify-content:center;border-radius:5px;background:repeating-linear-gradient(135deg,var(--hl) 0 6px,transparent 6px 12px);color:var(--ink3);font-size:11px}
+.cell{display:flex;flex-direction:column;gap:3px;padding:6px 8px;border-radius:5px;min-width:0;background:color-mix(in srgb,var(--mc) var(--tint),transparent);box-shadow:inset 3px 0 0 var(--mc)}
+.cell select,.tcard select{width:100%;background:var(--s2)}
+.cell.bad,.tcard.bad{outline:1px dashed var(--fail);outline-offset:-1px}.cell.own,.tcard.own{outline:1px solid var(--acc-bd);outline-offset:-1px}
+.foot{margin:10px 0 0;font-size:12px;color:var(--ink2)}
+/* model lists (Global) */
+.ml{display:flex;flex-direction:column;gap:2px;max-width:620px}
+.mr{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:5px}.mr:hover{background:var(--hl)}
+.mr label{display:flex;align-items:baseline;gap:8px;flex:1;min-width:0;font:12px var(--mono)}.mr input{margin:0;accent-color:var(--acc);align-self:center}
+.mr label small{font:11px system-ui,sans-serif;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mr.off label{color:var(--ink3)}.mr .ix{width:18px;color:var(--ink3);font-size:11px;text-align:right}
+.sw{width:10px;height:10px;border-radius:3px;background:var(--mc);flex-shrink:0}
+.btn.ar{width:22px;height:22px;padding:0;justify-content:center;font-size:11px}
+.add{display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap}
+/* [?] popover */
+.pop{position:fixed;z-index:30;width:min(400px,calc(100% - 24px));max-height:calc(100vh - 24px);overflow-y:auto;background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.5;color:var(--ink2);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+.pop b{color:var(--ink);font-weight:600}.pop p{margin:0 0 6px}.pop p:last-child{margin:0}.pop table{margin:4px 0 6px}
+.pop td{border-top:1px solid var(--line);padding:4px 6px 4px 0;vertical-align:top}.pop td:first-child{font-family:var(--mono);color:var(--ink);white-space:nowrap}
 @media (max-width:860px){
-.srow{grid-template-columns:minmax(0,1fr) auto}.srow .c{grid-column:1/3;grid-row:2}
+.srow{grid-template-columns:minmax(0,1fr)}.trow{grid-template-columns:repeat(4,150px)}
 .card{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}}
