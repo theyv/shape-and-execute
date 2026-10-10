@@ -135,6 +135,7 @@ class Task:
         self.settings: dict = {}
         self.new_events: list[dict] = []
         self.dirty = False
+        self.saved = False
 
     # paths
     @property
@@ -228,6 +229,7 @@ class Task:
                     handle.write(json.dumps(event, ensure_ascii=False) + "\n")
         self.new_events = []
         self.dirty = False
+        self.saved = True
 
     def write_settings(self, settings: dict) -> None:
         write_json(self.settings_path, settings)
@@ -238,17 +240,18 @@ class Task:
 
 @contextlib.contextmanager
 def open_task(root: Path, ref: str):
-    """Locks the task, loads it, and saves it when the block ends without an exception.
-    After the lock is released, a changed task re-renders the viewer data."""
+    """Locks the task, loads it, and saves it when the block ends without an exception (the
+    block may also save it earlier). After the lock is released, a saved task re-renders the
+    viewer data."""
     copy = find_task(root, ref)
     task = Task(copy.checkout, copy.task_id, copy.folder)
     with (task.dir / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         task.load()
         yield task
-        changed = task.dirty
-        if changed:
+        if task.dirty:
             task.save()
+        changed = task.saved
     if changed:
         from .viewer import render_viewer_safely  # late import: viewer imports this module
         render_viewer_safely(root, [task.id])

@@ -34,6 +34,7 @@ from .graph import parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
 from .reviews import check_finish_gates, last_verdict, merge_job
+from .routing import resolve_model
 from .tasks import (
     Task,
     append_event_to,
@@ -137,33 +138,58 @@ def cmd_start(args) -> int:
         elif not task.info.get("orchestrator_harness"):
             task.info["orchestrator_harness"] = require_harness(None)
         resumed = task.phase == "executing"
-        if resumed:
-            lines = [where_it_runs(task)]
-        else:
-            is_git = git_ok(task.root, "rev-parse", "--git-dir")
-            task.info["git"] = is_git
-            task.info.setdefault("home", str(task.root))
-            if not task.info.get("layout"):
-                writers = [i for i, j in task.jobs.items() if j["kind"] in WRITER_KINDS]
-                chained = all(not parallel_possible(task.jobs, a, b)
-                              for x, a in enumerate(writers) for b in writers[x + 1:])
-                task.info["layout"] = "chain" if chained or not is_git else "worktrees"
-            if task.uses_worktrees:
-                cfg(config, "parallel.max_writers")
-            if is_git:
-                lines = start_task_worktree(task, config)
+        undo: list = []
+        picked_up = None
+        try:
+            if resumed:
+                lines = [where_it_runs(task)]
             else:
-                lines = ["No git: no branches, worktrees or commits. Agents change files directly; nothing "
-                         "can undo their changes. Copy the folder first if you want a way back."]
-            task.info["phase"] = "executing"
-        task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
-                   layout=task.info["layout"], worktree=task.info.get("worktree"), resumed=resumed)
-        lines.insert(0, f"Executing {task.id} · branch: {task.info.get('branch') or '-'} · layout: {task.info['layout']}")
-        lines += ["", next_text(task, config)]
+                check_models(task, config)
+                is_git = git_ok(task.root, "rev-parse", "--git-dir")
+                task.info["git"] = is_git
+                task.info.setdefault("home", str(task.root))
+                if not task.info.get("layout"):
+                    writers = [i for i, j in task.jobs.items() if j["kind"] in WRITER_KINDS]
+                    chained = all(not parallel_possible(task.jobs, a, b)
+                                  for x, a in enumerate(writers) for b in writers[x + 1:])
+                    task.info["layout"] = "chain" if chained or not is_git else "worktrees"
+                if task.uses_worktrees:
+                    cfg(config, "parallel.max_writers")
+                if is_git:
+                    lines, picked_up = start_task_worktree(task, config, undo)
+                else:
+                    lines = ["No git: no branches, worktrees or commits. Agents change files directly; nothing "
+                             "can undo their changes. Copy the folder first if you want a way back."]
+                task.info["phase"] = "executing"
+            task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
+                       layout=task.info["layout"], worktree=task.info.get("worktree"), resumed=resumed)
+            lines.insert(0, f"Executing {task.id} · branch: {task.info.get('branch') or '-'} · "
+                            f"layout: {task.info['layout']}")
+            lines += ["", next_text(task, config)]
+            task.save()  # inside the rollback: the start counts once its state is on disk
+        except BaseException:
+            for step in reversed(undo):
+                with contextlib.suppress(Exception):
+                    step()
+            raise
+        if picked_up:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(task.root / picked_up)
+            lines.insert(-2, f"Removed the uncommitted backlog item {picked_up}.")
         emit(args, "\n".join(lines), {"task": task.id, "branch": task.info.get("branch"),
                                       "layout": task.info["layout"], "base": task.info.get("base"),
                                       "worktree": task.info.get("worktree"), "home": task.info.get("home")})
     return EXIT_OK
+
+
+def check_models(task: Task, config: dict | None) -> None:
+    """Resolves the model of every pending job before `sae start` changes anything: a config
+    that cannot route the task fails here, not after the task worktree exists."""
+    for job in task.jobs.values():
+        if job["status"] == "pending":
+            if config is None:
+                cfg(config, "rungs")
+            resolve_model(task, job, config)
 
 
 def where_it_runs(task: Task) -> str:
@@ -174,11 +200,13 @@ def where_it_runs(task: Task) -> str:
     return f"Executes in {task.root} (no git)."
 
 
-def start_task_worktree(task: Task, config: dict | None) -> list[str]:
+def start_task_worktree(task: Task, config: dict | None, undo: list) -> tuple[list[str], str | None]:
     """`sae start` with git ([TASK-WORKTREE], [BACKLOG-PICKUP], 07-cli-spec §8): task branch and
     task worktree from the home checkout's HEAD, backlog pickup commit, task folder moved into
-    the worktree, setup. Atomic: on any failure every step is undone and the task stays in
-    planning. The home checkout never changes branch."""
+    the worktree, setup. Appends an undo step for every change to `undo`; the caller runs them
+    on any failure until the task state is saved, so the task stays in planning. Returns the
+    report lines and the untracked backlog item to delete once the state is saved. The home
+    checkout never changes branch."""
     home = task.root
     if not git_ok(home, "rev-parse", "--verify", "--quiet", "HEAD"):
         fail(EXIT_GIT, "The repository has no commits. Make a first commit, then run sae start again.")
@@ -197,42 +225,42 @@ def start_task_worktree(task: Task, config: dict | None) -> list[str]:
     dirty = uncommitted_outside_tasks(home)
     current = git(home, "branch", "--show-current", check=False)
     commit = git(home, "rev-parse", "HEAD")
-    undo: list = []
+    for folder in (worktree.parent.parent, worktree.parent):
+        if not folder.exists():
+            folder.mkdir(parents=True)
+            undo.append(lambda f=folder: f.rmdir())
+    git(home, "worktree", "add", "--quiet", "-b", branch, str(worktree), commit)
+    undo.append(lambda: (run(["git", "worktree", "remove", "--force", str(worktree)], home),
+                         run(["git", "worktree", "prune"], home),
+                         run(["git", "branch", "-D", branch], home)))
+    lines += commit_backlog_pickup(task, worktree)
+    untracked_item = pickup_item_untracked(task, home)
+    saved = {name: (task.dir / name).read_bytes() for name in ("state.json", "events.jsonl")
+             if (task.dir / name).is_file()}
+    home_dir = task.dir
+
+    def restore_state() -> None:
+        """Runs after the folder has moved back: the state and events as they were before."""
+        for name, data in saved.items():
+            (home_dir / name).unlink(missing_ok=True)
+            (home_dir / name).write_bytes(data)
+    undo.append(restore_state)
+    moves = [task.dir] + source_items(task, home) + ([home / untracked_item] if untracked_item else [])
+    for source in moves:
+        dest = worktree / source.relative_to(home)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(dest))
+        undo.append(lambda s=source, d=dest: shutil.move(str(d), str(s)))
+    task.move_to(worktree)
+    undo.append(lambda: task.move_to(home))
+    copy_untracked_repo_files(home, worktree)
     try:
-        for folder in (worktree.parent.parent, worktree.parent):
-            if not folder.exists():
-                folder.mkdir(parents=True)
-                undo.append(lambda f=folder: f.rmdir())
-        git(home, "worktree", "add", "--quiet", "-b", branch, str(worktree), commit)
-        undo.append(lambda: (run(["git", "worktree", "remove", "--force", str(worktree)], home),
-                             run(["git", "worktree", "prune"], home),
-                             run(["git", "branch", "-D", branch], home)))
-        lines += commit_backlog_pickup(task, worktree)
-        untracked_item = pickup_item_untracked(task, home)
-        moves = [task.dir] + source_items(task, home) + ([home / untracked_item] if untracked_item else [])
-        for source in moves:
-            dest = worktree / source.relative_to(home)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(source), str(dest))
-            undo.append(lambda s=source, d=dest: shutil.move(str(d), str(s)))
-        task.move_to(worktree)
-        undo.append(lambda: task.move_to(home))
-        copy_tasks_repo_files(home, worktree)
-        try:
-            lines += setup_worktree(worktree, worktree, task.id, TASK_WORKTREE_NAME,
-                                    task.dir / "jobs" / f"{TASK_WORKTREE_NAME}.setup.log")
-        except SaeError as exc:
-            first = str(exc).splitlines()[0].split(". Log:")[0]
-            raise SaeError(exc.code, f"Task worktree setup: {first}. sae start was undone; the task stays "
-                                     f"in planning. Log: {home / task_rel / 'jobs' / 'task.setup.log'}") from exc
-        if untracked_item:
-            os.remove(worktree / untracked_item)
-            lines.append(f"Removed the uncommitted backlog item {untracked_item}.")
-    except BaseException:
-        for step in reversed(undo):
-            with contextlib.suppress(Exception):
-                step()
-        raise
+        lines += setup_worktree(worktree, worktree, task.id, TASK_WORKTREE_NAME,
+                                task.dir / "jobs" / f"{TASK_WORKTREE_NAME}.setup.log")
+    except SaeError as exc:
+        first = str(exc).splitlines()[0].split(". Log:")[0]
+        raise SaeError(exc.code, f"Task worktree setup: {first}. sae start was undone; the task stays "
+                                 f"in planning. Log: {home / task_rel / 'jobs' / 'task.setup.log'}") from exc
     task.info.update({"branch": branch, "worktree": str(worktree),
                       "base": {"branch": current or None, "commit": commit[:7]}})
     lines.append(f"Task worktree: {worktree}")
@@ -240,7 +268,7 @@ def start_task_worktree(task: Task, config: dict | None) -> list[str]:
     if dirty:
         lines.append("Not part of the task (uncommitted in the home checkout): " + ", ".join(dirty[:10])
                      + (" …" if len(dirty) > 10 else ""))
-    return lines
+    return lines, untracked_item
 
 
 def pickup_item(task: Task) -> str | None:
@@ -280,11 +308,12 @@ def source_items(task: Task, home: Path) -> list[Path]:
     return found
 
 
-def copy_tasks_repo_files(home: Path, worktree: Path) -> None:
-    """Copies the untracked `.tasks/repo/` files and the `.tasks/` git files into the task
-    worktree; the home checkout keeps them for the next task."""
+def copy_untracked_repo_files(home: Path, worktree: Path) -> None:
+    """Copies the untracked `.tasks/repo/` files, the `.tasks/` git files and a root
+    `.worktreeinclude` into the task worktree ([SETUP-SOURCE]): its setup and its job worktrees
+    read them there. The home checkout keeps them for the next task."""
     listing = git(home, "ls-files", "--others", "--", ".tasks/repo", ".tasks/.gitignore",
-                  ".tasks/.gitattributes", check=False)
+                  ".tasks/.gitattributes", ".worktreeinclude", check=False)
     for line in listing.splitlines():
         dest = worktree / line
         if not dest.exists():

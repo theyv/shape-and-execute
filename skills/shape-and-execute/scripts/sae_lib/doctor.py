@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
-from .gitutil import find_root, git, git_ok, hash8, repo_cache_name, run
+from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .setup_mode import codex_cap_text, codex_subagent_cap
 from .tasks import tasks_dir
 from .viewer import render_viewer_safely
@@ -100,7 +100,7 @@ def doctor_repo(config: dict | None, check) -> None:
 
 def hooks_found(root: Path) -> str:
     """A hooks path (`core.hooksPath`) or hook scripts in the repository's hooks folder."""
-    configured = git(root, "config", "--get", "core.hooksPath", check=False)
+    configured = configured_hooks_path(root)
     if configured:
         return f"core.hooksPath = {configured}"
     folder = Path(git(root, "rev-parse", "--path-format=absolute", "--git-common-dir", check=False) or ".") / "hooks"

@@ -35,6 +35,16 @@ def git(cwd: Path, *args: str, check: bool = True) -> str:
     return proc.stdout.strip()
 
 
+def configured_hooks_path(cwd: Path) -> str:
+    """The owner's `core.hooksPath`, read without the override that `run` injects."""
+    try:
+        proc = subprocess.run(["git", "config", "--get", "core.hooksPath"], cwd=str(cwd),
+                              capture_output=True, text=True)
+    except FileNotFoundError:
+        return ""
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def git_ok(cwd: Path, *args: str) -> bool:
     try:
         return run(["git", *args], cwd).returncode == 0
