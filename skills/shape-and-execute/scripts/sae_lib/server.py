@@ -400,6 +400,18 @@ def route_override(body: dict):
     return argv, None
 
 
+def route_hold(body: dict):
+    job = _plain(body.get("job"), "job")
+    if not JOB_ID_RE.match(job):
+        raise RequestError(400, f"job: {job!r} is not a job ID.")
+    argv = ["hold", _plain(body.get("task"), "task"), job]
+    if body.get("release"):
+        argv.append("--release")
+    if body.get("reason"):
+        argv += ["--reason", _plain(body["reason"], "reason")]
+    return argv, None
+
+
 def route_project_set(body: dict):
     return ["project", "set", *_plain_list(body.get("pairs"), "pairs")], None
 
@@ -419,6 +431,7 @@ def route_global(body: dict):
 WRITE_ROUTES = {
     "set": route_set,                       # task settings: sae set <task> key=value …
     "override": route_override,             # per-job override: sae job override …
+    "hold": route_hold,                     # a hold after a job: sae hold <task> <job> [--release]
     "project-set": route_project_set,       # project defaults: sae project set …
     "project-unset": route_project_unset,   # sae project unset …
     "global": route_global,                 # the global config: sae setup save < config
