@@ -19,6 +19,7 @@ from .common import (
     REVIEW_POINTS,
     WRITER_KINDS,
     SaeError,
+    changed_by,
     emit,
     fail,
     iso,
@@ -78,7 +79,7 @@ def cmd_set(args) -> int:
         changes = settings_diff(task.settings, new)
         if changes:
             task.write_settings(new)
-            task.event("settings.changed", changes=changes, by="cli")
+            task.event("settings.changed", changes=changes, by=changed_by())
         card = settings_card(new, task.info.get("orchestrator_harness"))
         emit(args, f"Settings: {card}" + ("" if changes else " (unchanged)"), {"settings": new, "changes": changes})
     return EXIT_OK
@@ -305,7 +306,7 @@ def cmd_job_override(args) -> int:
             if not overrides:
                 del task.info["overrides"]
             task.event("override.cleared", job=key, harness=old.get("harness"), model=old.get("model"),
-                       effort=old.get("effort"), reason=args.reason, by="cli")
+                       effort=old.get("effort"), reason=args.reason, by=changed_by())
             emit(args, f"{key}: override cleared; routing chooses again.", {"key": key, "override": None})
             return EXIT_OK
         if not (args.harness or args.model or args.effort):
@@ -326,7 +327,7 @@ def cmd_job_override(args) -> int:
                 overrides[key] = previous
             fail(EXIT_USAGE, f"Override not set: {exc}")
         task.event("override.set", job=key, harness=override.get("harness"), model=override.get("model"),
-                   effort=override.get("effort"), reason=args.reason, by="cli")
+                   effort=override.get("effort"), reason=args.reason, by=changed_by())
         emit(args, f"{key}: override {res['harness']} · {res['model']} · {res['effort']} (routing: "
                    + (f"{res['routed']['harness']} · {res['routed']['model_entry']} · {res['routed']['effort']})"
                       if res.get("routed") else "n/a)"),

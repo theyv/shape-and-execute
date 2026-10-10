@@ -46,7 +46,7 @@ from .tasks import (
     tasks_dir,
     template,
 )
-from .viewer import render_viewer_safely, stamped_items
+from .viewer import render_viewer_safely, stamped_items, viewer_link
 from .workspaces import (
     TASK_WORKTREE_NAME,
     job_branch,
@@ -99,12 +99,14 @@ def cmd_new(args) -> int:
         event["from"] = from_item
     write_atomic(folder / "events.jsonl", json.dumps(event, ensure_ascii=False) + "\n")
     render_viewer_safely(root, [task_id])
+    url, viewer_line = viewer_link(root, task_id)  # [VIEWER-LINK-AT-NEW]; never fails the command
     text = (f"Task: {task_id}\nFolder: {folder}\nIntent: {folder / 'intent.md'}\n"
             f"Settings: {settings_card(settings)}")
     if from_item:
         text += f"\nPicked up from the backlog: {from_item['file']} (it stays; sae start removes it on the task branch)."
+    text += f"\n{viewer_line}"
     emit(args, text, {"task": task_id, "folder": str(folder), "intent": str(folder / "intent.md"),
-                      "settings": settings, "from": from_item})
+                      "settings": settings, "from": from_item, "viewer": url, "viewer_hint": viewer_line})
     return EXIT_OK
 
 

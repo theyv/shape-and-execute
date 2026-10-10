@@ -1,0 +1,17 @@
+/* sae viewer: settings dialog, help popover, the settings card in the task header */
+.card{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:12px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--s1);font-size:12px}
+.card span{color:var(--ink3)}.card b{font-weight:500}
+dialog{background:var(--s1);color:var(--ink);border:1px solid var(--line2);border-radius:8px;padding:0;width:min(680px,calc(100% - 24px));max-height:calc(100% - 24px)}
+dialog::backdrop{background:var(--scrim)}
+.dh{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}.dh h2{font-size:14px;font-weight:600;margin:0}
+.srow{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:8px 16px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.srow:first-child{border-top:0}.srow .k>span{display:block;font:12px var(--mono);color:var(--ink3)}
+.srow .c{display:flex;flex-direction:column;gap:6px;align-items:flex-start}.cbs{display:flex;gap:14px;flex-wrap:wrap}.cbs label{display:flex;gap:6px;align-items:center}.cbs input{margin:0}
+select,input[type=number]{height:28px;padding:0 8px;border:1px solid var(--line2);border-radius:6px;background:var(--s2)}input[type=number]{width:72px}
+.df{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--line)}
+.dmsg{padding:8px 16px 0;font-size:12px;color:var(--ink2)}.dmsg .dp{margin-top:2px;color:var(--ink3);overflow-wrap:anywhere}.df .pick{margin-right:auto;font-size:12px;color:var(--ink2)}
+.pop{position:fixed;z-index:30;width:min(400px,calc(100% - 24px));background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:12px 14px}
+.pop p{margin:0 0 8px}.pop p:last-child{margin:0}
+@media (max-width:860px){
+.srow{grid-template-columns:minmax(0,1fr) auto}.srow .c{grid-column:1/3;grid-row:2}
+.card{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}}
