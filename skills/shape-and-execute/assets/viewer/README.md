@@ -12,7 +12,7 @@ has run, and changes settings only through the server, which runs the `sae` comm
 | `app.css` | tokens (dark and light), layout, shared components, the fixed palette |
 | `app.js` | data loading, palette, tabs, sidebar, Markdown, project switcher, events, boot |
 | `task-views.css` / `task-views.js` | the Plan graph and the other task tabs (`TAB.*`), the job panel |
-| `settings.css` / `settings.js` | the settings card, the settings dialog, saving through the server |
+| `settings.css` / `settings.js` | the Settings tab (Task, Project, Global), the routing panel, the model lists, the editable header card; saving through the server |
 
 Classic scripts in this order: `app.js`, `task-views.js`, `settings.js`. They share their
 top-level names; `app.js` boots on `DOMContentLoaded`, when all three are loaded. No build step,
