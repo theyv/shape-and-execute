@@ -2,17 +2,17 @@
    the three scripts share their top-level names; app.js loads first and boots on DOMContentLoaded. */
 "use strict";
 var D=document,W=window,$=s=>D.querySelector(s);
-var TABS=[["overview","Overview"],["plan","Plan"],["jobs","Jobs"],["timeline","Timeline"],["reviews","Reviews"],["decisions","Decisions"],["spec","Intent & Spec"],["findings","Findings"]],
+var TABS=[["plan","Plan"],["overview","Overview"],["jobs","Jobs"],["timeline","Timeline"],["reviews","Reviews"],["decisions","Decisions"],["spec","Intent & Spec"],["findings","Findings"]],
  PHASES=[["executing","Executing"],["planning","Planning"],["shaping","Shaping"],["done","Done"],["abandoned","Abandoned"]],
  WR={implementation:1,integration:1},RTP={shaping:"spec",planning:"plan"},
  KBP={shaping:["research","review"],planning:["planning","research","review"],executing:["research","implementation","integration","validation","review","decision"]},
  MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","max"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
  GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
- FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"]],
- FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/},
+ FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"],["holds","Holds"]],
+ FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/,holds:/^hold\./},
  FAM=[["f-fail",/^(job\.verify_failed|merge\.conflict)$/],["f-job",/^(job|merge)\./],["f-review",/^review\./],["f-decision",/^(decision|amendment)$/],["f-gate",/^(spec|plan|execution|task)\./]],
  STALE=60, // minutes; mirrors STALE_RUNNING_MINUTES in sae_lib/common.py
- S={repo:null,task:null,tab:"overview",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
+ S={repo:null,task:null,tab:"plan",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
  TOKEN=(D.querySelector('meta[name="sae-token"]')||{}).content||"", // embedded by the server; sent with every change
  own=(o,k)=>o&&k!=null&&Object.prototype.hasOwnProperty.call(o,k)?o[k]:undefined,
  LSg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSs=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -57,7 +57,7 @@ var T=()=>own(TASKS,S.task)||null,
  tokens=j=>(j.attempts||[]).reduce((s,a)=>s+(a.tokens||0),0),
  resultPath=(id,j)=>({research:"research/",review:"reviews/",decision:"decisions/"}[j.kind]||"jobs/")+id+(/^(research|review|decision)$/.test(j.kind)?".md":".result.md"),
  reviewsOf=(t,id)=>jf(t,j=>j.kind==="review"&&j.target===id),
- revInfo=(t,id)=>{var j=JS(t)[id],rs=reviewsOf(t,id),l=rs.length&&JS(t)[rs[rs.length-1]];return j.kind==="review"?{v:j.verdict}:l?l.verdict?{v:l.verdict}:{x:"in review"}:j.review?{x:"review due"}:{}},
+ revInfo=(t,id)=>{var j=JS(t)[id],rs=reviewsOf(t,id),l=rs.length&&JS(t)[rs[rs.length-1]];return j.kind==="review"?{v:j.verdict}:l?l.verdict?{v:l.verdict}:{x:"in review"}:(own(t.review_marks||{},id)||{}).reviewed?{x:"review due"}:{}}, // the effective mark (flag and review points), never the flag alone
  settingsOf=t=>{var s=t.settings;return s&&s.levels&&s.review&&Array.isArray(s.review.points)?s:null},
  vlimit=(t,s)=>s.max_verify_failures==null?t.settings_default_max_verify_failures:s.max_verify_failures,
  cdTo=it=>"cd "+shq(it&&it.checkout||IDX.root)+" && ",
@@ -136,7 +136,7 @@ var pill=s=>'<span class="pill k-'+s+'"><i aria-hidden="true">'+(GL[s]||"")+"</i
  tbl=(c,heads,rows)=>'<div class="box tw"><table class="'+c+'"><thead><tr>'+heads.split(",").map(h=>'<th class="'+({"~":"n","-":"hm"}[h[0]]||"")+'">'+h.replace(/^[~-]/,"")+"</th>").join("")+"</tr></thead><tbody>"+rows.join("")+"</tbody></table></div>",
  tr=(cells,attrs)=>"<tr"+(attrs||"")+">"+cells.map(c=>Array.isArray(c)?'<td class="'+c[0]+'">'+c[1]+"</td>":"<td>"+c+"</td>").join("")+"</tr>",
  dl=pairs=>'<dl class="kv">'+pairs.filter(p=>p[1]!==""&&p[1]!=null).map(p=>"<dt>"+p[0]+"</dt><dd>"+p[1]+"</dd>").join("")+"</dl>",
- cpi=(text,short)=>'<button class="cpi" data-act="copy" data-copy="'+esc(text)+'" aria-label="Copy command: '+esc(short)+'" title="Copy command: '+esc(short)+'"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg></button>',
+ cpi=(text,short,what)=>'<button class="cpi" data-act="copy" data-copy="'+esc(text)+'" aria-label="'+esc((what||"Copy command: ")+short)+'" title="'+esc((what||"Copy command: ")+short)+'"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg></button>',
  cpy=(text,label)=>'<button class="btn sm" data-act="copy" data-copy="'+esc(text)+'">'+(label||"Copy command")+"</button>",
  dt=(k,label,body)=>'<details data-k="'+esc(k)+'"'+(OPEN[k]?" open":"")+"><summary><b>"+esc(label)+"</b></summary>"+body+"</details>",
  docs=(k,list,f)=>'<div class="box docs">'+list.map(d=>dt(k+d,d,/\.log$/.test(d)?'<pre class="log">'+esc(f[d])+"</pre>":doc(f[d],d))).join("")+"</div>",
@@ -163,7 +163,7 @@ var EFFORTS=["low","medium","high","xhigh","max","ultra"],
 function projectSwitch(){var P=PROJ||[],cur=P.find(x=>x.key===S.repo);if(P.length<2)return"<b>"+esc(cur?cur.name:IDX?IDX.repo:"sae")+"</b>";
   return'<select class="proj" data-act="proj" aria-label="Project">'+P.map(x=>'<option value="'+esc(x.key)+'"'+(x.key===S.repo?" selected":"")+' title="'+esc(x.path)+'">'+esc(x.name)+"</option>").join("")+"</select>"}
 function renderTop(){var it=IT(S.task),th=D.documentElement.dataset.theme||"dark";
-  $("#top").innerHTML='<button class="menu" data-act="side" aria-label="Tasks"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.5"/></svg></button>'+
+  $("#top").innerHTML='<button class="menu" data-act="side" aria-label="Show or hide the task list" aria-expanded="'+!$("#app").classList.contains("sc")+'"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.5"/></svg></button>'+
    '<div class="crumb">'+projectSwitch()+(it?'<span>/</span><span class="t">'+esc(it.title)+"</span>":"")+"</div>"+
    '<div class="live" title="Read live from the repository; this page asks again every few seconds.">'+(IDX?'<span class="hm">Last updated '+esc(clock(IDX.generated))+' · </span><span class="sm">Updated </span><span data-ago="'+esc(IDX.generated)+'">'+esc(ago(IDX.generated))+"</span>":"No data")+"</div>"+
    '<div class="seg" role="radiogroup" aria-label="Theme">'+["dark","light"].map(m=>'<button role="radio" data-act="theme" data-m="'+m+'" aria-checked="'+(th===m)+'">'+(m==="dark"?"Dark":"Light")+"</button>").join("")+"</div>"}
@@ -173,6 +173,9 @@ var BAR=["done","running","parked","failed","pending"],
  fold=(k,n,cls,label,cnt)=>'<button class="sx '+cls+'" data-act="fold" data-k="'+k+'" data-n="'+n+'" data-nav aria-expanded="'+!shut(k,n)+'"><svg class="cv" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>'+label+'<span class="n">'+cnt+"</span></button>",
  pmark=p=>'<i class="pd" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>",
  since=(p,iso)=>p==="done"?"finished "+agoH(iso):p==="abandoned"?"abandoned "+agoH(iso):active(iso);
+// where a task is ([VIEWER-ALL-WORKTREES]): its task worktree, the home checkout, .tasks/done/ or another checkout
+var where=t=>{var l=t.location,pth=t.location_path||t.checkout||"",kept=t.phase==="done"&&t.worktree;
+  return!l&&!t.checkout?"":'<span class="tm" title="'+esc(pth)+'"><span>'+esc(l==="checkout"||!l?"in …/"+pth.split(/[\\\/]/).pop():l==="done"?"in .tasks/done/":"in "+l)+"</span>"+(kept?"<span>worktree kept for testing</span>":"")+"</span>"};
 function renderSide(){if(!IDX){$("#side").innerHTML="";return}var ts=IDX.tasks,bl=IDX.backlog||[],
   item=(on,a,v,title,meta,more,cls)=>'<button class="ti'+(on?" on":"")+(cls||"")+'" data-act="'+a+'" data-'+(a==="bl"?"f":"id")+'="'+esc(v)+'" data-nav'+(on?' aria-current="true"':"")+'><span class="tt">'+esc(title)+'</span><span class="tm">'+meta+"</span>"+(more||"")+"</button>",
   h='<div class="ssec">'+fold("tasks",0,"top","Tasks",ts.length);
@@ -180,18 +183,19 @@ function renderSide(){if(!IDX){$("#side").innerHTML="";return}var ts=IDX.tasks,b
     PHASES.forEach(p=>{var L=ts.filter(t=>t.phase===p[0]),k="ph:"+p[0],sh=shut(k,L.length);if(!L.length)return;
       h+='<div class="sgrp">'+fold(k,L.length,"p-"+p[0],pmark(p[0])+p[1],L.length);
       L.forEach(t=>{if(sh&&t.id!==S.task)return;var c=t.counts||{},tot=BAR.reduce((v,x)=>v+(c[x]||0),0),
-        right=t.parked?pill("parked").replace("parked</span>",t.parked+" parked</span>"):p[0]==="planning"&&t.plan_approved?"<span>plan approved</span>":"",
+        right=(t.parked?pill("parked").replace("parked</span>",t.parked+" parked</span>"):"")+(t.holds&&!/^(done|abandoned)$/.test(p[0])?' <span class="tag" title="'+esc(plural(t.holds,"hold"))+'">⏸ held</span>':"")||(p[0]==="planning"&&t.plan_approved?"<span>plan approved</span>":""),
         bar=tot?'<span class="sbw" title="'+esc(BAR.filter(x=>c[x]).map(x=>c[x]+" "+x).join(", "))+'"><span class="sbar">'+BAR.filter(x=>c[x]).map(x=>'<i class="k-'+x+'" style="flex:'+c[x]+'"></i>').join("")+"</span><b>"+(c.done||0)+"/"+tot+"</b></span>":"";
-        h+=item(t.id===S.task,"task",t.id,t.title||t.id,"<span>"+since(p[0],t.last_change)+"</span>"+right,bar+(t.checkout?'<span class="tm mono" title="'+esc(t.checkout)+'">in …/'+esc(t.checkout.split(/[\\\/]/).pop())+"</span>":""),/^(done|abandoned)$/.test(p[0])?" mu":"")});
+        h+=item(t.id===S.task,"task",t.id,t.title||t.id,"<span>"+since(p[0],t.last_change)+"</span>"+right,bar+where(t),/^(done|abandoned)$/.test(p[0])?" mu":"")});
       h+="</div>"})}
-  h+='</div><div class="ssec">'+fold("backlog",0,"top","Backlog",bl.length)+(shut("backlog",0)?"":bl.map(b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>")).join("")||empty("Empty."))+"</div>";
+  h+='</div><div class="ssec">'+fold("backlog",0,"top","Backlog",bl.length)+(shut("backlog",0)?"":bl.map(b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>"+(b.picked_up_by?'<span class="tag" title="'+esc("Picked up by "+b.picked_up_by)+'">picked up</span>':""))).join("")||empty("Empty."))+"</div>";
+  var dr=IDX.drafts||[];h+='<div class="ssec">'+fold("drafts",0,"top","Decision drafts",(IDX.open_drafts||0)+" open")+(shut("drafts",0)?"":dr.map(d=>item(S.bl===d.file,"bl",d.file,d.title,"<span>"+esc((d.type||"draft")+" · "+(d.status||"proposed"))+"</span>")).join("")||empty("None."))+"</div>";
   $("#side").innerHTML=h}
 function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   if(!IDX||!it){m.innerHTML='<div class="wrap">'+empty(!IDX?(ERR?esc(ERR):PROJ&&!PROJ.length?"No repository yet. Run <code>sae view</code> in a repository.":"Loading…"):IDX.tasks.length?"Select a task.":"No tasks yet. Start one with <code>sae new</code>.")+"</div>";return}
   var s=t&&settingsOf(t);
   if(t){cnt.jobs=Object.keys(js).length;cnt.timeline=(t.events||[]).length;cnt.reviews=jf(t,j=>j.kind==="review").length;cnt.decisions=evs(t,FT.decisions).length+jf(t,j=>j.kind==="decision").length}
   cnt.findings=(IDX.findings||[]).length;
-  h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.checkout?'<span title="'+esc(it.checkout)+'">in '+code("…/"+it.checkout.split(/[\\\/]/).slice(-2).join("/"))+"</span>":"")+"</div></div>"+
+  h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.worktree?'<span class="wt" title="'+esc(it.worktree)+'"><span class="mut">task worktree</span> '+code("…/"+it.worktree.split(/[\\\/]/).slice(-2).join("/"))+cpi(it.worktree,it.worktree,"Copy path: ")+"</span>":it.location?'<span title="'+esc(it.location_path||"")+'"><span class="mut">in</span> '+esc(it.location==="done"?".tasks/done/":it.location==="checkout"?"…/"+String(it.location_path||"").split(/[\\\/]/).pop():it.location)+"</span>":"")+"</div></div>"+
    '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
   if(t)h+=headerCard(t); // settings.js: the settings card, editable in place
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0];return'<button role="tab" id="tab-'+x[0]+'" aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(cnt[x[0]]?"<i>"+cnt[x[0]]+"</i>":"")+"</button>"}).join("")+"</div>";
@@ -200,7 +204,9 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
   if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth}
 function renderPanel(){var p=$("#panel"),t=T(),h="",x='<button class="btn ic" data-act="close" aria-label="Close">✕</button>';
-  if(S.bl&&IDX){var b=(IDX.backlog||[]).find(x=>x.file===S.bl),c=b&&cdTo(null)+IDX.sae+" new "+shq(b.title)+" --from "+b.file;if(b)h='<div class="ph"><h2 class="sans">'+esc(b.title)+"</h2>"+x+'</div><div class="meta">'+code(b.file)+"<span>"+agoH(b.created)+"</span>"+(b.source?"<span>from "+code(b.source)+"</span>":"")+"</div>"+
+  var dft=S.bl&&IDX&&(IDX.drafts||[]).find(x=>x.file===S.bl);
+  if(dft)h='<div class="ph"><h2 class="sans">'+esc(dft.title)+"</h2>"+x+'</div><div class="meta">'+code(dft.file)+"<span>"+esc((dft.type||"draft")+" · "+(dft.status||"proposed"))+"</span>"+(dft.source?"<span>from "+code(dft.source)+"</span>":"")+"</div>"+'<div class="sec">'+md(dft.text,{meta:false})+"</div>";
+  else if(S.bl&&IDX){var b=(IDX.backlog||[]).find(x=>x.file===S.bl),c=b&&cdTo(null)+IDX.sae+" new "+shq(b.title)+" --from "+b.file;if(b)h='<div class="ph"><h2 class="sans">'+esc(b.title)+"</h2>"+x+'</div><div class="meta">'+code(b.file)+"<span>"+agoH(b.created)+"</span>"+(b.source?"<span>from "+code(b.source)+"</span>":"")+"</div>"+
     sec("Start it as a task",'<div class="cmdrow"><pre class="cmd">'+esc(c)+"</pre>"+cpy(c,"Copy")+"</div>")+sec("Intent",blankDoc(b.text)?notYet("intent.md"):md(front(b.text)[1].replace(/^#\s.*$/m,""),{meta:false}))}
   else if(S.job&&t&&!/^(jobs|findings)$/.test(S.tab)){var j=JO(t,S.job),g=!j&&own(changes(t).r.removed,S.job);if(j||g)h='<div class="ph"><div><h2>'+esc(S.job)+'</h2><div class="meta">'+esc(j?j.kind+" · "+j.difficulty+(j.final?" · final":""):g.kind+" · removed")+"</div></div>"+x+'</div><div class="sec">'+jobBody(t,S.job)+"</div>"}
   p.hidden=!h;p.innerHTML=h}
@@ -213,8 +219,8 @@ function render(){var k=fkey(D.activeElement),ps=$("#panel").scrollTop;
 /* ---------- state, hash, polling ---------- */
 function readHash(){var q={},dec=v=>{try{return decodeURIComponent(v)}catch(e){return""}};
   location.hash.slice(1).split("&").forEach(p=>{var k=p.split("=");if(k[0])q[dec(k[0])]=dec(k.slice(1).join("="))});
-  S.repo=q.repo||null;S.task=q.task||null;S.tab=q.tab==="graph"?"plan":TABS.some(x=>x[0]===q.tab)?q.tab:"overview";S.job=q.job||null;S.doc=q.doc||null;S.f=own(FT,q.filter)?q.filter:"all";S.bl=q.backlog||null}
-function writeHash(){var q=[["repo",S.repo],["task",S.task],["tab",S.tab!=="overview"&&S.tab],["job",S.job],["doc",S.tab==="spec"&&S.doc],["filter",S.tab==="timeline"&&S.f!=="all"&&S.f],["backlog",S.bl]].filter(p=>p[1]).map(p=>p[0]+"="+encodeURIComponent(p[1])).join("&");
+  S.repo=q.repo||null;S.task=q.task||null;S.tab=TABS.some(x=>x[0]===q.tab)?q.tab:"plan";S.job=q.job||null;S.doc=q.doc||null;S.f=own(FT,q.filter)?q.filter:"all";S.bl=q.backlog||null}
+function writeHash(){var q=[["repo",S.repo],["task",S.task],["tab",S.tab!=="plan"&&S.tab],["job",S.job],["doc",S.tab==="spec"&&S.doc],["filter",S.tab==="timeline"&&S.f!=="all"&&S.f],["backlog",S.bl]].filter(p=>p[1]).map(p=>p[0]+"="+encodeURIComponent(p[1])).join("&");
   try{history.replaceState(null,"","#"+q)}catch(e){location.hash=q}}
 function pickTask(){if(!IDX||IT(S.task))return;var ts=IDX.tasks;S.task=(ts.find(t=>t.phase==="executing")||ts.find(t=>!/done|abandoned/.test(t.phase))||ts[0]||{}).id||null}
 // reads go to the server: GET /api/projects, /api/repo, /api/task (scripts/sae_lib/server.py)
@@ -240,6 +246,8 @@ function copy(text,btn){var o=btn.innerHTML,done=()=>{btn.innerHTML=btn.classNam
   if(navigator.clipboard&&W.isSecureContext)navigator.clipboard.writeText(text).then(done,fb);else fb()}
 /* ---------- events ---------- */
 var side=o=>$("#app").classList.toggle("so",o),
+ narrow=()=>W.matchMedia&&W.matchMedia("(max-width:860px)").matches,
+ collapse=()=>{var c=$("#app").classList.toggle("sc");LSs("sae-side",c?"closed":"open");renderTop();refocus($("#top"),"side||")},
  panelOn=()=>!$("#panel").hidden,
  // the panel closes on ✕, Escape or a click outside it; focus goes back to what opened it
  closePanel=()=>{var k=OPENER;OPENER="";go({job:null,bl:null});refocus(D,k)},
@@ -257,7 +265,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),p=$("#pop"
   else if(a==="fold"){FOLD[d.k]=!shut(d.k,+d.n||0);LSs("sae-fold",JSON.stringify(FOLD));renderSide();refocus($("#side"),fkey(e))}
   else if(a==="filter")go({f:d.f});
   else if(a==="doc")go({doc:d.d});
-  else if(a==="side")side();
+  else if(a==="side")e.closest("#top")&&!narrow()?collapse():side();
   else if(a==="theme"){D.documentElement.dataset.theme=d.m;LSs("sae-theme",d.m);renderTop()}
   else if(a==="copy")copy(d.copy,e);
   else if(a==="help")help(e)}); // settings.js handles its own controls (data-act sx…, hc…)
@@ -265,16 +273,19 @@ D.addEventListener("change",ev=>{var e=ev.target,a=e.dataset&&e.dataset.act;if(a
 D.addEventListener("toggle",ev=>{var k=ev.target.dataset&&ev.target.dataset.k;if(k&&ev.target.tagName==="DETAILS"){if(ev.target.open)OPEN[k]=1;else delete OPEN[k];LSs("sae-open",JSON.stringify(OPEN))}},true);
 D.addEventListener("keydown",ev=>{var e=ev.target,k=ev.key,i,n=TABS.length;
   if(k==="Escape"){$("#tip").hidden=true;if(!$("#pop").hidden)$("#pop").hidden=true;else if($("#app").classList.contains("so"))side(false);else if(panelOn())closePanel();return}
-  if((k==="Enter"||k===" ")&&e.matches("g.nd,tr[data-act]")){ev.preventDefault();e.dispatchEvent(new MouseEvent("click",{bubbles:true}))}
+  if((k==="Enter"||k===" ")&&e.matches("g[data-act],tr[data-act]")){ev.preventDefault();e.dispatchEvent(new MouseEvent("click",{bubbles:true}))}
   else if(e.getAttribute("role")==="tab"&&/^(ArrowLeft|ArrowRight|Home|End)$/.test(k)){i=TABS.findIndex(x=>x[0]===S.tab);i=k==="Home"?0:k==="End"?n-1:(i+(k==="ArrowRight"?1:-1)+n)%n;ev.preventDefault();go({tab:TABS[i][0],job:null});$("#tab-"+TABS[i][0]).focus()}
   else if(e.closest("#side")&&/^Arrow(Down|Up)$/.test(k)){var L=[...D.querySelectorAll("#side [data-nav]")],j=L.indexOf(e);if(j>=0){ev.preventDefault();L[Math.max(0,Math.min(L.length-1,j+(k==="ArrowDown"?1:-1)))].focus()}}});
 // timeline overview: one hover state per job row across the label column and the chart, and a tooltip for marks
 var hov=null,rz=0;
 D.addEventListener("mouseover",ev=>{var r=ev.target.closest&&ev.target.closest(".gt [data-row]"),k=r&&r.dataset.row||null;if(k===hov)return;hov=k;
   D.querySelectorAll(".gt .hov").forEach(x=>x.classList.remove("hov"));if(k)D.querySelectorAll(".gt [data-row]").forEach(x=>{if(x.dataset.row===k)x.classList.add("hov")})});
-D.addEventListener("mousemove",ev=>{var el=ev.target.closest&&ev.target.closest("[data-tip]"),tp=$("#tip");if(!el){tp.hidden=true;tp._el=null;return}
-  if(tp._el!==el){var L=el.dataset.tip.split("\n");tp.innerHTML="<b>"+esc(L[0])+"</b>"+(L.length>1?"\n"+esc(L.slice(1).join("\n")):"");tp._el=el;tp.hidden=false}
-  var w=tp.offsetWidth,h=tp.offsetHeight,x=ev.clientX+14,y=ev.clientY+18;if(x+w>W.innerWidth-8)x=Math.max(8,ev.clientX-w-14);if(y+h>W.innerHeight-8)y=Math.max(8,ev.clientY-h-12);tp.style.left=x+"px";tp.style.top=y+"px"});
+// data-tip is plain text (first line bold); data-tiph is HTML the page built with esc()
+var tipFill=el=>{var tp=$("#tip");if(tp._el!==el){if(el.dataset.tiph!=null)tp.innerHTML=el.dataset.tiph;else{var L=el.dataset.tip.split("\n");tp.innerHTML="<b>"+esc(L[0])+"</b>"+(L.length>1?"\n"+esc(L.slice(1).join("\n")):"")}tp._el=el;tp.hidden=false}return tp},
+ tipAt=(tp,cx,cy,below)=>{var w=tp.offsetWidth,h=tp.offsetHeight,x=cx+(below?0:14),y=cy+(below?6:18);if(x+w>W.innerWidth-8)x=Math.max(8,W.innerWidth-w-8);if(y+h>W.innerHeight-8)y=Math.max(8,cy-h-12);tp.style.left=x+"px";tp.style.top=y+"px"};
+D.addEventListener("mousemove",ev=>{var el=ev.target.closest&&ev.target.closest("[data-tip],[data-tiph]"),tp=$("#tip");if(!el){if(!tp._kb){tp.hidden=true;tp._el=null}return}tp._kb=false;tipAt(tipFill(el),ev.clientX,ev.clientY)});
+D.addEventListener("focusin",ev=>{var el=ev.target.closest&&ev.target.closest("[data-tiph],[data-tip]"),tp=$("#tip");if(!el||el!==ev.target){tp.hidden=true;tp._el=null;return}var r=el.getBoundingClientRect();tp._kb=true;tipAt(tipFill(el),r.left,r.bottom,true)});
+D.addEventListener("focusout",()=>{var tp=$("#tip");if(tp._kb){tp.hidden=true;tp._el=null;tp._kb=false}});
 D.addEventListener("mouseleave",()=>{$("#tip").hidden=true});
 W.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(S.tab==="timeline")renderMain()},150)});
 W.addEventListener("hashchange",()=>{var tk=S.task,rk=S.repo;readHash();if(S.repo!==rk){IDX=null;isig="";render();return poll()}pickTask();render();if(S.task!==tk)loadTask()});
@@ -282,4 +293,4 @@ D.addEventListener("visibilitychange",()=>{if(D.hidden)clearTimeout(timer);else 
 setInterval(()=>D.querySelectorAll("[data-ago]").forEach(e=>{e.textContent=ago(e.dataset.ago)}),30000);
 
 // classic scripts: task-views.js and settings.js are loaded when the document is parsed
-D.addEventListener("DOMContentLoaded",()=>{readHash();render();poll()});
+D.addEventListener("DOMContentLoaded",()=>{$("#app").classList.toggle("sc",LSg("sae-side")==="closed");readHash();render();poll()});
