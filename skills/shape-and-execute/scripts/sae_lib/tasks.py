@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import fcntl
 import json
 from pathlib import Path
@@ -19,6 +20,7 @@ from .common import (
     write_json,
 )
 from .config import settings_diff, settings_errors
+from .gitutil import git, git_ok, worktree_paths
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 
 
@@ -27,6 +29,7 @@ def tasks_dir(root: Path) -> Path:
 
 
 def list_task_ids(root: Path) -> list[str]:
+    """Task IDs at the top of this checkout's `.tasks/` (not `.tasks/done/`, not other worktrees)."""
     folder = tasks_dir(root)
     if not folder.is_dir():
         return []
@@ -34,26 +37,100 @@ def list_task_ids(root: Path) -> list[str]:
                   if p.is_dir() and TASK_ID_RE.match(p.name) and (p / "state.json").exists())
 
 
-def resolve_task(root: Path, ref: str) -> str:
+@dataclasses.dataclass
+class TaskCopy:
+    """One copy of a task folder in one checkout of the repository."""
+    task_id: str
+    checkout: Path      # the worktree that holds the folder
+    folder: Path        # .tasks/<id>/ or .tasks/done/<id>/
+    live: bool          # untracked in its worktree: the copy sae writes to
+    last_change: str
+
+
+def task_checkouts(root: Path) -> list[Path]:
+    """Every checkout of the repository: `root` first, then the other worktrees (home checkout,
+    task worktrees, job worktrees, other checkouts). Without git: `root` only."""
+    if not git_ok(root, "rev-parse", "--git-dir"):
+        return [root]
+    resolved = root.resolve()
+    return [root] + [p for p in worktree_paths(root) if p.resolve() != resolved]
+
+
+def task_copies(root: Path) -> list[TaskCopy]:
+    copies = []
+    is_git = git_ok(root, "rev-parse", "--git-dir")
+    for checkout in task_checkouts(root):
+        folders = []
+        for base in (tasks_dir(checkout), tasks_dir(checkout) / "done"):
+            if base.is_dir():
+                folders += [p for p in base.iterdir()
+                            if p.is_dir() and TASK_ID_RE.match(p.name) and (p / "state.json").exists()]
+        if not folders:
+            continue
+        tracked = set(git(checkout, "ls-files", "--", ".tasks", check=False).splitlines()) if is_git else set()
+        for folder in folders:
+            last = ""
+            with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+                last = read_json(folder / "state.json")["task"].get("last_change") or ""
+            state = (folder / "state.json").relative_to(checkout).as_posix()
+            copies.append(TaskCopy(folder.name, checkout, folder, state not in tracked, last))
+    return copies
+
+
+def locate_tasks(root: Path) -> dict[str, TaskCopy]:
+    """Task ID → the copy that counts ([TASK-WORKTREE], DL-110): searched in `.tasks/` and
+    `.tasks/done/` of every worktree. The live (untracked) copy wins over a committed record;
+    among equals the newest `task.last_change` wins."""
+    best: dict[str, TaskCopy] = {}
+    for copy in task_copies(root):
+        current = best.get(copy.task_id)
+        if current is None or (copy.live, copy.last_change) > (current.live, current.last_change):
+            best[copy.task_id] = copy
+    return best
+
+
+def find_task(root: Path, ref: str) -> TaskCopy:
     ref = ref.rstrip("/").split("/")[-1]
-    ids = list_task_ids(root)
-    if ref in ids:
-        return ref
-    matches = [i for i in ids if i.endswith(ref)]
+    located = locate_tasks(root)
+    if ref in located:
+        return located[ref]
+    matches = sorted(i for i in located if i.endswith(ref))
     if len(matches) == 1:
-        return matches[0]
+        return located[matches[0]]
     if not matches:
-        fail(EXIT_USAGE, f"No task matches {ref!r} in {tasks_dir(root)}.")
+        fail(EXIT_USAGE, f"No task matches {ref!r} in any worktree of {root}.")
     fail(EXIT_USAGE, f"{ref!r} matches several tasks: {', '.join(matches)}. Use more of the ID.")
 
 
-class Task:
-    """One task folder. Changes are buffered and written by `save()`."""
+def resolve_task(root: Path, ref: str) -> str:
+    return find_task(root, ref).task_id
 
-    def __init__(self, root: Path, task_id: str):
+
+def picked_up_items(located: dict[str, TaskCopy]) -> dict[str, str]:
+    """Backlog file → the live task (not done or abandoned) that came from it ([BACKLOG-PICKUP])."""
+    picked = {}
+    for task_id, copy in located.items():
+        with contextlib.suppress(OSError, json.JSONDecodeError, KeyError):
+            if read_json(copy.folder / "state.json")["task"]["phase"] in ("done", "abandoned"):
+                continue
+            first = read_text(copy.folder / "events.jsonl", "").split("\n", 1)[0]
+            item = ((json.loads(first) if first.strip() else {}).get("from") or {}).get("file")
+            if item:
+                picked[item] = task_id
+    return picked
+
+
+class Task:
+    """One task folder. Changes are buffered and written by `save()`.
+
+    `root` is the checkout that holds the live folder: the home checkout while shaping and
+    planning, the task worktree during execution, the checkout itself for an old task executing
+    in place. `move_to` rebinds both when `sae start` moves the folder."""
+
+    def __init__(self, root: Path, task_id: str, folder: Path | None = None):
         self.root = root
         self.id = task_id
-        self.dir = tasks_dir(root) / task_id
+        self.dir = folder or tasks_dir(root) / task_id
         self.state: dict = {}
         self.settings: dict = {}
         self.new_events: list[dict] = []
@@ -88,6 +165,16 @@ class Task:
     @property
     def uses_worktrees(self) -> bool:
         return bool(self.info.get("git")) and self.info.get("layout") == "worktrees"
+
+    @property
+    def worktree(self) -> Path | None:
+        """The task worktree, or None (not started, no git, or an old task executing in place)."""
+        path = self.info.get("worktree")
+        return Path(path) if path else None
+
+    def move_to(self, root: Path) -> None:
+        self.root = root
+        self.dir = tasks_dir(root) / self.id
 
     def job(self, job_id: str) -> dict:
         if job_id not in self.jobs:
@@ -153,7 +240,8 @@ class Task:
 def open_task(root: Path, ref: str):
     """Locks the task, loads it, and saves it when the block ends without an exception.
     After the lock is released, a changed task re-renders the viewer data."""
-    task = Task(root, resolve_task(root, ref))
+    copy = find_task(root, ref)
+    task = Task(copy.checkout, copy.task_id, copy.folder)
     with (task.dir / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         task.load()

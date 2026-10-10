@@ -11,8 +11,16 @@ from pathlib import Path
 from .common import EXIT_GIT, TASK_ID_RE, fail
 
 
+# sae's own git operations run without the owner's hooks ([GIT-HOOKS-OFF-FOR-SAE], DL-115):
+# a hook that rewrites a tracked file would dirty the task worktree after every merge.
+# Workers commit with their hooks; they never go through this module.
+HOOKS_OFF = ["-c", "core.hooksPath=/dev/null"]
+
+
 def run(cmd: list[str], cwd: Path, check: bool = False, timeout: float | None = None,
         env: dict | None = None) -> subprocess.CompletedProcess:
+    if cmd and cmd[0] == "git":
+        cmd = ["git", *HOOKS_OFF, *cmd[1:]]
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, check=check,
                           timeout=timeout, env=env)
 
@@ -38,11 +46,33 @@ def hash8(path: Path) -> str:
     return hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:8]
 
 
+def worktree_paths(root: Path) -> list[Path]:
+    """Every worktree of the repository that exists on disk, the main worktree first."""
+    listing = git(root, "worktree", "list", "--porcelain", check=False)
+    paths = [Path(line[len("worktree "):]) for line in listing.splitlines() if line.startswith("worktree ")]
+    return [p for p in paths if p.is_dir()]
+
+
+def main_worktree(root: Path) -> Path:
+    """The repository's main worktree: the first entry of `git worktree list` (DL-140)."""
+    listing = git(root, "worktree", "list", "--porcelain", check=False)
+    for line in listing.splitlines():
+        if line.startswith("worktree "):
+            return Path(line[len("worktree "):])
+    return root
+
+
+def repo_cache_name(root: Path) -> str:
+    """`<repo>-<hash8>` of the worktree cache, named after the main worktree."""
+    main = main_worktree(root)
+    return f"{main.name}-{hash8(main)}"
+
+
 def find_root() -> tuple[Path, bool]:
     """The repository root and whether it is a git repository.
 
-    A job worktree (`<worktrees.root>/<repo>-<hash8>/<task-id>/<JOB-ID>`) resolves to its main
-    checkout, so a worker's `sae finding new` writes to the one live `.tasks/`."""
+    A task or job worktree (`<worktrees.root>/<repo>-<hash8>/<task-id>/task|<JOB-ID>`) resolves
+    to the main worktree. Commands with a task argument find the task in any worktree anyway."""
     cwd = Path.cwd()
     top = None
     with contextlib.suppress(FileNotFoundError):
