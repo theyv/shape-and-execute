@@ -13,10 +13,8 @@ from pathlib import Path
 from .common import (
     DEFAULT_MAX_VERIFY_FAILURES,
     EXIT_OK,
-    JOB_ID_RE,
     SKILL_DIR,
     STAMPED_FILE_RE,
-    TASK_ID_RE,
     VIEWER_VERSION,
     emit,
     iso,
@@ -28,9 +26,9 @@ from .common import (
     warn,
     write_atomic,
 )
-from .gitutil import find_root, git, git_ok
+from .gitutil import find_root
 from .markdown import first_heading, split_frontmatter
-from .tasks import list_task_ids, resolve_task, tasks_dir
+from .tasks import TaskCopy, locate_tasks, picked_up_items, resolve_task, tasks_dir
 
 
 def render_viewer_safely(root: Path, task_ids: list[str] | None = None) -> Path | None:
@@ -53,12 +51,12 @@ def render_viewer(root: Path, task_ids: list[str] | None = None) -> Path:
             shutil.copyfile(shell, target)
     else:
         warn(f"viewer shell {shell} is missing; data only")
-    checkouts = task_locations(root)
-    index = build_index(root, checkouts)
+    located = locate_tasks(root)
+    index = build_index(root, located)
     write_atomic(viewer / "data" / "index.js", "window.SAE_INDEX = " + json.dumps(index, ensure_ascii=False) + ";\n")
-    wanted = set(checkouts) if task_ids is None else set(task_ids) & set(checkouts)
+    wanted = set(located) if task_ids is None else set(task_ids) & set(located)
     for task_id in sorted(wanted):
-        data = build_task_data(checkouts[task_id] / task_id)
+        data = build_task_data(located[task_id].folder)
         write_atomic(viewer / "data" / f"{task_id}.js",
                      "window.SAE_TASKS = window.SAE_TASKS || {};\n"
                      f"window.SAE_TASKS[{json.dumps(task_id)}] = " + json.dumps(data, ensure_ascii=False) + ";\n")
@@ -73,43 +71,19 @@ def viewer_version(path: Path) -> int:
     return int(m.group(1)) if m else 0
 
 
-def task_locations(root: Path) -> dict[str, Path]:
-    """Task ID → the .tasks folder that holds its newest copy, across every checkout of the
-    repository except job worktrees."""
-    checkouts = [root]
-    if git_ok(root, "rev-parse", "--git-dir"):
-        listing = git(root, "worktree", "list", "--porcelain", check=False)
-        for line in listing.splitlines():
-            if line.startswith("worktree "):
-                path = Path(line[len("worktree "):])
-                if path.resolve() != root.resolve() and not is_job_worktree(path):
-                    checkouts.append(path)
-    found: dict[str, tuple[str, Path]] = {}
-    for checkout in checkouts:
-        for task_id in list_task_ids(checkout):
-            folder = tasks_dir(checkout)
-            with contextlib.suppress(OSError, json.JSONDecodeError, KeyError):
-                last = read_json(folder / task_id / "state.json")["task"].get("last_change", "")
-                if task_id not in found or last > found[task_id][0]:
-                    found[task_id] = (last, folder)
-    return {task_id: folder for task_id, (_, folder) in found.items()}
-
-
-def is_job_worktree(path: Path) -> bool:
-    return bool(TASK_ID_RE.match(path.parent.name)) and bool(JOB_ID_RE.match(path.name))
-
-
 def stamped_items(folder: Path) -> list[Path]:
     if not folder.is_dir():
         return []
     return sorted((p for p in folder.glob("*.md") if STAMPED_FILE_RE.match(p.name)), reverse=True)
 
 
-def build_index(root: Path, locations: dict[str, Path]) -> dict:
+def build_index(root: Path, located: dict[str, TaskCopy]) -> dict:
+    """Every task of the repository ([TASK-WORKTREE], [DONE-FOLDER]): found in `.tasks/` and
+    `.tasks/done/` of every worktree, the live copy first."""
     tasks = []
-    for task_id, folder in locations.items():
+    for task_id, copy in located.items():
         with contextlib.suppress(OSError, json.JSONDecodeError, KeyError):
-            state = read_json(folder / task_id / "state.json")
+            state = read_json(copy.folder / "state.json")
             counts: dict[str, int] = {}
             for job in state["jobs"].values():
                 counts[job["status"]] = counts.get(job["status"], 0) + 1
@@ -117,10 +91,9 @@ def build_index(root: Path, locations: dict[str, Path]) -> dict:
             entry = {"id": task_id, "title": info.get("title"), "phase": info.get("phase"),
                      "last_change": info.get("last_change"), "counts": counts,
                      "parked": counts.get("parked", 0), "plan_approved": "plan" in info.get("approvals", {}),
-                     "branch": info.get("branch")}
-            checkout = folder.parent
-            if checkout.resolve() != root.resolve():
-                entry["checkout"] = str(checkout)
+                     "branch": info.get("branch"), "worktree": info.get("worktree")}
+            if copy.checkout.resolve() != root.resolve():
+                entry["checkout"] = str(copy.checkout)
             tasks.append(entry)
     tasks.sort(key=lambda t: t["id"], reverse=True)
     findings = []
@@ -130,11 +103,13 @@ def build_index(root: Path, locations: dict[str, Path]) -> dict:
                          "type": meta.get("type"), "confidence": meta.get("confidence"),
                          "source": meta.get("source"), "created": stamp_time(path.name), "text": body})
     backlog = []
+    picked = picked_up_items(located)
     for path in stamped_items(tasks_dir(root) / "backlog"):
         meta, body = split_frontmatter(read_text(path, ""))
         title = first_heading(body) or path.stem
         backlog.append({"file": rel(path, root), "title": re.sub(r"^Intent:\s*", "", title),
-                        "source": meta.get("source"), "created": stamp_time(path.name), "text": body})
+                        "source": meta.get("source"), "created": stamp_time(path.name), "text": body,
+                        "picked_up_by": picked.get(rel(path, root))})
     return {
         "generated": iso(), "viewer_version": VIEWER_VERSION, "repo": root.name, "root": str(root),
         "sae": sae_prefix(), "tasks": tasks, "findings": findings, "backlog": backlog,
