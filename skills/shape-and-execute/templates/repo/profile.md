@@ -1,5 +1,6 @@
 ---
 # artifact_language: en   # optional: pin the artifact language for everyone in this repository
+# adr_folder: docs/adr     # optional: where accepted decision records go
 ---
 
 # Repo profile

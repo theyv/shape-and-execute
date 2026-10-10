@@ -31,8 +31,9 @@ orchestrator may adapt it during execution.
 - Read-only work (research, review, audits) parallelizes well. Many writers on shared files
   do not.
 - Set a difficulty per job: `mechanical`, `normal` or `hard`. It selects the model.
-- Flag a job for review (`--review`) when it is risky, security-sensitive, architecturally
-  central, or hard to check with tests.
+- Flag a job for review (`--review`) only when job reviews are on (`selected-jobs` or
+  `all-jobs` among the review points in `settings.json`), and then when it is risky,
+  security-sensitive, architecturally central, or hard to check with tests.
 - Decide the final validation. Add one `--final` validation job when several workstreams meet,
   behavior crosses system boundaries, acceptance or end-to-end tests matter, or regression
   risk is real. For a small chain, the last job's validation is enough.
@@ -55,6 +56,12 @@ orchestrator may adapt it during execution.
      risks and adaptation triggers, **riskiest assumptions**.
 4. Run `sae check <task>` until it reports no errors. Fix warnings that point to a real
    problem.
+
+## After a plan review
+
+When you are resumed with a plan review, check each finding against the intent, the spec, the
+plan and the code before you change anything. Apply the findings that hold. Do not apply one
+you believe wrong: list it under `## Disputed findings` in your result, with the reason.
 
 ## Authority
 

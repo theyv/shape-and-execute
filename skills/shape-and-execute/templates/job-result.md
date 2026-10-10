@@ -17,6 +17,10 @@ changes: made         # made | none
 <!-- Only when status is parked.
 **Discovery:** … **Why blocked:** … **Decision required:** … **Known options:** … -->
 
+## Disputed findings
+<!-- Only when your job answers a review. Each review finding you believe wrong and did not
+     implement: the review file and finding number, why it is wrong, the evidence. -->
+
 ## Risks
 <!-- Work for later is not a risk: file it as a `follow-up` finding. -->
 
