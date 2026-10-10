@@ -139,6 +139,7 @@ class Task:
         self.new_events: list[dict] = []
         self.dirty = False
         self.saved = False
+        self.closed = False     # loaded as done or abandoned: save() refuses ([FINISHED-TASKS-READ-ONLY])
 
     # paths
     @property
@@ -206,6 +207,9 @@ class Task:
         if errors:
             fail(EXIT_USAGE, f"{self.settings_path}: " + "; ".join(errors))
         self.settings = settings
+        self.closed = self.phase in CLOSED_PHASES
+        if self.closed:
+            return  # a finished record logs no settings change
         seen = self.info.get("settings_seen")
         if seen != settings:
             changes = settings_diff(seen or {}, settings)
@@ -233,6 +237,8 @@ class Task:
         return events + self.new_events
 
     def save(self) -> None:
+        if self.closed:
+            refuse_closed(self.id, self.phase)
         self.info["last_change"] = iso()
         write_json(self.state_path, self.state)
         if self.new_events:
@@ -244,18 +250,30 @@ class Task:
         self.saved = True
 
     def write_settings(self, settings: dict) -> None:
+        if self.closed:
+            refuse_closed(self.id, self.phase)
         write_json(self.settings_path, settings)
         self.settings = settings
         self.info["settings_seen"] = settings
         self.dirty = True
 
 
+def refuse_closed(task_id: str, phase: str):
+    fail(EXIT_USAGE, f"The task is {phase}; its record is read-only: {task_id}.")
+
+
 @contextlib.contextmanager
-def open_task(root: Path, ref: str):
+def open_task(root: Path, ref: str, closed_ok: bool = False):
     """Locks the task, loads it, and saves it when the block ends without an exception (the
     block may also save it earlier). After the lock is released, a saved task re-renders the
-    viewer data."""
+    viewer data.
+
+    A done or abandoned task is refused ([FINISHED-TASKS-READ-ONLY]) unless `closed_ok`, which
+    only reading commands pass; its `save()` refuses either way. A block may still close an
+    active task (finish, abandon)."""
     copy = find_task(root, ref)
+    if not closed_ok and task_phase(copy) in CLOSED_PHASES:
+        refuse_closed(copy.task_id, task_phase(copy))
     task = Task(copy.checkout, copy.task_id, copy.folder)
     with (task.dir / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

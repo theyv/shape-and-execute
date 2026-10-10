@@ -109,7 +109,7 @@ def task_status_data(task: Task) -> dict:
 def cmd_status(args) -> int:
     root, _ = find_root()
     if args.task:
-        with open_task(root, args.task) as task:
+        with open_task(root, args.task, closed_ok=True) as task:
             data = task_status_data(task)
         lines = [f"{data['title']}", f"{data['task']} · phase: {data['phase']}"
                  + (f" · branch: {data['branch']}" if data["branch"] else "")

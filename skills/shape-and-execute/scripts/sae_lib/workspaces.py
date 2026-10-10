@@ -199,10 +199,15 @@ def unpreserved_work(worktree: Path, copies_from: list[Path] | tuple = ()) -> li
     """Tracked changes and untracked files that are not ignored. Ignored files (setup copies,
     dependencies) do not count, nor an untracked file byte-identical to the same path in one of
     `copies_from` (the files `sae start` copies into the task worktree)."""
+    return worktree_status(worktree, copies_from)[0]
+
+
+def worktree_status(worktree: Path, copies_from: list[Path] | tuple = ()) -> tuple[list[str], list[str]]:
+    """One `git status` read: (unpreserved work, verified setup copies)."""
     proc = run(["git", "status", "--porcelain", "-z", "--untracked-files=all"], worktree)
     if proc.returncode != 0:
-        return [f"(git status failed: {proc.stderr.strip()})"]
-    work, entries = [], proc.stdout.split("\0")
+        return [f"(git status failed: {proc.stderr.strip()})"], []
+    work, copies, entries = [], [], proc.stdout.split("\0")
     i = 0
     while i < len(entries):
         entry = entries[i]
@@ -213,9 +218,10 @@ def unpreserved_work(worktree: Path, copies_from: list[Path] | tuple = ()) -> li
         if code[0] in "RC":
             i += 1  # -z puts the rename source in the next field
         if code == "??" and setup_copy(worktree, path, copies_from):
+            copies.append(path)
             continue
         work.append(path)
-    return work
+    return work, copies
 
 
 def setup_copy(worktree: Path, path: str, copies_from) -> bool:
@@ -245,13 +251,13 @@ def remove_clean_worktree(repo: Path, path: Path, copies_from: list[Path] | tupl
         run(["git", "worktree", "prune"], repo)
         remove_empty_cache_folders(path)
         return None
-    work = unpreserved_work(path, copies_from)
+    work, copies = worktree_status(path, copies_from)
     if work:
         return f"it holds uncommitted work: {work_text(work)}"
-    proc = run(["git", "status", "--porcelain", "-z", "--untracked-files=all"], path)
-    for entry in proc.stdout.split("\0"):
-        if entry.startswith("?? "):  # only proven copies are left: delete them, or git refuses
-            (path / entry[3:]).unlink()
+    for copy in copies:  # only the copies verified above, each checked again: git refuses them
+        if setup_copy(path, copy, copies_from):
+            (path / copy).unlink()
+    # Anything created since the status read makes this plain remove fail: the worktree stays.
     proc = run(["git", "worktree", "remove", str(path)], repo)
     if proc.returncode != 0:
         return f"git refused to remove it: {(proc.stderr or proc.stdout).strip()}"

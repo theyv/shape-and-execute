@@ -38,9 +38,11 @@ from .routing import resolve_model
 from .tasks import (
     CLOSED_PHASES,
     Task,
+    TaskCopy,
     ensure_tasks_folder,
     find_task,
     list_task_ids,
+    locate_tasks,
     open_task,
     parked_reason,
     result_file,
@@ -441,36 +443,47 @@ def sourced_items(task: Task, folders=("findings", "backlog", "adr")) -> list[Pa
     return found
 
 
-def move_finished_tasks(task: Task) -> list[str]:
+def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
     """`sae finish` ([DONE-FOLDER], DL-117): moves this task's folder into `.tasks/done/`, and every
-    other finished or abandoned task committed at the top of `.tasks/` (`git mv`). Untracked
-    folders of other tasks stay: they belong to live work. Returns the old paths of moved records."""
-    folder = tasks_dir(task.root)
+    other task at the top of `.tasks/` whose phase is done or abandoned, tracked or not, from this
+    checkout and from the home checkout. Tasks in any other phase are live and stay. Returns
+    (old path, new path, tracked) of each moved record."""
     task.move_into_done()
-    if not task.info.get("git"):
-        return []
-    tracked = set(git(task.root, "ls-files", "--", ".tasks", check=False).splitlines())
+    root = task.root
+    located = locate_tasks(root)
+    checkouts = [root]
+    home = Path(task.info.get("home") or root)
+    if task.info.get("git") and home.is_dir() and home.resolve() != root.resolve():
+        checkouts.append(home)  # `abandon` returns records there, untracked
+    tracked = set(git(root, "ls-files", "--", ".tasks", check=False).splitlines()) if task.info.get("git") else set()
     moved = []
-    for other in list_task_ids(task.root):
-        state = folder / other / "state.json"
-        if other == task.id or rel(state, task.root) not in tracked:
-            continue
-        with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
-            if json.loads(state.read_text())["task"]["phase"] in CLOSED_PHASES \
-                    and not (folder / "done" / other).exists():
-                git(task.root, "mv", "--", f".tasks/{other}", f".tasks/done/{other}")
-                moved.append(f".tasks/{other}")
+    for checkout in checkouts:
+        for other in list_task_ids(checkout):
+            source, dest = tasks_dir(checkout) / other, tasks_dir(root) / "done" / other
+            counting = located.get(other)
+            if other == task.id or dest.exists() or counting is None or task_phase(counting) not in CLOSED_PHASES \
+                    or task_phase(TaskCopy(other, checkout, source, True, "")) not in CLOSED_PHASES:
+                continue
+            old, new = f".tasks/{other}", f".tasks/done/{other}"
+            in_git = checkout == root and f"{old}/state.json" in tracked
+            if in_git:
+                git(root, "mv", "--", old, new)
+            else:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source), str(dest))
+            moved.append((old, new, in_git))
     return moved
 
 
-def commit_task_record(task: Task, moved: list[str], out: list[str]) -> None:
+def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list[str]) -> None:
     root = task.root
     paths = [f".tasks/done/{task.id}"] + [rel(p, root) for p in sourced_items(task)]
     for extra in (".tasks/repo", ".tasks/.gitignore", ".tasks/.gitattributes"):
         if (root / extra).exists():
             paths.append(extra)
+    paths += [new for _, new, _ in moved]
     git(root, "add", "--", *paths)
-    paths += [p for old in moved for p in (old, old.replace(".tasks/", ".tasks/done/", 1))]
+    paths += [old for old, _, in_git in moved if in_git]  # an untracked old path is unknown to git
     staged = git(root, "diff", "--cached", "--name-only", "--", *paths)
     if not staged:
         return
