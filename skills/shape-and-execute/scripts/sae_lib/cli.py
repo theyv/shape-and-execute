@@ -12,7 +12,7 @@ from .lifecycle import register_abandon, register_finish, register_new, register
 from .planning import register_approve, register_check, register_job, register_set
 from .progress import register_dispatch, register_next, register_status
 from .reviews import register_collect, register_merge
-from .setup_mode import register_setup
+from .setup_mode import register_project, register_setup
 from .viewer import register_view
 
 
@@ -62,10 +62,12 @@ def build_parser() -> argparse.ArgumentParser:
     register_log(sub, command)
     finding = register_finding(sub, command)
     setup = register_setup(sub, command)
+    project = register_project(sub, command)
     register_doctor(sub, command)
 
     fill_missing_help(parser)
-    for name, group in (("job", job), ("decision", decision), ("finding", finding), ("setup", setup)):
+    for name, group in (("job", job), ("decision", decision), ("finding", finding), ("setup", setup),
+                        ("project", project)):
         group.set_defaults(func=lambda args, g=group: (g.print_help(), EXIT_USAGE)[1])
     return parser
 
@@ -85,7 +87,7 @@ ARGUMENT_HELP = {
     "final": "the final validation job; runs after every other job and review",
     "fix_of": "the writer job this fix job repairs; it works in that job's workspace and branch",
     "needs": "comma list of job IDs that must be done first (writers: also merged)",
-    "difficulty": "mechanical | normal | hard; with the phase level it selects the model rung",
+    "difficulty": "mechanical | normal | hard; with the phase level it selects the routing cell",
     "kind": "what the job does",
     "allow_dirty": "start although tracked files outside .tasks/ have uncommitted changes",
     "open": "open the URL in the default browser",

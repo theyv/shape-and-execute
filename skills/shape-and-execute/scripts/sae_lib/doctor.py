@@ -28,7 +28,7 @@ def cmd_doctor(args) -> int:
     check(sys.version_info >= (3, 10), f"Python {platform.python_version()}", "Install Python 3.10 or newer.")
     config, config_ok = None, False
     try:
-        config = load_config()
+        config = load_config(allow_old=True)
         errors = validate_config(config)
         config_ok = not errors
         check(config_ok, f"config {config_path()}" + ("" if config_ok else ": " + "; ".join(errors)),
@@ -44,11 +44,11 @@ def cmd_doctor(args) -> int:
     check(bool(harness), f"harness: {harness or 'not detected'}",
           "Set SAE_HARNESS=claude|codex, or pass --harness to new and start.")
     if config_ok:
-        other = [h for h in config["rungs"] if h != harness]
+        other = [h for h in config["models"] if h != harness]
         for name in other:
             check(bool(shutil.which(name)) or None, f"{name} CLI on PATH (only for cross-model review)",
                   f"Install {name}, or set the review provider to {harness}.")
-    if shutil.which("codex") or (config_ok and "codex" in config["rungs"]):
+    if shutil.which("codex") or (config_ok and "codex" in config["models"]):
         cap = codex_subagent_cap()
         check(cap["ok"], codex_cap_text(cap).splitlines()[0],
               f"Set [agents] max_threads = {cap['recommended']} in {cap['config']} (setup mode can do it).")
