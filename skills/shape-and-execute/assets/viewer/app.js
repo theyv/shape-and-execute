@@ -4,8 +4,7 @@
 var D=document,W=window,$=s=>D.querySelector(s);
 var TABS=[["plan","Plan"],["overview","Overview"],["jobs","Jobs"],["timeline","Timeline"],["reviews","Reviews"],["decisions","Decisions"],["spec","Intent & Spec"],["findings","Findings"]],
  PHASES=[["executing","Executing"],["planning","Planning"],["shaping","Shaping"],["done","Done"],["abandoned","Abandoned"]],
- WR={implementation:1,integration:1},RTP={shaping:"spec",planning:"plan"},
- KBP={shaping:["research","review"],planning:["planning","research","review"],executing:["research","implementation","integration","validation","review","decision"]},
+ WR={implementation:1,integration:1},
  MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","max"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
  GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
  FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"],["holds","Holds"]],
@@ -37,19 +36,16 @@ var esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";"),
  plural=(n,w)=>n+" "+w+(n===1?"":"s"),
  slug=s=>String(s).replace(/^\d{4}-\d{2}-\d{2}-\d{4}--/,"");
 
-/* ---------- data: mirrors sae's readiness rules (waits_for) ---------- */
+/* ---------- data: readiness and waiting reasons come from the server (graph.waits_for, as `sae next`) ---------- */
 var T=()=>own(TASKS,S.task)||null,
  IT=id=>IDX&&IDX.tasks.find(t=>t.id===id),
  JS=t=>t&&t.state&&t.state.jobs||{},
  JO=(t,id)=>own(JS(t),id),
  jf=(t,f)=>{var js=JS(t);return Object.keys(js).filter(k=>f(js[k],k))},
  evs=(t,re)=>(t.events||[]).filter(e=>re.test(e.type)),
- kindOk=(t,j)=>{var p=t.state.task.phase;return(KBP[p]||[]).includes(j.kind)&&(j.kind!=="review"||!RTP[p]||j.target===RTP[p])},
- waits=(t,id)=>{var js=JS(t),j=js[id],r=[],i=t.state.task,wt=i.git&&i.layout==="worktrees";
-  j.needs.forEach(n=>{var o=js[n];if(!o)r.push(n+" (unknown job)");else if(o.status!=="done")r.push(n);else if(WR[o.kind]&&wt&&!o.merged&&j.target!==n)r.push(n+" (merge)")});
-  if(j.final){var op=jf(t,(o,k)=>k!==id&&o.status!=="done");if(op.length)r.push("all other jobs: "+op.join(", "))}
-  if(!kindOk(t,j))r.push("phase "+i.phase);return r},
- stOf=(t,id)=>{var j=JS(t)[id];return j.status==="pending"&&!waits(t,id).length?"ready":j.status},
+ // t.waits: what each pending job waits for; a task the server could not load has none, so nothing shows ready
+ waits=(t,id)=>own(t.waits||{},id)||[],
+ stOf=(t,id)=>{var j=JS(t)[id],w=own(t.waits||{},id);return j.status==="pending"&&w&&!w.length?"ready":j.status},
  model=a=>a?a.model+(a.effort?" ("+a.effort+")":""):"",
  tierOf=a=>a.tier||a.rung||"", // attempts of old tasks name a rung
  lastA=j=>j.attempts&&j.attempts[j.attempts.length-1],
@@ -228,8 +224,10 @@ function pickTask(){if(!IDX||IT(S.task))return;var ts=IDX.tasks;S.task=(ts.find(
 // reads go to the server: GET /api/projects, /api/repo, /api/task (scripts/sae_lib/server.py)
 var enc=encodeURIComponent,
  api=(path,cb)=>fetch(path,{cache:"no-store",credentials:"same-origin"}).then(r=>r.json().then(d=>r.ok?cb(d,""):cb(null,d&&d.error||"HTTP "+r.status),()=>cb(null,"HTTP "+r.status)),e=>cb(null,"The viewer server does not answer. Run sae view again. ("+(e&&e.message||e)+")")),
- // every change: POST /api/<route> with the token; the server runs the same sae command
- post=(route,body)=>fetch("/api/"+route,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-SAE-Token":TOKEN},body:JSON.stringify(Object.assign({repo:S.repo},body))})
+ // every change: POST /api/<route> with the token; the server runs the same sae command in body.repo.
+ // The caller names the repository (and task) it made the change for, never the selection at send time:
+ // a queued save may leave after the owner switched projects ([VIEWER-SERVER]).
+ post=(route,body)=>!body||!body.repo?Promise.resolve({ok:false,error:"No repository for this change."}):fetch("/api/"+route,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json","X-SAE-Token":TOKEN},body:JSON.stringify(body)})
   .then(r=>r.json().catch(()=>({ok:false,error:"HTTP "+r.status})),e=>({ok:false,error:"The viewer server does not answer: "+(e&&e.message||e)}));
 // every callback ends in cb (the poll loop), even when drawing fails
 function loadTask(cb){var id=S.task,rk=S.repo;if(!id||!rk)return cb&&cb();
