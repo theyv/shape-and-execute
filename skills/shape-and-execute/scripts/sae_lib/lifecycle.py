@@ -1,0 +1,348 @@
+"""Commands new, start, finish and abandon; backlog pickup, task record and final report."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+from .common import (
+    EXIT_GATE,
+    EXIT_GIT,
+    EXIT_OK,
+    EXIT_USAGE,
+    HARNESSES,
+    SCHEMA_VERSION,
+    WRITER_KINDS,
+    emit,
+    fail,
+    file_stamp,
+    iso,
+    read_text,
+    rel,
+    slugify,
+    table,
+    write_atomic,
+    write_json,
+)
+from .config import cfg, load_config, new_task_settings, require_harness, settings_card
+from .gitutil import find_root, git, git_ok, git_user, run
+from .graph import parallel_possible
+from .markdown import split_frontmatter
+from .progress import next_text
+from .reviews import check_finish_gates, last_verdict, merge_job
+from .tasks import (
+    Task,
+    append_event_to,
+    ensure_tasks_folder,
+    open_task,
+    parked_reason,
+    resolve_task,
+    result_file,
+    tasks_dir,
+    template,
+)
+from .viewer import render_viewer_safely, stamped_items
+from .workspaces import (
+    job_branch,
+    remove_task_worktrees,
+    require_on_task_branch,
+    tracked_changes_outside_tasks,
+)
+
+
+def cmd_new(args) -> int:
+    root, is_git = find_root()
+    title = args.title.strip()
+    if not title:
+        fail(EXIT_USAGE, "The title is empty.")
+    slug = slugify(args.slug or title)
+    if args.backlog:
+        return new_backlog_item(args, root, title, slug)
+    settings = new_task_settings(load_config())
+    harness = require_harness(args.harness)
+    from_item = None
+    intent = template("intent.md").replace("<title>", title)
+    if args.from_file:
+        item = Path(args.from_file)
+        item = item if item.is_absolute() else (Path.cwd() / item)
+        text = read_text(item)
+        if text is None:
+            fail(EXIT_USAGE, f"No backlog item at {item}.")
+        meta, body = split_frontmatter(text)
+        intent = body.lstrip("\n")
+        from_item = {"file": rel(item, root), "source": meta.get("source")}
+    task_id = f"{file_stamp()}--{slug}"
+    folder = tasks_dir(root) / task_id
+    if folder.exists():
+        fail(EXIT_USAGE, f"Task {task_id} exists. Choose another --slug.")
+    ensure_tasks_folder(root)
+    folder.mkdir()
+    author = git_user(root)
+    write_atomic(folder / "intent.md", intent)
+    write_json(folder / "settings.json", settings)
+    state = {"schema": SCHEMA_VERSION, "task": {
+        "id": task_id, "title": title, "created": iso(), "author": author, "phase": "shaping", "git": is_git,
+        "layout": None, "orchestrator_harness": harness, "branch": None, "base": None, "approvals": {},
+        "settings_seen": settings, "last_change": iso()}, "jobs": {}}
+    write_json(folder / "state.json", state)
+    event = {"at": iso(), "type": "task.created", "title": title, "author": author}
+    if from_item:
+        event["from"] = from_item
+    write_atomic(folder / "events.jsonl", json.dumps(event, ensure_ascii=False) + "\n")
+    if from_item:
+        os.remove(root / from_item["file"])
+    render_viewer_safely(root, [task_id])
+    text = (f"Task: {task_id}\nFolder: {folder}\nIntent: {folder / 'intent.md'}\n"
+            f"Settings: {settings_card(settings)}")
+    if from_item:
+        text += f"\nPicked up from the backlog: {from_item['file']} (sae start commits its removal)."
+    emit(args, text, {"task": task_id, "folder": str(folder), "intent": str(folder / "intent.md"),
+                      "settings": settings, "from": from_item})
+    return EXIT_OK
+
+
+def new_backlog_item(args, root: Path, title: str, slug: str) -> int:
+    source = resolve_task(root, args.source) if args.source else None
+    ensure_tasks_folder(root)
+    path = tasks_dir(root) / "backlog" / f"{file_stamp()}--{slug}.md"
+    if path.exists():
+        fail(EXIT_USAGE, f"{path} exists. Choose another --slug.")
+    body = template("intent.md").replace("<title>", title)
+    front = f"---\nsource: {source}   # the task during which the owner deferred the work\n---\n\n" if source else ""
+    write_atomic(path, front + body)
+    if source:
+        append_event_to(root, source, "backlog.created", file=rel(path, root))
+    else:
+        render_viewer_safely(root, [])
+    emit(args, f"Backlog item: {path}", {"file": str(path), "source": source})
+    return EXIT_OK
+
+
+def cmd_start(args) -> int:
+    root, is_git = find_root()
+    config = load_config(required=False)
+    with open_task(root, args.task) as task:
+        if task.phase not in ("planning", "executing"):
+            fail(EXIT_USAGE, f"The task is in {task.phase}.")
+        if "plan" not in task.info["approvals"]:
+            fail(EXIT_GATE, f"The plan is not approved. Run: sae approve {task.id} plan")
+        if args.harness:
+            task.info["orchestrator_harness"] = args.harness
+        elif not task.info.get("orchestrator_harness"):
+            task.info["orchestrator_harness"] = require_harness(None)
+        lines = []
+        resumed = task.phase == "executing"
+        task.info["git"] = is_git
+        if is_git:
+            if not git_ok(root, "rev-parse", "--verify", "--quiet", "HEAD"):
+                fail(EXIT_GIT, "The repository has no commits. Make a first commit, then run sae start again.")
+            dirty = tracked_changes_outside_tasks(root)
+            if dirty and not args.allow_dirty:
+                fail(EXIT_GIT, "Tracked files outside .tasks/ have uncommitted changes: " + ", ".join(dirty[:10])
+                     + "\nCommit or stash them, or add --allow-dirty.")
+            branch = f"task/{task.id}"
+            current = git(root, "branch", "--show-current", check=False)
+            if git_ok(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"):
+                if current != branch:
+                    git(root, "switch", "--quiet", branch)
+            else:
+                task.info["base"] = {"branch": current or None, "commit": git(root, "rev-parse", "--short", "HEAD")}
+                git(root, "switch", "--quiet", "-c", branch)
+            task.info["branch"] = branch
+            if not task.info.get("base"):
+                task.info["base"] = {"branch": None, "commit": git(root, "rev-parse", "--short", "HEAD")}
+            commit_backlog_pickup(task, lines)
+        else:
+            lines.append("No git: no branches, worktrees or commits. Agents change files directly; nothing "
+                         "can undo their changes. Copy the folder first if you want a way back.")
+        if not task.info.get("layout"):
+            writers = [i for i, j in task.jobs.items() if j["kind"] in WRITER_KINDS]
+            chained = all(not parallel_possible(task.jobs, a, b) for x, a in enumerate(writers) for b in writers[x + 1:])
+            task.info["layout"] = "chain" if chained or not is_git else "worktrees"
+        if task.uses_worktrees:
+            cfg(config, "worktrees.root")
+            cfg(config, "parallel.max_writers")
+        task.info["phase"] = "executing"
+        task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
+                   layout=task.info["layout"], resumed=resumed)
+        lines.insert(0, f"Executing {task.id} · branch: {task.info.get('branch') or '-'} · layout: {task.info['layout']}")
+        lines += ["", next_text(task, config)]
+        emit(args, "\n".join(lines), {"task": task.id, "branch": task.info.get("branch"),
+                                      "layout": task.info["layout"], "base": task.info.get("base")})
+    return EXIT_OK
+
+
+def commit_backlog_pickup(task: Task, out: list[str]) -> None:
+    created = next((e for e in task.events() if e["type"] == "task.created"), {})
+    item = (created.get("from") or {}).get("file")
+    if not item or not git_ok(task.root, "cat-file", "-e", f"HEAD:{item}"):
+        return
+    git(task.root, "rm", "--quiet", "--cached", "--ignore-unmatch", "--", item)
+    git(task.root, "commit", "--quiet", "-m", f"{task.id}: picked up from backlog", "-m", f"Task: {task.id}",
+        "--", item)
+    out.append(f"Committed the removal of {item}.")
+
+
+def final_report(task: Task, with_open: bool) -> str:
+    jobs = task.jobs
+    events = task.events()
+    lines = [f"# Final report: {task.info['title']}", f"Task: {task.id}"]
+    finals = [i for i, j in jobs.items() if j["final"]]
+    if finals:
+        job = jobs[finals[0]]
+        lines += ["", "## Outcome", f"Final validation {finals[0]}: {job['status']} — {job.get('summary', '')}",
+                  f"Details per requirement: {result_file(task, finals[0])}"]
+    rows = [["job", "kind", "status", "attempts", "models", "tokens"]]
+    for job_id, job in jobs.items():
+        models = ", ".join(dict.fromkeys(a["model"] for a in job["attempts"])) or "-"
+        tokens = sum(a.get("tokens") or 0 for a in job["attempts"])
+        rows.append([job_id, job["kind"], job["status"] + (" ✓merged" if job["merged"] else ""),
+                     str(len(job["attempts"])), models, str(tokens) if tokens else "-"])
+    lines += ["", "## Jobs", table(rows, "")]
+    reviews = [e for e in events if e["type"] == "review.completed"]
+    if reviews:
+        lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}: {e['verdict']} ({e.get('provider')}, "
+                                       f"{e.get('model')})" for e in reviews]
+    agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"]
+    lines += ["", "## To check before you merge"]
+    lines += [f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
+              + (f" ({e['class']})" if e.get("class") else "") for e in agent] or ["- No agent decisions or amendments."]
+    if with_open:
+        open_items = [(i, j) for i, j in jobs.items() if j["status"] in ("pending", "parked", "failed")]
+        if open_items:
+            lines += ["", "## Open items"] + [f"- {i}: {j['status']} — {j.get('summary') or parked_reason(task, i)}"
+                                              for i, j in open_items]
+    created = [e.get("finding") or e.get("file") for e in events if e["type"] in ("finding.created", "backlog.created")]
+    if created:
+        lines += ["", "## Findings and backlog items from this task"] + [f"- {c}" for c in created]
+    lines += ["", "## Branch"]
+    if task.info.get("git"):
+        base = task.info.get("base") or {}
+        count = git(task.root, "rev-list", "--count", f"{base.get('commit')}..{task.info['branch']}", check=False)
+        lines.append(f"{task.info['branch']} (base {base.get('branch') or '-'} @ {base.get('commit')}), "
+                     f"{count or '?'} commits.")
+        lines.append("Nothing was pushed. Merge or open a merge request yourself.")
+    else:
+        lines.append("No git: the changes are in the working folder.")
+    return "\n".join(lines)
+
+
+def cmd_finish(args) -> int:
+    root, _ = find_root()
+    config = load_config(required=False)
+    with open_task(root, args.task) as task:
+        if task.phase != "executing":
+            fail(EXIT_USAGE, f"The task is in {task.phase}; finish needs executing.")
+        jobs = task.jobs
+        check_finish_gates(task, args.with_open)
+        out: list[str] = []
+        if task.info.get("git"):
+            require_on_task_branch(task)
+            for job_id, job in list(jobs.items()):
+                if (job["kind"] in WRITER_KINDS and job["status"] == "done" and not job["merged"]
+                        and not job.get("fix_of") and last_verdict(task, job_id) != "changes-required"
+                        and not any(j["kind"] == "review" and j.get("target") == job_id and j["status"] != "done"
+                                    for j in jobs.values())):
+                    code = merge_job(task, job_id, config, out)
+                    if code != EXIT_OK:
+                        emit(args, "\n".join(out), {"exit": code, "messages": out})
+                        return code
+            kept = remove_task_worktrees(task, config)
+            for job_id, job in jobs.items():
+                if job["merged"] and not job.get("fix_of"):
+                    run(["git", "branch", "-d", job_branch(task, job_id)], root)
+            if kept:
+                out.append("Worktrees kept (uncommitted changes): " + ", ".join(kept))
+        report = final_report(task, args.with_open)
+        head = git(root, "rev-parse", "--short", "HEAD") if task.info.get("git") else None
+        task.info["phase"] = "done"
+        task.event("task.finished", branch=task.info.get("branch"), commit=head)
+        task.save()
+        if task.info.get("git"):
+            commit_task_record(task, out)
+        emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out})
+    render_viewer_safely(root, [task.id])
+    return EXIT_OK
+
+
+def commit_task_record(task: Task, out: list[str]) -> None:
+    root = task.root
+    paths = [f".tasks/{task.id}"]
+    for folder in ("findings", "backlog"):
+        for path in stamped_items(tasks_dir(root) / folder):
+            source = str(split_frontmatter(read_text(path, ""))[0].get("source") or "")
+            if source == task.id or source.startswith(task.id + "/"):
+                paths.append(rel(path, root))
+    for extra in (".tasks/repo", ".tasks/.gitignore", ".tasks/.gitattributes"):
+        if (root / extra).exists():
+            paths.append(extra)
+    git(root, "add", "--", *paths)
+    staged = git(root, "diff", "--cached", "--name-only", "--", *paths)
+    if not staged:
+        return
+    git(root, "commit", "--quiet", "-m", f"{task.id}: task record", "-m", f"Task: {task.id}", "--", *paths)
+    out.append(f"Committed the task record on {task.info['branch']}.")
+
+
+def cmd_abandon(args) -> int:
+    root, _ = find_root()
+    config = load_config(required=False)
+    with open_task(root, args.task) as task:
+        if task.phase in ("done", "abandoned"):
+            fail(EXIT_USAGE, f"The task is {task.phase}.")
+        kept = remove_task_worktrees(task, config)
+        task.info["phase"] = "abandoned"
+        task.event("task.abandoned", reason=args.reason)
+        text = f"Abandoned {task.id}. Branches are kept."
+        if kept:
+            text += "\nWorktrees kept (uncommitted changes): " + ", ".join(kept)
+        emit(args, text, {"task": task.id, "kept_worktrees": kept})
+    return EXIT_OK
+
+
+def register_new(sub, command):
+    """Add the `new` command to the parser."""
+    p = command(sub, "new", "Create a task, or a backlog item with --backlog.",
+                "Creates .tasks/<id>/ with intent.md, settings.json (from the config defaults), state.json\n"
+                "(phase shaping) and events.jsonl. Prints the task ID and paths.\n"
+                "--from <file>: the backlog item becomes intent.md and leaves the backlog (sae start commits that).\n"
+                "--backlog: creates .tasks/backlog/<stamp>--<slug>.md for work the user deferred; no task, no config.",
+                ['new "Claims status self-service"', 'new "Billing export" --from .tasks/backlog/2026-10-06-1520--billing.md',
+                 'new "Billing export" --backlog --source claims-status'], [0, 1, 2], cmd_new)
+    p.add_argument("title")
+    p.add_argument("--slug", help="folder slug; default: from the title")
+    p.add_argument("--harness", choices=HARNESSES, help="orchestrator harness; default: detected")
+    p.add_argument("--from", dest="from_file", metavar="FILE", help="backlog item to turn into this task")
+    p.add_argument("--backlog", action="store_true", help="create a backlog item instead of a task")
+    p.add_argument("--source", metavar="TASK", help="with --backlog: the task during which the user deferred the work")
+
+
+def register_start(sub, command):
+    """Add the `start` command to the parser."""
+    p = command(sub, "start", "Begin execution: task branch, layout, then the first next.",
+                "Needs the plan approval. With git: refuses when tracked files outside .tasks/ have changes (unless\n"
+                "--allow-dirty), creates or switches to task/<id>, records the base, fixes the layout (chain or\n"
+                "worktrees), and commits the removal of a picked-up backlog item. Without git: prints the notice.",
+                ["start claims-status"], [0, 1, 2, 3, 4], cmd_start)
+    p.add_argument("task")
+    p.add_argument("--harness", choices=HARNESSES)
+    p.add_argument("--allow-dirty", action="store_true")
+
+
+def register_finish(sub, command):
+    """Add the `finish` command to the parser."""
+    p = command(sub, "finish", "Merge the rest, remove worktrees, commit the task record, print the final report.",
+                "Needs nothing running; nothing pending or parked unless --with-open; the final validation and a due\n"
+                "integration review done. Never pushes.", ["finish claims-status", "finish claims-status --with-open"],
+                [0, 1, 3, 4], cmd_finish)
+    p.add_argument("task")
+    p.add_argument("--with-open", action="store_true", help="the user accepts open jobs; they are listed in the report")
+
+
+def register_abandon(sub, command):
+    """Add the `abandon` command to the parser."""
+    p = command(sub, "abandon", "Stop a task: phase abandoned, worktrees removed, branches kept.", "",
+                ['abandon claims-status --reason "superseded by billing work"'], [0, 1], cmd_abandon)
+    p.add_argument("task")
+    p.add_argument("--reason", required=True)
