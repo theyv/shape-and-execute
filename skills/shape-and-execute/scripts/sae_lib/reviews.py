@@ -1,4 +1,4 @@
-"""Verify re-run, collect, review rounds, merges, integration review and finish gates."""
+"""Verify re-run, collect, review rounds, planned reviews, review marks, merges and finish gates."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from .common import (
     EXIT_VERIFY,
     VERDICTS,
     WRITER_KINDS,
+    SaeError,
     emit,
     fail,
     iso,
@@ -23,8 +24,17 @@ from .common import (
 )
 from .config import cfg, load_config, max_verify_failures
 from .gitutil import find_root, git, run
-from .graph import add_generated_job
+from .graph import (
+    add_generated_job,
+    fix_target,
+    integration_parked,
+    last_round,
+    place_final_after,
+    requires_changes,
+    review_rounds,
+)
 from .markdown import split_frontmatter
+from .routing import resolve_model
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
     job_branch,
@@ -79,24 +89,108 @@ def run_verify(task: Task, job_id: str, workdir: Path, config: dict) -> tuple[bo
     return True, None, None
 
 
-def review_due(task: Task, job_id: str) -> bool:
+MARK_REVIEW = "review"
+MARK_FORCED_REVIEW = "review · forced by settings"
+MARK_FORCED_NO_REVIEW = "no review · forced by settings"
+POSITIVE_VERDICTS = ("pass", "pass-with-notes")
+
+
+def review_mark(task: Task, job_id: str) -> dict | None:
+    """The effective review mark of a job ([JOB-REVIEW-FLAG-HONESTY], 07-cli-spec §10.4): the
+    planner's flag and the review points together. None when the job shows no mark (not a
+    writer, a fix job, or unflagged without `all-jobs`). `reviewed` says whether a job review
+    will run, `forced` whether the settings overrule the planner, `reason` why."""
+    job = task.jobs[job_id]
+    if job["kind"] not in WRITER_KINDS or job.get("fix_of"):
+        return None
     points = task.settings["review"]["points"]
-    return "all-jobs" in points or ("selected-jobs" in points and task.jobs[job_id].get("review"))
+    flagged = bool(job.get("review"))
+    if "all-jobs" in points:
+        if flagged:
+            return {"mark": MARK_REVIEW, "reviewed": True, "forced": False,
+                    "reason": "flagged by the planner; review points include all-jobs"}
+        return {"mark": MARK_FORCED_REVIEW, "reviewed": True, "forced": True,
+                "reason": "not flagged, but review points include all-jobs: every writer job is reviewed"}
+    if flagged and "selected-jobs" in points:
+        return {"mark": MARK_REVIEW, "reviewed": True, "forced": False,
+                "reason": "flagged by the planner; review points include selected-jobs"}
+    if flagged:
+        return {"mark": MARK_FORCED_NO_REVIEW, "reviewed": False, "forced": True,
+                "reason": "flagged by the planner, but job reviews are off "
+                          "(review points have neither selected-jobs nor all-jobs)"}
+    return None
+
+
+def review_due(task: Task, job_id: str) -> bool:
+    return bool((review_mark(task, job_id) or {}).get("reviewed"))
+
+
+def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
+    """The reviews that will run but do not exist yet (07-cli-spec §10.4), each with its future
+    ID, target, round, `needs` (its place in the graph), `needed_by` (the jobs that will need it)
+    and, with a config, the resolved harness, model and effort. Never stored, never counted in
+    progress."""
+    if task.phase not in ("shaping", "planning", "executing"):
+        return []
+    jobs = task.jobs
+    points = task.settings["review"]["points"]
+    planned: list[dict] = []
+
+    def plan(review_id: str, target: str, needs: list[str], needed_by: list[str]) -> None:
+        entry = {"id": review_id, "target": target, "round": 1, "needs": needs, "needed_by": needed_by,
+                 "harness": None, "model": None, "effort": None}
+        if config is not None:
+            try:
+                # A planned review ID resolves like a job (difficulty, overrides); exact=False: a
+                # read-only listing names Codex families and never reads the model catalog.
+                model = resolve_model(task, review_id, config, exact=False)
+                entry.update({"harness": model.get("harness"), "model": model.get("model"),
+                              "effort": model.get("effort")})
+            except SaeError:
+                pass  # incomplete routing: the review is still planned, without a model
+        planned.append(entry)
+
+    if "spec" in points and task.phase == "shaping" and not review_rounds(task, "spec"):
+        plan("REVIEW-SPEC", "spec", [], [])
+    if "plan" in points and task.phase in ("shaping", "planning") and not review_rounds(task, "plan"):
+        plan("REVIEW-PLAN", "plan", [], [])
+    for job_id, job in jobs.items():
+        if (review_due(task, job_id) and not job["merged"] and job["status"] not in ("failed",)
+                and not review_rounds(task, job_id) and f"REVIEW-{job_id}" not in jobs):
+            plan(f"REVIEW-{job_id}", job_id, [job_id], [])
+    if "integration" in points and not review_rounds(task, "integration") and "REVIEW-INTEGRATION" not in jobs:
+        writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+        if writers:
+            finals = [i for i, j in jobs.items() if j["final"]]
+            plan("REVIEW-INTEGRATION", "integration", writers, finals)
+    return planned
 
 
 def last_verdict(task: Task, target: str) -> str | None:
     verdict = None
-    for job_id, job in task.jobs.items():
-        if job["kind"] == "review" and job.get("target") == target and job["status"] == "done":
+    for review_id in review_rounds(task, target):
+        job = task.jobs[review_id]
+        if job["status"] == "done":
             verdict = job.get("verdict", verdict)
     return verdict
+
+
+def merged_after(task: Task, review_id: str) -> list[str]:
+    """Writer jobs merged after the review was last collected: a late merge ([NO-STALE-CHECKS])."""
+    seen, merged = False, []
+    for event in task.events():
+        if event["type"] == "review.completed" and event.get("job") == review_id:
+            seen, merged = True, []
+        elif seen and event["type"] == "job.merged" and event.get("job") in task.jobs:
+            merged.append(event["job"])
+    return merged
 
 
 def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> int:
     """Merges a done writer job (and its fix jobs) into the task branch, or only marks it
     merged in the chain layout and without git. Returns an exit code."""
     job = task.jobs[job_id]
-    group = [job_id] + [i for i, j in task.jobs.items() if j.get("fix_of") == job_id and j["status"] == "done"]
+    group = [job_id] + [i for i, j in task.jobs.items() if fix_target(task, i) == job_id and j["status"] == "done"]
     if job["kind"] == "integration" and job.get("target") in task.jobs:
         group.append(job["target"])
     commit = None
@@ -125,21 +219,37 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
         task.touch(task.jobs[member])
     task.event("job.merged", job=job_id, commit=commit)
     out.append(f"{job_id}: merged" + (f" into {task.info['branch']} ({commit})" if commit else ""))
+    reset_final_after_late_merge(task, job_id, group, out)
     return EXIT_OK
+
+
+def reset_final_after_late_merge(task: Task, job_id: str, group: list[str], out: list[str]) -> None:
+    """[NO-STALE-CHECKS]: a final validation that already ran goes back to pending; the next
+    integration round follows from materialize_integration_review."""
+    for final_id, final in task.jobs.items():
+        if final["final"] and final["status"] == "done" and final_id not in group:
+            final["status"] = "pending"
+            task.touch(final)
+            task.event("job.reset", job=final_id, reason=f"{job_id} merged after it ran", by="sae")
+            out.append(f"{final_id} is pending again: {job_id} merged after it ran.")
 
 
 def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[str]) -> int:
     """A writer job is done: add its review, or merge it."""
-    job = task.jobs[job_id]
-    target = job.get("fix_of")
+    target = fix_target(task, job_id)
     if target:
+        fixes = [i for i in task.jobs if fix_target(task, i) == target]
+        open_fixes = [i for i in fixes if task.jobs[i]["status"] in ("pending", "running")]
+        if open_fixes:
+            out.append(f"{target}: the next review round waits for {', '.join(open_fixes)}.")
+            return EXIT_OK
         rounds = task.jobs[target]["review_rounds"]
         if rounds >= 1:
             review_id = f"REVIEW-{target}-{rounds + 1}"
             if review_id not in task.jobs:
-                review = add_generated_job(task, review_id, "review", [job_id], "normal", target,
-                                           f"round {rounds + 1} after {job_id}")
-                review["round"] = rounds + 1
+                # Done is enough for the target and its fix jobs: they merge after this round (DL-94).
+                add_generated_job(task, review_id, "review", [target] + fixes, "normal", target,
+                                  f"round {rounds + 1} after {', '.join(fixes)}", round_=rounds + 1)
                 out.append(f"Added {review_id}: dispatch it.")
             return EXIT_OK
         return merge_job(task, target, config, out)
@@ -153,19 +263,47 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
 
 
 def materialize_integration_review(task: Task, out: list[str]) -> None:
+    """Adds the integration review round that is due (07-cli-spec §10.1): round 1 when every
+    writer job is merged; the next round when the fix jobs of a changes-required round are
+    merged (limited to its findings), or when a writer merged after a passed round (limited to
+    the new changes). Each round needs every writer job; the final validation needs the round."""
     if "integration" not in task.settings["review"]["points"] or task.phase != "executing":
         return
-    if any(j["kind"] == "review" and j.get("target") == "integration" for j in task.jobs.values()):
-        return
-    writers = [j for j in task.jobs.values() if j["kind"] in WRITER_KINDS]
-    if not writers or not all(j["merged"] for j in writers):
+    jobs = task.jobs
+    writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+    if not writers or not all(jobs[i]["merged"] for i in writers):
         return
     if any(j["status"] in ("pending", "running") and not j["final"] and j["kind"] != "review"
-           for j in task.jobs.values()):
+           for j in jobs.values()):
         return
-    add_generated_job(task, "REVIEW-INTEGRATION", "review", [], "normal", "integration",
-                      "every writer job is merged")
-    out.append("Added REVIEW-INTEGRATION: review the whole change.")
+    rounds = review_rounds(task, "integration")
+    if not rounds:
+        review_id, number, limit, since, reason = "REVIEW-INTEGRATION", 1, None, None, "every writer job is merged"
+    else:
+        previous = jobs[rounds[-1]]
+        if previous["status"] != "done":
+            return
+        if requires_changes(previous):
+            fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+            if not fixes:
+                return
+            limit, reason = "findings", f"fix jobs of {rounds[-1]} merged: {', '.join(fixes)}"
+        else:
+            late = merged_after(task, rounds[-1])
+            if not late:
+                return
+            limit, reason = "changes", f"merged after {rounds[-1]} passed: {', '.join(late)}"
+        number = (previous.get("round") or len(rounds)) + 1
+        review_id = f"REVIEW-INTEGRATION-{number}"
+        since = (previous["attempts"][-1] if previous["attempts"] else {}).get("head")
+        if review_id in jobs:
+            return
+    review = add_generated_job(task, review_id, "review", writers, "normal", "integration", reason, round_=number)
+    review["limit"], review["since"] = limit, since
+    place_final_after(task, review_id)
+    scope = {None: "review the whole change", "findings": f"check the findings of {rounds[-1] if rounds else ''}",
+             "changes": "review the changes since the last round"}[limit]
+    out.append(f"Added {review_id}: {scope}.")
 
 
 def interpret_result(kind: str, meta: dict, path: Path) -> tuple[str, str, dict]:
@@ -195,22 +333,117 @@ def interpret_result(kind: str, meta: dict, path: Path) -> tuple[str, str, dict]
     return status, str(meta.get("summary") or ""), {}
 
 
-def check_finish_gates(task: Task, with_open: bool) -> None:
-    """Refuse (exit 3) before `sae finish` merges anything: running or open jobs, final validation, integration review."""
+def finish_merges(task: Task) -> list[str]:
+    """Done writer jobs that `sae finish` would still merge."""
     jobs = task.jobs
+    return [i for i, j in jobs.items()
+            if j["kind"] in WRITER_KINDS and j["status"] == "done" and not j["merged"] and not fix_target(task, i)
+            and last_verdict(task, i) != "changes-required"
+            and not any(jobs[r]["status"] != "done" for r in review_rounds(task, i))]
+
+
+def fix_job_command(task: Task, target: str) -> str:
+    """The `sae job add` line of the next fix job of a job, or of an integration review round."""
+    stem = "INTEGRATION" if target in task.jobs and task.jobs[target]["kind"] == "review" else target
+    n = 1
+    while f"{stem}-FIX-{n}" in task.jobs:
+        n += 1
+    return (f"sae job add {task.id} {stem}-FIX-{n} --kind implementation --fix-of {target} "
+            f"--reason \"<finding>\"")
+
+
+def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
+    """[FINISH-VERDICT-GATE]: ([(review, fix-of target)], held-back jobs) for the last round of
+    the integration review, and of each job review of an unmerged job, that says
+    changes-required."""
+    jobs = task.jobs
+    blocks: list[tuple[str, str]] = []
+    held: set[str] = set()
+    last = last_round(task, "integration")
+    if last and requires_changes(jobs[last]):
+        blocks.append((last, last))
+        held |= {i for i, j in jobs.items() if j["final"] and j["status"] != "done"}
+    for job_id, job in jobs.items():
+        if job["kind"] not in WRITER_KINDS or job["merged"]:
+            continue
+        review = last_round(task, job_id)
+        if review and requires_changes(jobs[review]):
+            blocks.append((review, job_id))
+            held.add(job_id)
+    return blocks, held
+
+
+def stale_gate(task: Task) -> tuple[list[str], set[str]]:
+    """[NO-STALE-CHECKS]: (problems, held-back jobs) while checks do not cover the code that will
+    be closed. `finish` refuses before it merges a done writer when an integration review or a
+    final validation would then not cover it, so it never merges after its gates passed."""
+    jobs = task.jobs
+    problems: list[str] = []
+    held: set[str] = set()
+    integration = "integration" in task.settings["review"]["points"]
+    events = task.events()
+    for review_id in review_rounds(task, "integration"):
+        if jobs[review_id].get("limit") == "changes" and jobs[review_id]["status"] != "done":
+            problems.append(f"{review_id} (added by a late merge) has not run")
+            held.add(review_id)
+    for job_id, job in jobs.items():
+        if job["final"] and job["status"] != "done" and any(
+                e["type"] == "job.reset" and e.get("job") == job_id for e in events):
+            problems.append(f"{job_id} (reset by a late merge) has not run again")
+            held.add(job_id)
+    last = last_round(task, "integration")
+    if integration and last and jobs[last]["status"] == "done" and not requires_changes(jobs[last]):
+        late = merged_after(task, last)
+        if late:
+            problems.append(f"{', '.join(late)} merged after {last} passed; no round covers "
+                            f"{'it' if len(late) == 1 else 'them'} yet (sae next adds it)")
+            held |= {i for i, j in jobs.items() if j["final"] and j["status"] != "done"}
+    pending = finish_merges(task)
+    if pending and (integration or any(j["final"] for j in jobs.values())):
+        for job_id in pending:
+            problems.append(f"{job_id} is done but not merged: the checks would not cover it. "
+                            f"Merge it first: sae merge {task.id} {job_id}, then sae next {task.id}")
+    return problems, held
+
+
+def check_finish_gates(task: Task, with_open: bool, override: str | None) -> list[dict]:
+    """The gates of `sae finish` (07-cli-spec §8), checked before it merges anything. Refuses
+    (exit 3), or returns the gates that `--override` passes: [{"gate", "jobs"}]."""
+    jobs = task.jobs
+    forward = f"sae finish {task.id} --override \"<reason>\""
     running = [i for i, j in jobs.items() if j["status"] == "running"]
     if running:
-        fail(EXIT_GATE, f"Still running: {', '.join(running)}. Collect them first.")
-    open_jobs = [i for i, j in jobs.items() if j["status"] in ("pending", "parked")]
+        fail(EXIT_GATE, f"Still running: {', '.join(running)}. Collect them first: sae collect {task.id} <ID>")
+    verdicts, verdict_held = verdict_gate(task)
+    stale, stale_held = stale_gate(task)
+    held = verdict_held | stale_held
+    open_jobs = [i for i, j in jobs.items() if j["status"] in ("pending", "parked") and i not in held]
     if open_jobs and not with_open:
         fail(EXIT_GATE, f"Open jobs: {', '.join(open_jobs)}. Finish them, or add --with-open when the user "
                         "accepts open items.")
-    finals = [i for i, j in jobs.items() if j["final"] and j["status"] != "done"]
+    overridden: list[dict] = []
+    if verdicts:
+        if override is None:
+            lines = [f"Finish refused: {review} says changes-required." for review, _ in verdicts]
+            lines += ["Ways forward:"] + [f"  - fix jobs: {fix_job_command(task, target)}" for _, target in verdicts]
+            lines.append(f"  - or close anyway, with the owner's reason: {forward}")
+            fail(EXIT_GATE, "\n".join(lines))
+        overridden.append({"gate": "verdict", "jobs": [r for r, _ in verdicts] + sorted(verdict_held)})
+    if stale:
+        if override is None:
+            fail(EXIT_GATE, "\n".join(["Finish refused: the checks do not cover the code that will be closed."]
+                                      + [f"  - {p}" for p in stale]
+                                      + [f"Run the checks: sae next {task.id}. Or close anyway, with the owner's "
+                                         f"reason: {forward}"]))
+        overridden.append({"gate": "stale", "jobs": sorted(stale_held) + finish_merges(task)})
+    passed = held if override is not None else set()
+    finals = [i for i, j in jobs.items() if j["final"] and j["status"] != "done" and i not in passed]
     if finals:
-        fail(EXIT_GATE, f"The final validation {finals[0]} is not done.")
-    integration = [i for i, j in jobs.items() if j["kind"] == "review" and j.get("target") == "integration"]
-    if integration and jobs[integration[0]]["status"] != "done":
-        fail(EXIT_GATE, f"{integration[0]} is not done.")
+        fail(EXIT_GATE, f"The final validation {finals[0]} is not done. Next: sae next {task.id}")
+    last = last_round(task, "integration")
+    if last and jobs[last]["status"] != "done" and last not in passed:
+        fail(EXIT_GATE, f"{last} is not done. Next: sae dispatch {task.id} {last}")
+    return overridden
 
 
 def cmd_collect(args) -> int:
@@ -309,8 +542,10 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
     review = task.jobs[review_id]
     target, verdict = review.get("target"), review.get("verdict")
     model = review["attempts"][-1] if review["attempts"] else {}
-    task.event("review.completed", job=review_id, target=target, provider=model.get("harness"),
-               model=model.get("model"), verdict=verdict)
+    task.event("review.completed", job=review_id, target=target, round=review.get("round") or 1,
+               provider=model.get("harness"), model=model.get("model"), effort=model.get("effort"), verdict=verdict)
+    if target == "integration":
+        return apply_integration_review(task, review_id, out)
     if target not in task.jobs:
         out.append(f"Review of {target}: {verdict}. Read {result_file(task, review_id)}.")
         return EXIT_OK
@@ -331,12 +566,29 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
     return EXIT_OK
 
 
+def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
+    verdict = task.jobs[review_id].get("verdict")
+    if verdict in POSITIVE_VERDICTS:
+        out.append(f"{review_id}: {verdict}. The final validation can run.")
+        return EXIT_OK
+    forward = f"sae finish {task.id} --override \"<reason>\""
+    if integration_parked(task):
+        out.append(f"The task is parked: {review_id} still requires changes after a fix round. Ask the owner:\n"
+                   f"  - more fix jobs: {fix_job_command(task, review_id)}\n"
+                   f"  - or close anyway: {forward}")
+    else:
+        out.append(f"{review_id}: changes required. Add fix jobs (sae adds the next round when they are merged):\n"
+                   f"  {fix_job_command(task, review_id)}\n"
+                   f"or, on the owner's word, close anyway: {forward}")
+    return EXIT_OK
+
+
 def cmd_merge(args) -> int:
     root, _ = find_root()
     config = load_config(required=False)
     with open_task(root, args.task) as task:
         job = task.job(args.id)
-        if job["kind"] not in WRITER_KINDS or job.get("fix_of"):
+        if job["kind"] not in WRITER_KINDS or fix_target(task, args.id):
             fail(EXIT_USAGE, f"{args.id} is not a writer job that merges (fix jobs merge with their target).")
         if job["merged"]:
             fail(EXIT_USAGE, f"{args.id} is already merged.")

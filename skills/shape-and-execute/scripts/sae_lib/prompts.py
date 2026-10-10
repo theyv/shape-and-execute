@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .common import ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, read_text, sae_prefix
 from .config import cfg
+from .graph import fix_target, review_rounds
 from .markdown import split_frontmatter
 from .tasks import Task, job_file, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
@@ -46,13 +47,20 @@ def diff_command(task: Task, job_id: str, config: dict | None) -> str | None:
         end = job_branch(task, workspace_owner(task, job_id))
     else:
         commits = list(job["commits"])
-        for other in task.jobs.values():
-            if other.get("fix_of") == job_id:
+        for other_id, other in task.jobs.items():
+            if fix_target(task, other_id) == job_id:
                 commits += other["commits"]
         end = commits[-1] if commits else None
     if not start or not end:
         return None
     return f"git -C {shlex.quote(str(task.root))} diff {start}..{end}"
+
+
+def earlier_round(task: Task, review_id: str) -> str | None:
+    """The previous round of a review, or None for round 1."""
+    rounds = review_rounds(task, task.jobs[review_id].get("target"))
+    index = rounds.index(review_id) if review_id in rounds else 0
+    return rounds[index - 1] if index > 0 else None
 
 
 def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, model: dict,
@@ -87,8 +95,12 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         ]
         if job.get("fix_of"):
             target = job["fix_of"]
-            reviews = sorted((d / "reviews").glob(f"REVIEW-{target}*.md")) if (d / "reviews").is_dir() else []
-            lines.append(f"Fixes job {target}" + (f" — review to address: {reviews[-1]}" if reviews else ""))
+            if fix_target(task, job_id):
+                done = [r for r in review_rounds(task, target) if task.jobs[r]["status"] == "done"]
+                lines.append(f"Fixes job {target}" + (f" — review to address: {result_file(task, done[-1])}"
+                                                      if done else ""))
+            elif target in task.jobs:
+                lines.append(f"Fixes findings of {target} — review to address: {result_file(task, target)}")
         if kind == "integration" and job.get("target"):
             lines.append(f"Merge in progress in the workdir: {job_branch(task, job['target'])} into the task "
                          f"branch. Resolve the conflicts, keep both jobs' intent, commit the merge.")
@@ -137,8 +149,20 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
             base = (task.info.get("base") or {}).get("commit")
             lines += [pointer("Intent:                                ", intent),
                       pointer("Spec:                                  ", spec)]
-            if base and task.info.get("branch"):
-                lines.append(f"Diff — the whole change: git -C {shlex.quote(str(task.root))} diff {base}..{task.info['branch']}")
+            branch = task.info.get("branch")
+            git_c = f"git -C {shlex.quote(str(task.root))}"
+            previous = earlier_round(task, job_id)
+            since = job.get("since")
+            if previous and job.get("limit") == "changes":
+                lines.append(f"Round {job.get('round')} after a late merge — review only the changes since {previous}.")
+                if since and branch:
+                    lines.append(f"Diff — the new changes: {git_c} diff {since}..{branch}")
+            elif previous:
+                lines.append(f"Round {job.get('round')} — check only the findings of: {result_file(task, previous)}")
+                if since and branch:
+                    lines.append(f"Diff — the fixes: {git_c} diff {since}..{branch}")
+            elif base and branch:
+                lines.append(f"Diff — the whole change: {git_c} diff {base}..{branch}")
         else:
             lines += [pointer("Job file:                              ", job_file(task, target)),
                       pointer("Result:                                ", result_file(task, target)),
@@ -149,10 +173,9 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
             target_dir, _ = workspace_of(task, target, config)
             if target_dir != task.root and target_dir.exists():
                 lines.append(f"Job worktree (read only): {target_dir}")
-            if job.get("round", 1) > 1:
-                earlier = sorted((d / "reviews").glob(f"REVIEW-{target}*.md"))
-                if earlier:
-                    lines.append(f"Second round — check only the findings of: {earlier[-1]}")
+            previous = earlier_round(task, job_id)
+            if previous:
+                lines.append(f"Round {job.get('round')} — check only the findings of: {result_file(task, previous)}")
         lines += ["Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "review.md"
     else:  # decision
