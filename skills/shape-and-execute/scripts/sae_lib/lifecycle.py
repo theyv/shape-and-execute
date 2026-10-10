@@ -42,6 +42,7 @@ from .tasks import (
     ensure_tasks_folder,
     find_task,
     list_task_ids,
+    live_checkout,
     locate_tasks,
     open_task,
     parked_reason,
@@ -122,10 +123,8 @@ def new_backlog_item(args, root: Path, title: str, slug: str) -> int:
     finished source, or none, to the current checkout."""
     source, target = None, root
     if args.source:
-        copy = find_task(root, args.source)
-        source = copy.task_id
-        if copy.live and task_phase(copy) not in CLOSED_PHASES:
-            target = copy.checkout
+        source = find_task(root, args.source).task_id
+        target = live_checkout(root, source)
     ensure_tasks_folder(target)
     path = tasks_dir(target) / "backlog" / f"{file_stamp()}--{slug}.md"
     if path.exists():

@@ -33,7 +33,7 @@ from .graph import (
     requires_changes,
     review_rounds,
 )
-from .markdown import split_frontmatter
+from .markdown import md_section, split_frontmatter, strip_html_comments
 from .routing import resolve_model
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
@@ -224,14 +224,23 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
 
 
 def reset_final_after_late_merge(task: Task, job_id: str, group: list[str], out: list[str]) -> None:
-    """[NO-STALE-CHECKS]: a final validation that already ran goes back to pending; the next
+    """[NO-STALE-CHECKS]: a final validation that already ran goes back to pending; a running one
+    is marked `stale`, so its collection sends it back to pending instead of done. The next
     integration round follows from materialize_integration_review."""
     for final_id, final in task.jobs.items():
-        if final["final"] and final["status"] == "done" and final_id not in group:
+        if not final["final"] or final_id in group:
+            continue
+        if final["status"] == "done":
             final["status"] = "pending"
             task.touch(final)
             task.event("job.reset", job=final_id, reason=f"{job_id} merged after it ran", by="sae")
             out.append(f"{final_id} is pending again: {job_id} merged after it ran.")
+        elif final["status"] == "running":
+            final["stale"] = f"{job_id} merged while it ran"
+            task.touch(final)
+            task.event("job.reset", job=final_id, reason=final["stale"], running=True, by="sae")
+            out.append(f"{final_id} is running on older code: {job_id} merged while it ran. Its result "
+                       "will not count; it runs again after the next integration round.")
 
 
 def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[str]) -> int:
@@ -248,7 +257,7 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
             review_id = f"REVIEW-{target}-{rounds + 1}"
             if review_id not in task.jobs:
                 # Done is enough for the target and its fix jobs: they merge after this round (DL-94).
-                add_generated_job(task, review_id, "review", [target] + fixes, "normal", target,
+                add_generated_job(task, review_id, "review", [target] + fixes, None, target,
                                   f"round {rounds + 1} after {', '.join(fixes)}", round_=rounds + 1)
                 out.append(f"Added {review_id}: dispatch it.")
             return EXIT_OK
@@ -256,7 +265,7 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
     if review_due(task, job_id):
         review_id = f"REVIEW-{job_id}"
         if review_id not in task.jobs:
-            add_generated_job(task, review_id, "review", [job_id], "normal", job_id, "job review is due")
+            add_generated_job(task, review_id, "review", [job_id], None, job_id, "job review is due")
         out.append(f"Added {review_id}: {job_id} merges after the review passes.")
         return EXIT_OK
     return merge_job(task, job_id, config, out)
@@ -277,6 +286,9 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
            for j in jobs.values()):
         return
     rounds = review_rounds(task, "integration")
+    # Difficulty null: the round follows the task difficulty (07-cli-spec §5.1); a difficulty set
+    # with `job edit` on the previous round carries over.
+    difficulty = None
     if not rounds:
         review_id, number, limit, since, reason = "REVIEW-INTEGRATION", 1, None, None, "every writer job is merged"
     else:
@@ -296,9 +308,10 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
         number = (previous.get("round") or len(rounds)) + 1
         review_id = f"REVIEW-INTEGRATION-{number}"
         since = (previous["attempts"][-1] if previous["attempts"] else {}).get("head")
+        difficulty = previous.get("difficulty")
         if review_id in jobs:
             return
-    review = add_generated_job(task, review_id, "review", writers, "normal", "integration", reason, round_=number)
+    review = add_generated_job(task, review_id, "review", writers, difficulty, "integration", reason, round_=number)
     review["limit"], review["since"] = limit, since
     place_final_after(task, review_id)
     scope = {None: "review the whole change", "findings": f"check the findings of {rounds[-1] if rounds else ''}",
@@ -331,6 +344,24 @@ def interpret_result(kind: str, meta: dict, path: Path) -> tuple[str, str, dict]
     if status not in ("done", "failed", "parked"):
         fail(EXIT_USAGE, f"{path}: frontmatter status must be done, failed or parked (got {status!r}).")
     return status, str(meta.get("summary") or ""), {}
+
+
+DISPUTE_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$|^#{3,6}\s+(.*)$")
+NO_DISPUTE_RE = re.compile(r"^[\s*_`(]*(none|n/?a|no disputed findings|no disputes|nothing|-+)[\s.*_`)]*$", re.I)
+
+
+def disputed_findings(body: str) -> int:
+    """[FINDINGS-ARE-CLAIMS]: the number of substantive items under `## Disputed findings`: top-level
+    list items or `###` headings, each one finding; text without items counts as one. Template
+    comments and "none" placeholders count as zero."""
+    section = md_section(body, "Disputed findings")
+    if section is None:
+        return 0
+    lines = [line for line in strip_html_comments(section).splitlines() if line.strip()]
+    items = [m.group(1) or m.group(2) or "" for m in (DISPUTE_ITEM_RE.match(line) for line in lines) if m]
+    if items:
+        return sum(1 for item in items if item.strip() and not NO_DISPUTE_RE.match(item))
+    return 0 if all(NO_DISPUTE_RE.match(line) for line in lines) else 1
 
 
 def finish_merges(task: Task) -> list[str]:
@@ -461,8 +492,9 @@ def cmd_collect(args) -> int:
         if not text.strip():
             fail(EXIT_USAGE, f"The result file {path} is empty. If an external reviewer wrote it, the provider "
                              "failed: run the IF IT FAILS line that dispatch printed.")
-        meta, _ = split_frontmatter(text)
+        meta, body = split_frontmatter(text)
         status, summary, fields = interpret_result(job["kind"], meta, path)
+        disputed = disputed_findings(body)
         attempt = job["attempts"][-1] if job["attempts"] else {}
         attempt.update({"ended": iso()})
         for key, value in (("tokens", args.tokens), ("duration_s", args.duration_s), ("agent_ref", args.agent_ref)):
@@ -472,10 +504,21 @@ def cmd_collect(args) -> int:
         job.update(fields)
         task.touch(job)
         out: list[str] = [f"{job_id}: {status}" + (f" — {summary}" if summary else "")]
+        if disputed:
+            out.append(f"{disputed} disputed finding{'s' if disputed > 1 else ''}: settle "
+                       f"{'them' if disputed > 1 else 'it'} (see execute.md). Read {path}.")
         code = EXIT_OK
         task.event("job.collected", job=job_id, attempt=attempt.get("n"), status=status, summary=summary,
-                   tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"))
-        if status == "done" and job["kind"] in WRITER_KINDS + ("validation",):
+                   tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"), disputed=disputed)
+        if status == "done" and job.get("stale"):
+            # [NO-STALE-CHECKS]: a writer merged while this final validation ran.
+            reason = job.pop("stale")
+            job["status"] = "pending"
+            task.event("job.reset", job=job_id, reason=f"result not counted: {reason}", by="sae")
+            after = last_round(task, "integration")
+            out.append(f"{job_id} is pending again: its result does not count ({reason}). Run it again"
+                       + (f" after {after}." if after else "."))
+        elif status == "done" and job["kind"] in WRITER_KINDS + ("validation",):
             code = collect_checked_job(task, job_id, meta, config, out)
         elif status == "done":
             job["status"] = "done"
@@ -489,7 +532,7 @@ def cmd_collect(args) -> int:
             out.append("Decision flow: answer it, or sae decision new, or ask the user (mode table).")
         materialize_integration_review(task, out)
         emit(args, "\n".join(out), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
-                                    "messages": out[1:]})
+                                    "disputed": disputed, "messages": out[1:]})
     return code
 
 

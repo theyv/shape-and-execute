@@ -360,7 +360,7 @@ def lint_plan(task: Task) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def add_generated_job(task: Task, job_id: str, kind: str, needs: list[str], difficulty: str,
+def add_generated_job(task: Task, job_id: str, kind: str, needs: list[str], difficulty: str | None,
                       target: str | None, reason: str, round_: int | None = None) -> dict:
     """Adds a job that sae generates (a review, INTEGRATE-<ID>). Its needs are real edges
     ([GENERATED-JOB-EDGES]); `generated: true` and `by: sae` tell them from planner edges."""
@@ -378,8 +378,8 @@ def place_final_after(task: Task, review_id: str) -> None:
     round. The edge is generated: listed in `generated_needs`, its event has `by: sae`."""
     rounds = set(review_rounds(task, "integration"))
     for job_id, job in task.jobs.items():
-        if not job["final"] or job["status"] != "pending":
-            continue
+        if not job["final"] or job["status"] not in ("pending", "running"):
+            continue  # a running one is stale after a late merge: it runs again after review_id
         needs = [n for n in job["needs"] if n not in rounds] + [review_id]
         if needs == job["needs"]:
             continue
@@ -433,7 +433,8 @@ def due_reviews(task: Task, errors: list[str] | None = None) -> list[str]:
 
 def add_due_review(task: Task, review_id: str) -> None:
     target = "spec" if review_id == "REVIEW-SPEC" else "plan"
-    add_generated_job(task, review_id, "review", [], "normal", target, f"{target} review is a review point")
+    # Difficulty null: a task-level review follows the task difficulty (07-cli-spec §5.1).
+    add_generated_job(task, review_id, "review", [], None, target, f"{target} review is a review point")
 
 
 def run_check(task: Task, write: bool = True) -> tuple[list[str], list[str], list[str]]:

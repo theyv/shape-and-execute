@@ -35,6 +35,7 @@ from .tasks import (
     append_event_to,
     ensure_tasks_folder,
     job_file,
+    live_checkout,
     new_job,
     open_task,
     resolve_task,
@@ -112,13 +113,14 @@ def finding_body(args) -> str:
 def cmd_finding_new(args) -> int:
     body_text = finding_body(args)
     root, _ = find_root()
-    source_task, source = None, None
+    source_task, source, home = None, None, root
     if args.source:
         task_ref, _, job_id = args.source.partition("/")
         source_task = resolve_task(root, task_ref)
         source = f"{source_task}/{job_id}" if job_id else source_task
-    ensure_tasks_folder(root)
-    path = tasks_dir(root) / "findings" / f"{file_stamp()}--{slugify(args.title)}.md"
+        home = live_checkout(root, source_task)  # finish commits it with the task record
+    ensure_tasks_folder(home)
+    path = tasks_dir(home) / "findings" / f"{file_stamp()}--{slugify(args.title)}.md"
     if path.exists():
         path = path.with_name(f"{path.stem}-2.md")
     paths = [p.strip() for p in (args.paths or "").split(",") if p.strip()]
@@ -129,7 +131,7 @@ def cmd_finding_new(args) -> int:
              + f"paths: [{', '.join(paths)}]\n---\n")
     write_atomic(path, front + body)
     if source_task:
-        append_event_to(root, source_task, "finding.created", finding=rel(path, root))
+        append_event_to(root, source_task, "finding.created", finding=rel(path, home))
     else:
         render_viewer_safely(root, [])
     emit(args, f"Finding: {path}", {"file": str(path)})
@@ -244,7 +246,8 @@ def _replace_front(text: str, key: str, value: str) -> str:
 def cmd_adr_new(args) -> int:
     root, _ = find_root()
     task_id = resolve_task(root, args.task)
-    folder = adr_dir(root)
+    home = live_checkout(root, task_id)  # finish commits the draft with the task record
+    folder = adr_dir(home)
     folder.mkdir(parents=True, exist_ok=True)
     stem = f"{now().date().isoformat()}-{slugify(args.title)}"
     path, n = folder / f"{stem}.md", 2
@@ -256,7 +259,7 @@ def cmd_adr_new(args) -> int:
     text = _replace_front(text, "type", args.type)
     text = _replace_front(text, "applies-to", f"[{', '.join(applies)}]")
     write_atomic(path, text)
-    append_event_to(root, task_id, "adr.created", file=rel(path, root))
+    append_event_to(root, task_id, "adr.created", file=rel(path, home))
     emit(args, f"Draft: {path}\nWrite the text; triage decides whether it becomes a record.", {"file": str(path)})
     return EXIT_OK
 

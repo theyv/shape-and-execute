@@ -109,6 +109,15 @@ def resolve_task(root: Path, ref: str) -> str:
     return find_task(root, ref).task_id
 
 
+def live_checkout(root: Path, ref: str) -> Path:
+    """The checkout that holds the live folder of a task: the home checkout while shaping and
+    planning, the task worktree during execution. Findings and decision drafts sourced from the
+    task go there, so `sae start` and `sae finish` carry them ([DECISION-DRAFTS]). A finished or
+    abandoned task: `root`."""
+    copy = find_task(root, ref)
+    return copy.checkout if copy.live and task_phase(copy) not in CLOSED_PHASES else root
+
+
 def picked_up_items(located: dict[str, TaskCopy]) -> dict[str, str]:
     """Backlog file → the live task (not done or abandoned) that came from it ([BACKLOG-PICKUP])."""
     picked = {}
