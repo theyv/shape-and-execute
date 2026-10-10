@@ -233,6 +233,12 @@ def sae_prefix() -> str:
     return f"python3 {shlex.quote(str(SKILL_DIR / 'scripts' / 'sae.py'))}"
 
 
+def changed_by() -> str:
+    """`by` of a change event: `viewer` when the viewer server runs the command
+    (SAE_CHANGED_BY=viewer), else `cli`."""
+    return "viewer" if os.environ.get("SAE_CHANGED_BY") == "viewer" else "cli"
+
+
 def mode_line(mode: str) -> str:
     ask, park = ASK_CLASSES[mode], PARK_CLASSES.get(mode, ())
     parts = []
