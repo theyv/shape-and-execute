@@ -32,7 +32,7 @@ from .graph import is_ready, kind_allowed_now, waits_for, writer_blocked
 from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
 from .reviews import materialize_integration_review
-from .routing import resolve_model
+from .routing import model_text, resolve_model, routing_text, short_text
 from .tasks import (
     Task,
     job_file,
@@ -87,7 +87,8 @@ def task_status_data(task: Task) -> dict:
                 warnings.append(f"{job_id}: a result file exists — collect it")
     return {"task": task.id, "title": task.info["title"], "phase": task.phase, "branch": task.info.get("branch"),
             "layout": task.info.get("layout"), "last_change": task.info.get("last_change"),
-            "settings": task.settings, "settings_card": settings_card(task.settings),
+            "settings": task.settings,
+            "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "next": next_command(task)}
 
@@ -187,13 +188,12 @@ def next_data(task: Task, config: dict | None) -> dict:
             if reasons:
                 blocked.append({"id": job_id, "waits_for": reasons})
                 continue
-            model = resolve_model(task, job, config) if config is not None else None
-            if model is None:
-                cfg(config, "rungs")
+            if config is None:
+                cfg(config, "routing")
+            model = resolve_model(task, job_id, config, exact=False)
             workdir, _ = workspace_of(task, job_id, config)
-            entry = {"id": job_id, "kind": job["kind"], "difficulty": job["difficulty"],
-                     "model": f"{model['model']}" + (f" ({model['effort']})" if model.get("effort") else "")
-                              + f" · {model['harness']} {model['rung']}",
+            entry = {"id": job_id, "kind": job["kind"], "difficulty": model["difficulty"],
+                     "model": short_text(model), "routing": model,
                      "workspace": "worktree" if workdir != task.root else
                                   ("repo root, writes" if job["kind"] in WRITER_KINDS else "repo root, read-only")}
             if job["kind"] in WRITER_KINDS:
@@ -242,17 +242,19 @@ def cmd_dispatch(args) -> int:
             blocked = writer_blocked(task, job_id, config)
             if blocked:
                 fail(EXIT_USAGE, f"{job_id} must wait: {blocked}.")
-        model = resolve_model(task, job, config, harness=args.harness, provider=args.provider)
+        model = resolve_model(task, job_id, config, harness=args.harness, provider=args.provider)
         workdir, branch = prepare_workspace(task, job_id, config)
         head = git(workdir, "rev-parse", "HEAD") if (task.info.get("git") and job["kind"] in WRITER_KINDS) else None
-        attempt = {"n": len(job["attempts"]) + 1, "harness": model["harness"], "rung": model["rung"],
-                   "model": model["model"], "effort": model["effort"], "started": iso(), "ended": None,
+        attempt = {"n": len(job["attempts"]) + 1, "harness": model["harness"], "model": model["model"],
+                   "model_entry": model["model_entry"], "effort": model["effort"], "source": model["source"],
+                   "tier": model["tier"], "started": iso(), "ended": None,
                    "tokens": None, "duration_s": None, "agent_ref": None, "reason": args.reason, "head": head}
         job["attempts"].append(attempt)
         job["status"] = "running"
         task.touch(job)
-        task.event("job.dispatched", job=job_id, attempt=attempt["n"], harness=model["harness"], rung=model["rung"],
-                   model=model["model"], effort=model["effort"], workspace=rel(workdir, root) or ".",
+        task.event("job.dispatched", job=job_id, attempt=attempt["n"], harness=model["harness"],
+                   model=model["model"], effort=model["effort"], source=model["source"], tier=model["tier"],
+                   workspace=rel(workdir, root) or ".",
                    reason=args.reason)
         external = job["kind"] == "review" and model["harness"] != task.info.get("orchestrator_harness")
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
@@ -267,8 +269,8 @@ def cmd_dispatch(args) -> int:
             prompt = "\n".join([f"RESUME {job_id} — reason: {args.reason}", *extra,
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
-        header = (f"MODEL: {model['model']} · effort: {model['effort'] or 'n/a'} · harness: {model['harness']} "
-                  f"· rung: {model['rung']}")
+        header = (f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}\n"
+                  f"ROUTING: {routing_text(model)}")
         data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model}
         if external:
             command = external_review_command(task, job_id, model, prompt)
@@ -294,15 +296,19 @@ def register_status(sub, command):
 def register_next(sub, command):
     """Add the `next` command to the parser."""
     p = command(sub, "next", "Reminder lines, then running, parked, ready and blocked jobs.",
-                "Read the two reminder lines every time. Ready jobs show the model and the workspace kind.",
+                "Read the two reminder lines every time. Ready jobs show harness · model · effort (with the source\n"
+                "when it is not global, or override) and the workspace kind.",
                 ["next claims-status"], [0, 1, 2], cmd_next)
     p.add_argument("task")
 
 
 def register_dispatch(sub, command):
     """Add the `dispatch` command to the parser."""
-    p = command(sub, "dispatch", "Prepare the workspace and print MODEL and PROMPT for one job.",
-                "Spawn a subagent with the printed PROMPT and MODEL (Codex: also the effort). For a review in the\n"
+    p = command(sub, "dispatch", "Prepare the workspace and print HARNESS, MODEL, EFFORT and PROMPT for one job.",
+                "Spawn a subagent with the printed PROMPT, passing the printed MODEL and EFFORT explicitly (Claude\n"
+                "Code: the Agent tool's model and effort; Codex: the spawn model and reasoning_effort); no subagent\n"
+                "inherits your effort. ROUTING says where the pair came from (phase table, tier, level, override).\n"
+                "For a review in the\n"
                 "other harness it prints COMMAND (run it in the background) and an IF IT FAILS line (run it when the\n"
                 "command exits non-zero or leaves no review). --resume runs a running, parked or failed job again\n"
                 "with --reason; the message also works for a fresh agent.",

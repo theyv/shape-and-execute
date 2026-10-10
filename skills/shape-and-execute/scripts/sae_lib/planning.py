@@ -1,10 +1,9 @@
-"""Commands set, approve, check and job add|edit|remove."""
+"""Commands set, approve, check and job add|edit|remove|override."""
 
 from __future__ import annotations
 
 import json
 import os
-import re
 
 from .common import (
     DIFFICULTIES,
@@ -19,55 +18,69 @@ from .common import (
     Parser,
     REVIEW_POINTS,
     WRITER_KINDS,
+    SaeError,
     emit,
     fail,
     iso,
     write_atomic,
 )
-from .config import settings_card, settings_diff, settings_errors
+from .config import (
+    REVIEW_PROVIDERS,
+    ROUTING_KEYS_HELP,
+    SET_KEYS,
+    apply_routing_key,
+    is_routing_key,
+    level_routing_errors,
+    load_config,
+    parse_set_value,
+    routing_layers,
+    settings_card,
+    settings_diff,
+    settings_errors,
+    task_difficulty,
+)
 from .gitutil import find_root, git_user
 from .graph import run_check
+from .routing import TASK_TARGETS, override_key, planned_review_target, resolve_model
 from .tasks import Task, is_generated, job_file, new_job, open_task, template
-
-
-SET_KEYS = {
-    "interaction": ("interaction",), "research": ("levels", "research"), "planning": ("levels", "planning"),
-    "execution": ("levels", "execution"), "review-level": ("levels", "review"), "review": ("review", "points"),
-    "reviewer": ("review", "provider"), "max-verify-failures": ("max_verify_failures",),
-}
 
 
 def cmd_set(args) -> int:
     root, _ = find_root()
     with open_task(root, args.task) as task:
         new = json.loads(json.dumps(task.settings))
+        routing_changed = False
         for pair in args.pairs:
             if "=" not in pair:
-                fail(EXIT_USAGE, f"Expected key=value, got {pair!r}. Keys: {', '.join(SET_KEYS)}.")
+                fail(EXIT_USAGE, f"Expected key=value, got {pair!r}. Keys: {', '.join(SET_KEYS)}, {ROUTING_KEYS_HELP}.")
             key, value = pair.split("=", 1)
+            if is_routing_key(key):
+                routing = new.setdefault("routing", {})
+                apply_routing_key(routing, key, value)
+                if not routing:
+                    del new["routing"]
+                routing_changed = True
+                continue
             if key not in SET_KEYS:
-                fail(EXIT_USAGE, f"Unknown key {key!r}. Keys: {', '.join(SET_KEYS)}.")
+                fail(EXIT_USAGE, f"Unknown key {key!r}. Keys: {', '.join(SET_KEYS)}, {ROUTING_KEYS_HELP}.")
             path = SET_KEYS[key]
-            parsed: object = value
-            if key == "review":
-                parsed = [] if value == "off" else [p.strip() for p in value.split(",") if p.strip()]
-            elif key == "max-verify-failures":
-                if not re.fullmatch(r"\d+", value):
-                    fail(EXIT_USAGE, "max-verify-failures must be an integer from 1 to 10.")
-                parsed = int(value)
             node = new
             for part in path[:-1]:
                 node = node[part]
-            node[path[-1]] = parsed
+            node[path[-1]] = parse_set_value(key, value)
         errors = settings_errors(new)
+        if not errors and routing_changed and new.get("routing"):
+            config = load_config()
+            errors = level_routing_errors(config, new["routing"], "routing",
+                                          routing_layers(config, task.root, new))
         if errors:
             fail(EXIT_USAGE, "Invalid settings: " + "; ".join(errors))
         changes = settings_diff(task.settings, new)
         if changes:
             task.write_settings(new)
             task.event("settings.changed", changes=changes, by="cli")
-        emit(args, f"Settings: {settings_card(new)}" + ("" if changes else " (unchanged)"),
-             {"settings": new, "changes": changes})
+        card = settings_card(new, task.info.get("orchestrator_harness"))
+        emit(args, f"Settings: {card}" + ("" if changes else " (unchanged)"), {"settings": new, "changes": changes})
     return EXIT_OK
 
 
@@ -166,9 +179,13 @@ def cmd_job_add(args) -> int:
                 fail(EXIT_USAGE, "--fix-of: a fix job is an implementation job that fixes a writer job.")
             if target["merged"]:
                 fail(EXIT_USAGE, f"{args.fix_of} is already merged; add a normal job instead.")
+        if args.kind == "planning" and args.difficulty == "mechanical":
+            fail(EXIT_USAGE, "Planning is never mechanical: use --difficulty normal or hard.")
         require_reason(task, args.reason)
         needs = parse_needs(args.needs)
-        job = new_job(args.kind, needs, args.difficulty, review=args.review, final=args.final, fix_of=args.fix_of)
+        difficulty = args.difficulty or (task_difficulty(task.settings) if args.kind == "planning" else "normal")
+        args.difficulty = difficulty
+        job = new_job(args.kind, needs, difficulty, review=args.review, final=args.final, fix_of=args.fix_of)
         task.jobs[job_id] = job
         path = job_file(task, job_id)
         if not path.exists():
@@ -193,6 +210,11 @@ def cmd_job_edit(args) -> int:
         if args.needs is not None:
             changes["needs"] = [job["needs"], parse_needs(args.needs)]
         if args.difficulty:
+            if job["kind"] == "review" and job.get("target") in task.jobs:
+                fail(EXIT_USAGE, f"{args.id} is a job review: it takes the difficulty of {job['target']}. "
+                                 f"For an exception: sae job override {task.id} {job['target']} --review …")
+            if job["kind"] in ("review", "planning") and args.difficulty == "mechanical":
+                fail(EXIT_USAGE, f"{job['kind'].capitalize()} is never mechanical: use normal or hard.")
             changes["difficulty"] = [job["difficulty"], args.difficulty]
         if args.review is not None:
             changes["review"] = [job["review"], args.review]
@@ -229,14 +251,80 @@ def cmd_job_remove(args) -> int:
     return EXIT_OK
 
 
+def cmd_job_override(args) -> int:
+    root, _ = find_root()
+    with open_task(root, args.task) as task:
+        if task.phase in ("done", "abandoned"):
+            fail(EXIT_USAGE, f"The task is {task.phase}.")
+        if args.review:
+            target = task.job(args.id)
+            if target["kind"] == "review":
+                fail(EXIT_USAGE, f"{args.id} is a review; name the job it reviews with --review, or drop --review.")
+            key = f"REVIEW-{args.id}"
+        elif args.id in task.jobs:
+            key = override_key(task, args.id)
+        elif planned_review_target(task, args.id) in TASK_TARGETS:
+            key = args.id
+        else:
+            fail(EXIT_USAGE, f"No job {args.id} in task {task.id}. A planned review is REVIEW-SPEC, REVIEW-PLAN or "
+                             f"REVIEW-INTEGRATION; the review of a job is <ID> --review.")
+        covered = [i for i, j in task.jobs.items() if override_key(task, i) == key]
+        busy = [i for i in covered if task.jobs[i]["status"] == "running"
+                or (task.jobs[i]["kind"] != "review" and task.jobs[i]["status"] != "pending")]
+        if busy:
+            fail(EXIT_USAGE, f"{', '.join(busy)} is not pending; a running or finished job keeps its model.")
+        overrides = task.info.setdefault("overrides", {})
+        if args.clear:
+            if args.harness or args.model or args.effort:
+                fail(EXIT_USAGE, "--clear takes no --harness, --model or --effort.")
+            old = overrides.pop(key, None)
+            if old is None:
+                emit(args, f"{key}: no override.", {"key": key, "override": None})
+                return EXIT_OK
+            if not overrides:
+                del task.info["overrides"]
+            task.event("override.cleared", job=key, harness=old.get("harness"), model=old.get("model"),
+                       effort=old.get("effort"), reason=args.reason, by="cli")
+            emit(args, f"{key}: override cleared; routing chooses again.", {"key": key, "override": None})
+            return EXIT_OK
+        if not (args.harness or args.model or args.effort):
+            fail(EXIT_USAGE, "Give --harness, --model or --effort (or --clear).")
+        override = {k: v for k, v in (("harness", args.harness), ("model", args.model), ("effort", args.effort)) if v}
+        override["at"] = iso()
+        if args.reason:
+            override["reason"] = args.reason
+        previous = overrides.get(key)
+        overrides[key] = override
+        probe = args.id if not args.review else (covered[0] if covered else key)
+        try:
+            res = resolve_model(task, probe, load_config(), exact=False)
+        except SaeError as exc:
+            if previous is None:
+                overrides.pop(key)
+            else:
+                overrides[key] = previous
+            fail(EXIT_USAGE, f"Override not set: {exc}")
+        task.event("override.set", job=key, harness=override.get("harness"), model=override.get("model"),
+                   effort=override.get("effort"), reason=args.reason, by="cli")
+        emit(args, f"{key}: override {res['harness']} · {res['model']} · {res['effort']} (routing: "
+                   + (f"{res['routed']['harness']} · {res['routed']['model_entry']} · {res['routed']['effort']})"
+                      if res.get("routed") else "n/a)"),
+             {"key": key, "override": override, "resolved": res})
+    return EXIT_OK
+
+
 def register_set(sub, command):
     """Add the `set` command to the parser."""
     p = command(sub, "set", "Change this task's settings (settings.json).",
                 f"Keys: interaction ({'|'.join(INTERACTION_MODES)}); research, planning, execution, review-level\n"
                 f"({'|'.join(LEVELS)}); review (comma list of {', '.join(REVIEW_POINTS)}; or off);\n"
-                f"reviewer ({'|'.join(HARNESSES)}); max-verify-failures (1-10; change it only when the user asks).\n"
-                "The next dispatch uses the new values. Prints the settings card.",
-                ["set claims-status execution=economy", "set claims-status review=spec,plan,selected-jobs,integration reviewer=codex"],
+                f"reviewer ({'|'.join(REVIEW_PROVIDERS)}; cross-harness: the harness that does not orchestrate);\n"
+                "max-verify-failures (1-10; change it only when the user asks); task-difficulty (normal|hard: the\n"
+                "planner and the spec, plan and integration reviews).\n"
+                f"Routing keys (task level; inherit removes the task value): {ROUTING_KEYS_HELP}.\n"
+                "Run it only on the user's word. The next dispatch uses the new values. Prints the settings card.",
+                ["set claims-status execution=economy", "set claims-status review=spec,plan,selected-jobs,integration reviewer=cross-harness",
+                 "set claims-status routing.codex.execution.max.hard=L4 tier.claude.L3=<model>:high"],
                 [0, 1], cmd_set)
     p.add_argument("task")
     p.add_argument("pairs", nargs="+", metavar="key=value")
@@ -266,8 +354,8 @@ def register_check(sub, command):
 def register_job(sub, command):
     """Add the `job` command group to the parser; returns the group parser."""
     job = sub.add_parser("job", help="Add, edit or remove a job of the graph.", parents=[],
-                         description="Graph changes. sae job <add|edit|remove> --help for details.")
-    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove>", parser_class=Parser)
+                         description="Graph changes and per-job model overrides. sae job <add|edit|remove|override> --help.")
+    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override>", parser_class=Parser)
     p = command(job_sub, "add", "Register a job and scaffold jobs/<ID>.md.",
                 f"Kinds: {', '.join(k for k in JOB_KINDS if k not in ('review', 'decision'))} (sae adds review jobs;\n"
                 "decision jobs come from sae decision new). ID: UPPER-KEBAB. --needs: jobs that must be done (and\n"
@@ -281,7 +369,8 @@ def register_job(sub, command):
     p.add_argument("id")
     p.add_argument("--kind", required=True, choices=[k for k in JOB_KINDS if k not in ("review", "decision")])
     p.add_argument("--needs", metavar="A,B")
-    p.add_argument("--difficulty", choices=DIFFICULTIES, default="normal")
+    p.add_argument("--difficulty", choices=DIFFICULTIES,
+                   help="default normal; a planning job takes the task difficulty and is never mechanical")
     p.add_argument("--review", action="store_true")
     p.add_argument("--final", action="store_true")
     p.add_argument("--fix-of", metavar="ID")
@@ -302,4 +391,20 @@ def register_job(sub, command):
     p.add_argument("task")
     p.add_argument("id")
     p.add_argument("--reason", required=True)
+    p = command(job_sub, "override", "Run one job, or its review, on another harness, model or effort.",
+                "Only on the user's word. <ID> is a job or a planned review (REVIEW-SPEC, REVIEW-PLAN,\n"
+                "REVIEW-INTEGRATION); --review means the review of job <ID> (all its rounds). Any subset of --harness,\n"
+                "--model and --effort; the rest comes from routing for the override's harness. The model must be in\n"
+                "the harness's model list and accept the effort. Refused for a running or finished job. sae dispatch\n"
+                "uses it and prints it as an override; --clear returns the job to routing.",
+                ["job override claims-status STATUS-API --review --harness codex --effort high",
+                 "job override claims-status STATUS-API --review --clear"], [0, 1, 2], cmd_job_override)
+    p.add_argument("task")
+    p.add_argument("id")
+    p.add_argument("--review", action="store_true", help="the override is for the review of job <ID>")
+    p.add_argument("--harness", choices=HARNESSES, help="the harness that runs it")
+    p.add_argument("--model", help="a model from that harness's model list")
+    p.add_argument("--effort", help="an effort that model accepts")
+    p.add_argument("--clear", action="store_true", help="remove the override")
+    p.add_argument("--reason", help="why (logged)")
     return job

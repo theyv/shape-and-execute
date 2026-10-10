@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import copy
+import functools
 import json
 import os
 import platform
@@ -14,7 +17,6 @@ from pathlib import Path
 from .common import (
     CODEX_MIN_SUBAGENTS,
     CODEX_RECOMMENDED_SUBAGENTS,
-    DIFFICULTIES,
     EXIT_OK,
     EXIT_USAGE,
     HARNESSES,
@@ -23,16 +25,35 @@ from .common import (
     LEVEL_PHASES,
     Parser,
     REVIEW_POINTS,
-    RUNGS,
-    SCHEMA_VERSION,
     SKILL_DIR,
     emit,
     fail,
     read_text,
+    table,
     warn,
-    write_json,
 )
-from .config import config_path, load_config, validate_config, worktree_root
+from .config import (
+    CONFIG_SCHEMA,
+    PHASE_DIFFICULTIES,
+    REVIEW_PROVIDERS,
+    ROUTING_KEYS_HELP,
+    SET_KEYS,
+    TIERS,
+    apply_routing_key,
+    config_path,
+    effective_routing,
+    flatten_routing,
+    is_routing_key,
+    load_config,
+    parse_set_value,
+    project_errors,
+    project_key,
+    provider_text,
+    save_config,
+    validate_config,
+    worktree_root,
+)
+from .gitutil import find_root
 from .markdown import _strip_yaml_comment, _yaml_scalar
 
 
@@ -108,48 +129,101 @@ def codex_cap_text(cap: dict) -> str:
             f"Setup mode can apply it after you agree (with a backup).")
 
 
-def codex_models() -> list[dict] | None:
-    if not shutil.which("codex"):
-        return None
-    try:
-        proc = subprocess.run(["codex", "debug", "models"], capture_output=True, text=True, timeout=30,
-                              stdin=subprocess.DEVNULL)
-        models = json.loads(proc.stdout.strip().splitlines()[-1])["models"]
-    except (subprocess.TimeoutExpired, OSError, ValueError, KeyError, IndexError):
+@functools.lru_cache(maxsize=1)
+def _codex_catalog() -> tuple | None:
+    models = None
+    cache = codex_home() / "models_cache.json"
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        models = json.loads(cache.read_text(encoding="utf-8")).get("models")
+    if models is None and shutil.which("codex"):
+        try:
+            proc = subprocess.run(["codex", "debug", "models"], capture_output=True, text=True, timeout=30,
+                                  stdin=subprocess.DEVNULL)
+            models = json.loads(proc.stdout.strip().splitlines()[-1])["models"]
+        except (subprocess.TimeoutExpired, OSError, ValueError, KeyError, IndexError):
+            models = None
+    if not isinstance(models, list):
         return None
     out = []
     for model in models:
-        if model.get("visibility") not in (None, "list"):
+        if not isinstance(model, dict) or not model.get("slug"):
             continue
         levels = model.get("supported_reasoning_levels") or []
         efforts = [lvl.get("effort") if isinstance(lvl, dict) else lvl for lvl in levels]
-        out.append({"model": model.get("slug"), "efforts": [e for e in efforts if e]})
-    return out
+        out.append({"model": model["slug"], "efforts": [e for e in efforts if e], "visibility": model.get("visibility")})
+    return tuple(out)
+
+
+def codex_catalog() -> list[dict] | None:
+    """The Codex model catalog: $CODEX_HOME/models_cache.json, else `codex debug models`."""
+    catalog = _codex_catalog()
+    return [dict(m) for m in catalog] if catalog is not None else None
+
+
+def codex_models() -> list[dict] | None:
+    catalog = codex_catalog()
+    if catalog is None:
+        return None
+    return [{"model": m["model"], "efforts": m["efforts"]} for m in catalog if m["visibility"] in (None, "list")]
+
+
+def family_of(slug: str) -> str | None:
+    """The family of a versioned slug (`<name>-<version>-<family>`), or None."""
+    last = slug.rsplit("-", 1)[-1]
+    return last if "-" in slug and last.isalpha() and re.search(r"\d", slug) else None
+
+
+def codex_families(models: list[dict]) -> dict:
+    """{family: {newest, efforts, older: [{model, efforts}]}} from the visible catalog."""
+    from .routing import newest_of_family, version_key
+    families: dict = {}
+    for name in sorted({f for f in (family_of(m["model"]) for m in models) if f}):
+        newest = newest_of_family(models, name)
+        older = sorted((m for m in models if family_of(m["model"]) == name and m is not newest),
+                       key=lambda m: version_key(m["model"]), reverse=True)
+        families[name] = {"newest": newest["model"], "efforts": newest["efforts"],
+                          "older": [{"model": m["model"], "efforts": m["efforts"]} for m in older]}
+    return families
 
 
 def setup_facts() -> dict:
     facts = {"os": platform.system(), "python": platform.python_version(), "config_path": str(config_path()),
              "claude_on_path": bool(shutil.which("claude")), "codex_on_path": bool(shutil.which("codex")),
              "default_worktree_root": default_worktree_root(), "git_on_path": bool(shutil.which("git"))}
-    if facts["codex_on_path"]:
-        facts["codex_models"] = codex_models()
+    models = codex_models()
+    if facts["codex_on_path"] or models:
+        facts["codex_models"] = models
+        facts["codex_families"] = codex_families(models) if models else None
         facts["codex_subagent_cap"] = codex_subagent_cap()
     return facts
 
 
 def config_skeleton(facts: dict) -> dict:
-    rungs = {}
+    """A schema-2 proposal skeleton: every value to fill is a `<...>` placeholder."""
+    models, routing = {}, {}
+
+    def block() -> dict:
+        tables = {phase: {lvl: {d: {"tier": "<L1-L4>", "model": "<model, used when tiers are off>",
+                                    "effort": "<effort>"} for d in PHASE_DIFFICULTIES[phase]}
+                          for lvl in LEVELS} for phase in LEVEL_PHASES}
+        return {"tiers_in_cells": True, "tiers": {t: {"model": "<model>", "effort": "<effort>"} for t in TIERS},
+                "tables": tables}
+
     if facts["claude_on_path"]:
-        rungs["claude"] = {r: {"model": "<alias your Agent tool accepts>"} for r in RUNGS}
-    if facts["codex_on_path"]:
-        rungs["codex"] = {r: {"model": "<id from codex_models>", "effort": "<effort>"} for r in RUNGS}
+        models["claude"] = [{"model": "<family>", "family": True, "enabled": True, "efforts": ["<effort>"]}]
+        routing["claude"] = block()
+    if facts.get("codex_families") or facts["codex_on_path"]:
+        families = facts.get("codex_families") or {"<family>": {"efforts": ["<effort>"]}}
+        models["codex"] = [{"model": name, "family": True, "enabled": True, "efforts": info["efforts"]}
+                           for name, info in families.items()]
+        routing["codex"] = block()
     return {
-        "schema": SCHEMA_VERSION, "rungs": rungs,
-        "level_map": {lvl: {d: "<L1|L2|L3>" for d in DIFFICULTIES} for lvl in LEVELS},
-        "review_level_map": {lvl: "<L1|L2|L3>" for lvl in LEVELS},
+        "schema": CONFIG_SCHEMA, "models": models, "routing": routing,
         "defaults": {"interaction": f"<{'|'.join(INTERACTION_MODES)}>",
                      "levels": {p: f"<{'|'.join(LEVELS)}>" for p in LEVEL_PHASES},
-                     "review": {"points": [f"<{'|'.join(REVIEW_POINTS)}>"], "provider": f"<{'|'.join(HARNESSES)}>"}},
+                     "review": {"points": [f"<{'|'.join(REVIEW_POINTS)}>"],
+                                "provider": f"<{'|'.join(REVIEW_PROVIDERS)}>"}},
+        "projects": {},
         "language": {"conversation": "<code>", "artifacts": "<code>"},
         "worktrees": {"root": facts["default_worktree_root"]},
         "parallel": {"max_writers": "<integer>"},
@@ -157,23 +231,134 @@ def config_skeleton(facts: dict) -> dict:
     }
 
 
+def convert_schema1(old: dict, catalog: list[dict] | None) -> dict:
+    """The schema-2 proposal for a schema-1 config (07-cli-spec §3.2): each rung becomes a tier,
+    each cell points to the tier the old level map chose. Claude rungs had no effort: `<choose>`."""
+    by_slug = {m["model"]: m for m in catalog or []}
+    models, routing = {}, {}
+    for harness, rungs in (old.get("rungs") or {}).items():
+        if harness not in HARNESSES or not isinstance(rungs, dict):
+            continue
+        entries: dict = {}
+        tiers = {}
+        for rung in sorted(rungs):
+            spec = rungs[rung] if isinstance(rungs[rung], dict) else {}
+            model = spec.get("model")
+            if not model:
+                continue
+            effort = spec.get("effort") or "<choose>"
+            tiers[rung] = {"model": model, "effort": effort}
+            entry = entries.setdefault(model, {"model": model, "family": harness == "claude", "enabled": True,
+                                               "efforts": []})
+            known = by_slug.get(model, {}).get("efforts") if harness == "codex" else None
+            if known:
+                entry["efforts"] = list(known)
+            elif effort not in entry["efforts"]:
+                entry["efforts"].append(effort)
+        level_map = old.get("level_map") or {}
+        review_map = old.get("review_level_map") or {}
+        tables = {}
+        for phase, columns in PHASE_DIFFICULTIES.items():
+            tables[phase] = {}
+            for level in LEVELS:
+                row = {}
+                for difficulty in columns:
+                    tier = review_map.get(level) if phase == "review" else (level_map.get(level) or {}).get(difficulty)
+                    row[difficulty] = {"tier": tier or "<L1-L4>"}
+                tables[phase][level] = row
+        models[harness] = list(entries.values())
+        routing[harness] = {"tiers_in_cells": True, "tiers": tiers, "tables": tables}
+    defaults = dict(old.get("defaults") or {})
+    return {"schema": CONFIG_SCHEMA, "models": models, "routing": routing, "defaults": defaults, "projects": {},
+            **{k: old[k] for k in ("language", "worktrees", "parallel", "verify") if k in old}}
+
+
+def cell_text(effective: dict, cell: dict) -> str:
+    tiers_on = effective.get("tiers_in_cells", (True, None))[0]
+    if tiers_on and cell.get("tier"):
+        return cell["tier"]
+    if "model" in cell:
+        return f"{cell['model']} · {cell.get('effort')}"
+    return cell.get("tier", "?")
+
+
+def routing_tables_text(layers: list, harness: str, marks: bool = False) -> list[str]:
+    """The tiers and one small table per phase for one harness (`marks`: a source letter)."""
+    effective = effective_routing(layers, harness)
+    letter = {"global": "", "project": "ᵖ", "task": "ᵗ"}
+    lines = [f"  tiers in cells: {'on' if effective.get('tiers_in_cells', (True,))[0] else 'off'}"]
+    for name in TIERS:
+        if name in effective["tiers"]:
+            tier, source = effective["tiers"][name]
+            lines.append(f"  {name}  {tier.get('model')} · {tier.get('effort')}" + (f" ({source})" if marks and source != "global" else ""))
+    for phase in LEVEL_PHASES:
+        columns = PHASE_DIFFICULTIES[phase]
+        rows = [["level", *columns]]
+        for level in LEVELS:
+            row = [level]
+            for difficulty in columns:
+                found = effective["tables"].get(phase, {}).get(level, {}).get(difficulty)
+                row.append(cell_text(effective, found[0]) + (letter[found[1]] if marks else "") if found else "-")
+            rows.append(row)
+        lines += ["", f"  {harness} · {phase}", table(rows, indent="  ")]
+    return lines
+
+
+def config_text(config: dict) -> list[str]:
+    """The config, readable: model lists, tiers, tables, defaults, projects, the rest."""
+    lines = []
+    layers = [("global", config.get("routing") or {})]
+    for harness, entries in (config.get("models") or {}).items():
+        lines += ["", f"{harness} models (lightest first):"]
+        for i, entry in enumerate(entries if isinstance(entries, list) else [], 1):
+            kind = "family" if entry.get("family") else "exact"
+            off = "" if entry.get("enabled", True) else " · off"
+            lines.append(f"  {i}. {entry.get('model')} ({kind}{off}) · {', '.join(entry.get('efforts') or [])}")
+        if harness in (config.get("routing") or {}):
+            lines += [f"{harness} routing:"] + routing_tables_text(layers, harness)
+    defaults = config.get("defaults") or {}
+    review = defaults.get("review") or {}
+    lines += ["", "Defaults for new tasks:",
+              f"  interaction: {defaults.get('interaction')}",
+              "  levels: " + ", ".join(f"{k} {v}" for k, v in (defaults.get("levels") or {}).items()),
+              f"  review: {', '.join(review.get('points') or []) or 'off'} · {provider_text(review.get('provider'))}"]
+    for path, entry in (config.get("projects") or {}).items():
+        lines.append(f"Project {path}:")
+        lines += [f"  {k} = {json.dumps(v)}" for k, v in flatten_project(entry).items()]
+    lines += ["", f"language: {json.dumps(config.get('language'))}",
+              f"worktree root: {(config.get('worktrees') or {}).get('root')}",
+              f"writer cap: {(config.get('parallel') or {}).get('max_writers')} · "
+              f"verify timeout: {(config.get('verify') or {}).get('timeout_s')} s"]
+    return lines
+
+
 def cmd_setup_show(args) -> int:
     facts = setup_facts()
-    config = load_config(required=False)
+    config = load_config(required=False, allow_old=True)
     lines = ["Detected:", f"  OS: {facts['os']} · Python {facts['python']} · git: {'yes' if facts['git_on_path'] else 'NO'}",
              f"  claude on PATH: {'yes' if facts['claude_on_path'] else 'no'} · "
              f"codex on PATH: {'yes' if facts['codex_on_path'] else 'no'}",
              f"  default worktree root: {facts['default_worktree_root']}"]
-    if facts.get("codex_models"):
-        lines.append("  Codex models: " + "; ".join(f"{m['model']} ({', '.join(m['efforts'])})"
-                                                    for m in facts["codex_models"]))
+    if facts.get("codex_families"):
+        lines.append("  Codex families (newest · older versions):")
+        for name, info in facts["codex_families"].items():
+            older = ", ".join(m["model"] for m in info["older"]) or "-"
+            lines.append(f"    {name}: {info['newest']} ({', '.join(info['efforts'])}) · older: {older}")
     if facts.get("codex_subagent_cap"):
         lines.append("  " + codex_cap_text(facts["codex_subagent_cap"]).replace("\n", "\n  "))
-    if config is not None:
+    if config is not None and config.get("schema") == 1:
+        proposal = convert_schema1(config, codex_catalog())
+        lines += ["", f"Your config ({config_path()}) is schema 1 (rungs).",
+                  "Proposed conversion to schema 2 (each rung is a tier; fill every",
+                  "<choose> with an effort, then save it with sae setup save):"]
+        lines += config_text(proposal)
+        lines += ["", "As JSON:", json.dumps(proposal, indent=2, ensure_ascii=False)]
+        data = {"facts": facts, "config": config, "schema": 1, "proposal": proposal}
+    elif config is not None:
         errors = validate_config(config)
-        lines += ["", f"Current config ({config_path()}):", json.dumps(config, indent=2, ensure_ascii=False)]
+        lines += ["", f"Current config ({config_path()}):"] + config_text(config)
         if errors:
-            lines += ["Problems:"] + [f"  - {e}" for e in errors]
+            lines += ["", "Problems:"] + [f"  - {e}" for e in errors]
         data = {"facts": facts, "config": config, "errors": errors}
     else:
         skeleton = config_skeleton(facts)
@@ -193,13 +378,108 @@ def cmd_setup_save(args) -> int:
     errors = validate_config(data)
     if errors:
         fail(EXIT_USAGE, "Config not saved:\n" + "\n".join(f"  - {e}" for e in errors))
-    path = config_path()
-    if path.exists():
-        shutil.copy2(path, path.with_name(path.name + ".bak"))
-    write_json(path, data)
-    emit(args, f"Saved {path}" + (f" (backup: {path.name}.bak)" if path.with_name(path.name + '.bak').exists() else ""),
-         {"path": str(path)})
+    path = save_config(data)
+    backup = path.with_name(path.name + ".bak")
+    emit(args, f"Saved {path}" + (f" (backup: {backup.name})" if backup.exists() else ""), {"path": str(path)})
     return EXIT_OK
+
+
+# ---------------------------------------------------------------- project defaults
+
+PROJECT_KEYS = tuple(k for k in SET_KEYS if k != "task-difficulty")
+
+
+def flatten_project(entry: dict) -> dict:
+    """{sae key: value} of one project entry."""
+    flat = {}
+    defaults = entry.get("defaults") or {}
+    for key in PROJECT_KEYS:
+        node = defaults
+        for part in SET_KEYS[key]:
+            node = node.get(part) if isinstance(node, dict) else None
+        if node is not None:
+            flat[key] = node
+    for key, value in flatten_routing(entry.get("routing")).items():
+        flat[key] = value
+    return flat
+
+
+def project_for_cwd(config: dict) -> tuple[str, dict]:
+    root, is_git = find_root()
+    key = project_key(root)
+    return key, copy.deepcopy((config.get("projects") or {}).get(key) or {})
+
+
+def cmd_project_show(args) -> int:
+    config = load_config()
+    key, entry = project_for_cwd(config)
+    flat = flatten_project(entry)
+    global_flat = flatten_project({"defaults": config.get("defaults") or {}, "routing": config.get("routing") or {}})
+    lines = [f"Project: {key}"]
+    if not flat:
+        lines.append("No project values: new tasks use the global defaults and routing.")
+    for name, value in flat.items():
+        lines.append(f"  {name} = {json.dumps(value)}  (global: {json.dumps(global_flat.get(name))})")
+    emit(args, "\n".join(lines), {"project": key, "values": flat,
+                                  "global": {k: global_flat.get(k) for k in flat}})
+    return EXIT_OK
+
+
+def change_project(args, unset: bool) -> int:
+    config = load_config()
+    key, entry = project_for_cwd(config)
+    for pair in args.pairs:
+        name, sep, value = pair.partition("=")
+        if unset:
+            name, value = pair, "inherit"
+        elif not sep:
+            fail(EXIT_USAGE, f"Expected key=value, got {pair!r}.")
+        if is_routing_key(name):
+            routing = entry.setdefault("routing", {})
+            apply_routing_key(routing, name, value)
+            if not routing:
+                del entry["routing"]
+        elif name in PROJECT_KEYS:
+            defaults = entry.setdefault("defaults", {})
+            path = SET_KEYS[name]
+            if unset:
+                node = defaults
+                for part in path[:-1]:
+                    node = node.get(part) or {}
+                node.pop(path[-1], None)
+                if len(path) > 1 and not defaults.get(path[0]):
+                    defaults.pop(path[0], None)
+            else:
+                node = defaults
+                for part in path[:-1]:
+                    node = node.setdefault(part, {})
+                node[path[-1]] = parse_set_value(name, value)
+            if not defaults:
+                del entry["defaults"]
+        else:
+            fail(EXIT_USAGE, f"Unknown key {name!r}. Keys: {', '.join(PROJECT_KEYS)}, {ROUTING_KEYS_HELP}.")
+    new = copy.deepcopy(config)
+    projects = new.setdefault("projects", {})
+    if entry:
+        projects[key] = entry
+    else:
+        projects.pop(key, None)
+    errors = project_errors(new, key, entry) if entry else []
+    if errors:
+        fail(EXIT_USAGE, "Project values not saved:\n" + "\n".join(f"  - {e}" for e in errors))
+    save_config(new)
+    flat = flatten_project(entry)
+    lines = [f"Project {key}:"] + ([f"  {k} = {json.dumps(v)}" for k, v in flat.items()] or ["  no project values"])
+    emit(args, "\n".join(lines), {"project": key, "values": flat})
+    return EXIT_OK
+
+
+def cmd_project_set(args) -> int:
+    return change_project(args, unset=False)
+
+
+def cmd_project_unset(args) -> int:
+    return change_project(args, unset=True)
 
 
 def cmd_setup_snippets(args) -> int:
@@ -257,13 +537,38 @@ def register_setup(sub, command):
     setup = sub.add_parser("setup", help="Show, save or print harness snippets for the user config.",
                            description="sae setup <show|save|snippets> --help for details.")
     setup_sub = setup.add_subparsers(dest="setup_command", metavar="<show|save|snippets>", parser_class=Parser)
-    command(setup_sub, "show", "Print the config, or a proposal skeleton, with detected facts.",
-            "Facts: OS, claude and codex on PATH, the Codex model list, the Codex subagent cap, the default worktree root.",
+    command(setup_sub, "show", "Print the config readably, a schema-1 conversion, or a proposal skeleton.",
+            "Facts: OS, claude and codex on PATH, the Codex catalog (families with their newest and older versions),\n"
+            "the Codex subagent cap, the default worktree root. The config: model lists, tiers and one routing table\n"
+            "per phase and harness, defaults, projects. A schema-1 config: the proposed schema-2 conversion.",
             ["setup show"], [0, 1], cmd_setup_show)
-    command(setup_sub, "save", "Validate config JSON from stdin and write it (old file kept as .bak).", "",
+    command(setup_sub, "save", "Validate config JSON from stdin and write it (old file kept as .bak).",
+            "Refuses unfilled <...> values, and any cell or tier whose model is not in the harness's model list\n"
+            "or whose effort that model does not accept.",
             ["setup save < proposal.json"], [0, 1], cmd_setup_save)
     command(setup_sub, "snippets", "Print harness permission snippets for the configured worktree root.",
             "Codex: a permission profile (git writes, worktree root) and the subagent cap. Claude Code:\n"
             "additionalDirectories and allow rules. Apply them only after the user agrees, with a backup.",
             ["setup snippets"], [0, 2], cmd_setup_snippets)
     return setup
+
+
+def register_project(sub, command):
+    """Add the `project` command group (project defaults in the user config); returns the group."""
+    project = sub.add_parser("project", help="Show or change this repository's project defaults (user config).",
+                             description="sae project <show|set|unset> --help for details.")
+    project_sub = project.add_subparsers(dest="project_command", metavar="<show|set|unset>", parser_class=Parser)
+    details = ("Project defaults are personal overrides for new tasks in one repository, kept in the user config\n"
+               "under the repository's main worktree path; nothing is written into the repository. sae new copies\n"
+               "the default keys into the new task; routing keys apply at every dispatch (task → project → global).\n"
+               f"Default keys: {', '.join(PROJECT_KEYS)}.\nRouting keys: {ROUTING_KEYS_HELP}.")
+    command(project_sub, "show", "Print each project value next to the global one (read-only).", details,
+            ["project show"], [0, 1, 2], cmd_project_show)
+    p = command(project_sub, "set", "Set project values; validates and writes the user config (backup kept).",
+                details, ["project set execution=economy", "project set tier.codex.L2=<model>:medium"], [0, 1, 2],
+                cmd_project_set)
+    p.add_argument("pairs", nargs="+", metavar="key=value", help="project values to set")
+    p = command(project_sub, "unset", "Return project keys to the global value.", details,
+                ["project unset execution routing.codex.execution.economy.hard"], [0, 1, 2], cmd_project_unset)
+    p.add_argument("pairs", nargs="+", metavar="key", help="keys to return to the global value")
+    return project
