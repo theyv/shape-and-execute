@@ -97,7 +97,7 @@ POSITIVE_VERDICTS = ("pass", "pass-with-notes")
 
 
 def review_mark(task: Task, job_id: str) -> dict | None:
-    """The effective review mark of a job ([JOB-REVIEW-FLAG-HONESTY], 07-cli-spec §10.4): the
+    """The effective review mark of a job ([JOB-REVIEW-FLAG-HONESTY]): the
     planner's flag and the review points together. None when the job shows no mark (not a
     writer, a fix job, or unflagged without `all-jobs`). `reviewed` says whether a job review
     will run, `forced` whether the settings overrule the planner, `reason` why."""
@@ -127,7 +127,7 @@ def review_due(task: Task, job_id: str) -> bool:
 
 
 def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
-    """The reviews that will run but do not exist yet (07-cli-spec §10.4), each with its future
+    """The reviews that will run but do not exist yet, each with its future
     ID, target, round, `needs` (its place in the graph), `needed_by` (the jobs that will need it)
     and, with a config, the resolved harness, model and effort. Never stored, never counted in
     progress."""
@@ -262,7 +262,8 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
         if rounds >= 1:
             review_id = f"REVIEW-{target}-{rounds + 1}"
             if review_id not in task.jobs:
-                # Done is enough for the target and its fix jobs: they merge after this round (DL-94).
+                # Done is enough for the target and its fix jobs: they merge after this round
+                # (record 2026-10-10-a-review-waits-for-its-target-to-be-done.md).
                 add_generated_job(task, review_id, "review", [target] + fixes, None, target,
                                   f"round {rounds + 1} after {', '.join(fixes)}", round_=rounds + 1)
                 out.append(f"Added {review_id}: dispatch it.")
@@ -278,7 +279,7 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
 
 
 def materialize_integration_review(task: Task, out: list[str]) -> None:
-    """Adds the integration review round that is due (07-cli-spec §10.1): round 1 when every
+    """Adds the integration review round that is due: round 1 when every
     writer job is merged; the next round when the fix jobs of a changes-required round are
     merged (limited to its findings), or when a writer merged after a passed round (limited to
     the new changes). Each round needs every writer job; the final validation needs the round."""
@@ -292,7 +293,7 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
            for j in jobs.values()):
         return
     rounds = review_rounds(task, "integration")
-    # Difficulty null: the round follows the task difficulty (07-cli-spec §5.1); a difficulty set
+    # Difficulty null: the round follows the task difficulty; a difficulty set
     # with `job edit` on the previous round carries over.
     difficulty = None
     if not rounds:
@@ -451,7 +452,7 @@ def stale_gate(task: Task) -> tuple[list[str], set[str]]:
 
 
 def check_finish_gates(task: Task, with_open: bool, override: str | None) -> list[dict]:
-    """The gates of `sae finish` (07-cli-spec §8), checked before it merges anything. Refuses
+    """The gates of `sae finish`, checked before it merges anything. Refuses
     (exit 3), or returns the gates that `--override` passes: [{"gate", "jobs"}]."""
     jobs = task.jobs
     forward = f"sae finish {task.id} --override \"<reason>\""

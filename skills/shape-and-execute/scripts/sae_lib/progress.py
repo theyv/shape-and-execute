@@ -73,7 +73,7 @@ from .workspaces import prepare_workspace, workspace_of
 
 
 def ready_ids(task: Task) -> list[str]:
-    """Ready jobs, with a due spec or plan review that is not a job yet (07-cli-spec §6)."""
+    """Ready jobs, with a due spec or plan review that is not a job yet."""
     return [i for i in task.jobs if is_ready(task, i)] + due_reviews(task)
 
 

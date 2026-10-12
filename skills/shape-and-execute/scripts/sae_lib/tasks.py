@@ -81,7 +81,8 @@ def task_copies(root: Path) -> list[TaskCopy]:
 
 
 def locate_tasks(root: Path) -> dict[str, TaskCopy]:
-    """Task ID → the copy that counts ([TASK-WORKTREE], DL-110): searched in `.tasks/` and
+    """Task ID → the copy that counts ([TASK-WORKTREE],
+    record 2026-10-10-every-task-executes-in-its-own-task-work.md): searched in `.tasks/` and
     `.tasks/done/` of every worktree. The live (untracked) copy wins over a committed record;
     among equals the newest `task.last_change` wins."""
     best: dict[str, TaskCopy] = {}

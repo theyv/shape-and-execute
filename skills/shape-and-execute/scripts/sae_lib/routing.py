@@ -1,4 +1,4 @@
-"""Model resolution (07-cli-spec §5): which harness, model and effort run a job, and why.
+"""Model resolution: which harness, model and effort run a job, and why.
 
 `resolve_model` is the one function behind the dispatch header, `sae next`, the next-step card,
 the viewer and the review-mark tooltips. It returns a dict:
@@ -57,7 +57,7 @@ def override_key(task: Task, job_id: str) -> str:
 
 
 def job_context(task: Task, job_id: str) -> dict:
-    """Kind, phase, level and difficulty of a job or a planned review (07-cli-spec §5.1)."""
+    """Kind, phase, level and difficulty of a job or a planned review."""
     job = task.jobs.get(job_id)
     if job is None:
         target = planned_review_target(task, job_id)

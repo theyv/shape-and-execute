@@ -215,7 +215,7 @@ def where_it_runs(task: Task) -> str:
 
 
 def start_task_worktree(task: Task, config: dict | None, undo: list) -> tuple[list[str], str | None]:
-    """`sae start` with git ([TASK-WORKTREE], [BACKLOG-PICKUP], 07-cli-spec §8): task branch and
+    """`sae start` with git ([TASK-WORKTREE], [BACKLOG-PICKUP]): task branch and
     task worktree from the home checkout's HEAD, backlog pickup commit, task folder moved into
     the worktree, setup. Appends an undo step for every change to `undo`; the caller runs them
     on any failure until the task state is saved, so the task stays in planning. Returns the
@@ -484,7 +484,8 @@ def sourced_items(task: Task, folders=("findings", "backlog", "adr")) -> list[Pa
 
 
 def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
-    """`sae finish` ([DONE-FOLDER], DL-117): moves this task's folder into `.tasks/done/`, and every
+    """`sae finish` ([DONE-FOLDER], record 2026-10-10-finished-tasks-live-in-the-done-folder.md):
+    moves this task's folder into `.tasks/done/`, and every
     other task at the top of `.tasks/` whose phase is done or abandoned, tracked or not, from this
     checkout and from the home checkout. Tasks in any other phase are live and stay. Returns
     (old path, new path, tracked) of each moved record."""

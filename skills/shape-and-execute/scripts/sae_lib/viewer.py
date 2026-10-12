@@ -1,4 +1,4 @@
-"""The viewer server's life (07-cli-spec §12): state folder, known repositories, start and reuse,
+"""The viewer server's life: state folder, known repositories, start and reuse,
 `sae view` and the viewer link of `sae new`. The server itself is server.py."""
 
 from __future__ import annotations
@@ -252,7 +252,7 @@ def start_server() -> dict:
 
 
 def ensure_server() -> dict:
-    """The running server of this `sae` version, started when needed (07-cli-spec §12)."""
+    """The running server of this `sae` version, started when needed."""
     with state_lock("viewer"):
         info = running_server()
         if info and info.get("version") == code_version():

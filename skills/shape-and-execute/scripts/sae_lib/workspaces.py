@@ -111,7 +111,8 @@ def pattern_matches_in(source: Path, pattern: str) -> bool:
 
 def copy_worktree_includes(live: Path, worktree: Path) -> tuple[list[str], list[str]]:
     """Copies the ignored files listed for worktrees into a new worktree ([SETUP-SOURCE],
-    DL-116): from the main worktree, and a file missing there from the checkout that runs sae.
+    record 2026-10-10-setup-files-come-from-the-main-worktree.md): from the main worktree, and a
+    file missing there from the checkout that runs sae.
     Returns (copied paths, patterns that match nothing in either place)."""
     sources = []
     for source in (main_worktree(live), running_checkout()):
@@ -191,7 +192,7 @@ def prepare_workspace(task: Task, job_id: str, config: dict | None) -> tuple[Pat
     return workdir, branch
 
 
-# Removal and preservation ([WORKTREE-CLEANUP], [TASK-WORKTREE-LIFECYCLE], 07-cli-spec §7.4).
+# Removal and preservation ([WORKTREE-CLEANUP], [TASK-WORKTREE-LIFECYCLE]).
 # Automatic removal runs `git worktree remove` without --force, and only on worktrees proven
 # clean; only `sae doctor --discard` forces it.
 

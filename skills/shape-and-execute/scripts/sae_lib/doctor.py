@@ -88,7 +88,7 @@ def doctor_codex_families(config: dict, check) -> None:
 
 def doctor_worktrees(config: dict | None, check, discard: str | None) -> list[str]:
     """`--discard`, then the sweep of merged task worktrees, then every leftover worktree of this
-    repository with the reason it stays ([WORKTREE-CLEANUP], 07-cli-spec §7.4). Returns the
+    repository with the reason it stays ([WORKTREE-CLEANUP]). Returns the
     lines of a discard."""
     root, is_git = find_root()
     if not is_git:

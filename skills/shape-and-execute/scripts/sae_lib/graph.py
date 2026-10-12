@@ -98,7 +98,7 @@ def fix_target(task: Task, job_id: str) -> str | None:
 
 def integration_parked(task: Task) -> str | None:
     """The integration review round that parks the task, or None: its second (or later)
-    changes-required round while no fix job of that round exists (07-cli-spec §6)."""
+    changes-required round while no fix job of that round exists."""
     rounds = review_rounds(task, "integration")
     if not rounds or not requires_changes(task.jobs[rounds[-1]]):
         return None
@@ -111,7 +111,8 @@ def integration_parked(task: Task) -> str | None:
 
 def works_on_unmerged(task: Task, job: dict, need: str) -> bool:
     """Reviews and integration jobs work on their unmerged target; a job review also on the
-    target's fix jobs, which merge together with it after the review (DL-94)."""
+    target's fix jobs, which merge together with it after the review
+    (record 2026-10-10-a-review-waits-for-its-target-to-be-done.md)."""
     target = job.get("target")
     if need == target:
         return True
@@ -155,7 +156,7 @@ def is_ready(task: Task, job_id: str) -> bool:
 
 def hold_active(task: Task, job_id: str) -> bool:
     """A hold after a job is active once the job is done, and merged for a writer in the
-    worktrees layout ([HOLD-AFTER-JOB], 07-cli-spec §6)."""
+    worktrees layout ([HOLD-AFTER-JOB])."""
     job = task.jobs.get(job_id)
     if job is None or job["status"] != "done":
         return False
@@ -409,7 +410,7 @@ def check_lint(task: Task) -> tuple[list[str], list[str]]:
 
 
 def due_reviews(task: Task, errors: list[str] | None = None) -> list[str]:
-    """The spec or plan review that is due but not yet a job (07-cli-spec §10.1): its review
+    """The spec or plan review that is due but not yet a job: its review
     point is on, the check is clean, and the thing to review exists (`specs.md`; a plan with
     jobs and no open planning or research job). Computed, never stored: `sae next` lists it as
     ready, `sae dispatch` adds it."""
@@ -436,7 +437,7 @@ def due_reviews(task: Task, errors: list[str] | None = None) -> list[str]:
 
 def add_due_review(task: Task, review_id: str) -> None:
     target = "spec" if review_id == "REVIEW-SPEC" else "plan"
-    # Difficulty null: a task-level review follows the task difficulty (07-cli-spec §5.1).
+    # Difficulty null: a task-level review follows the task difficulty.
     add_generated_job(task, review_id, "review", [], None, target, f"{target} review is a review point")
 
 
