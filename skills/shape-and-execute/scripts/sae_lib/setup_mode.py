@@ -158,6 +158,11 @@ def _codex_catalog() -> tuple | None:
     return tuple(out)
 
 
+# The Claude families sae knows: the viewer's "Add family" offers each one missing from the
+# model list ([SETTINGS-CLAUDE-FAMILIES]). The only model names in code.
+CLAUDE_FAMILIES = ("haiku", "sonnet", "opus", "fable")
+
+
 def codex_catalog() -> list[dict] | None:
     """The Codex model catalog: $CODEX_HOME/models_cache.json, else `codex debug models`."""
     catalog = _codex_catalog()

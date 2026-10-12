@@ -10,6 +10,7 @@ from .common import ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, read_tex
 from .config import cfg
 from .graph import fix_target, review_rounds
 from .markdown import split_frontmatter
+from .routing import job_context
 from .tasks import Task, job_file, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
 
@@ -80,7 +81,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
     lines: list[str | None] = [
         f"You are {who} for the shape-and-execute skill. Follow your protocol:",
         f"  {roles / protocol}",
-        f"Task: {task.id} · Job: {job_id} ({kind}, {job['difficulty']})",
+        f"Task: {task.id} · Job: {job_id} ({kind}, {job_context(task, job_id)['difficulty']})",
     ]
     spec, intent = d / "specs.md", d / "intent.md"
     spec_or_intent = (pointer("Spec — read the parts your job covers: ", spec) if spec.exists()

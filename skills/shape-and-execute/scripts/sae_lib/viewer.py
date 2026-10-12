@@ -48,11 +48,14 @@ class NoSockets(Exception):
 
 
 class NoStateFolder(Exception):
-    """The state folder cannot be written here (a sandbox that confines writes to the workspace)."""
+    """The state folder cannot be written here: a sandbox that confines writes to the workspace,
+    or a state path that is not a folder (below a regular file)."""
 
 
 # What a sandbox answers to a forbidden write; any other OSError is a real failure.
 FORBIDDEN_ERRNOS = (errno.EPERM, errno.EACCES, errno.EROFS)
+# What a state path below a regular file, or a file in place of the folder, answers.
+NOT_A_FOLDER_ERRNOS = (errno.ENOTDIR, errno.EEXIST)
 
 
 # ---------------------------------------------------------------- state folder
@@ -262,13 +265,13 @@ def ensure_server() -> dict:
 def start_for(root: Path) -> tuple[dict, dict]:
     """(known-list entry, running server) for `root`. Sockets are checked before any state write,
     so a sandbox reaches the fallback ([EDGE-NO-SOCKETS]); raises NoSockets or NoStateFolder
-    where the sandbox forbids either."""
+    where the sandbox forbids either or the state path is not a folder."""
     check_sockets()
     try:
         entry = remember_repo(root, touch=True)
         return entry, ensure_server()
     except OSError as exc:
-        if exc.errno in FORBIDDEN_ERRNOS:
+        if exc.errno in FORBIDDEN_ERRNOS + NOT_A_FOLDER_ERRNOS:
             raise NoStateFolder(f"{state_dir()}: {exc.strerror or exc}") from exc
         raise
 
@@ -305,8 +308,8 @@ def viewer_link(root: Path, task_id: str) -> tuple[str | None, str]:
         return url, f"Viewer: {url}"
     except NoSockets:
         return None, f"Viewer: cannot start here (no local sockets). In your terminal:\n  {command}"
-    except NoStateFolder:
-        return None, f"Viewer: cannot start here (state folder not writable). In your terminal:\n  {command}"
+    except NoStateFolder as exc:
+        return None, f"Viewer: cannot start here (state folder not writable: {exc}). In your terminal:\n  {command}"
     except Exception as exc:  # the viewer never fails `sae new`
         return None, f"Viewer: not started ({str(exc).splitlines()[0]}). In your terminal:\n  {command}"
 
@@ -338,7 +341,7 @@ def cmd_view(args) -> int:
     except (NoSockets, NoStateFolder) as exc:
         command = start_command(root, task_id)
         why = ("this sandbox forbids local sockets" if isinstance(exc, NoSockets)
-               else f"this sandbox forbids writing the state folder ({exc})")
+               else f"the state folder cannot be written ({exc})")
         print(f"The viewer cannot start here: {why}.\nRun this in your own terminal:\n  {command}", file=sys.stderr)
         if args.json:
             print(json.dumps({"url": None, "command": command}))

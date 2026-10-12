@@ -46,6 +46,8 @@ var T=()=>own(TASKS,S.task)||null,
  // t.waits: what each pending job waits for; a task the server could not load has none, so nothing shows ready
  waits=(t,id)=>own(t.waits||{},id)||[],
  stOf=(t,id)=>{var j=JS(t)[id],w=own(t.waits||{},id);return j.status==="pending"&&w&&!w.length?"ready":j.status},
+ // t.difficulty: the effective difficulty of `sae next` (a review takes its target's or the task's), never a raw null
+ difOf=(t,id)=>own(t.difficulty||{},id)||(JO(t,id)||{}).difficulty||"–",
  model=a=>a?a.model+(a.effort?" ("+a.effort+")":""):"",
  tierOf=a=>a.tier||a.rung||"", // attempts of old tasks name a rung
  lastA=j=>j.attempts&&j.attempts[j.attempts.length-1],
@@ -193,7 +195,7 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   cnt.findings=(IDX.findings||[]).length;
   h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.worktree?'<span class="wt" title="'+esc(it.worktree)+'"><span class="mut">task worktree</span> '+code("…/"+it.worktree.split(/[\\\/]/).slice(-2).join("/"))+cpi(it.worktree,it.worktree,"Copy path: ")+"</span>":it.location?'<span title="'+esc(it.location_path||"")+'"><span class="mut">in</span> '+esc(it.location==="done"?".tasks/done/":it.location==="checkout"?"…/"+String(it.location_path||"").split(/[\\\/]/).pop():it.location)+"</span>":"")+"</div></div>"+
    '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
-  if(t)h+=headerCard(t); // settings.js: the settings card, editable in place
+  if(t)h+=headerCard(t)+pmap(t); // settings.js: the settings card, editable in place; task-views.js: the process map
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0];return'<button role="tab" id="tab-'+x[0]+'" aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(cnt[x[0]]?"<i>"+cnt[x[0]]+"</i>":"")+"</button>"}).join("")+"</div>";
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
   m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
@@ -206,7 +208,7 @@ function renderPanel(){var p=$("#panel"),t=T(),h="",x='<button class="btn ic" da
   if(dft)h='<div class="ph"><h2 class="sans">'+esc(dft.title)+"</h2>"+x+'</div><div class="meta">'+code(dft.file)+"<span>"+esc((dft.type||"draft")+" · "+(dft.status||"proposed"))+"</span>"+(dft.source?"<span>from "+code(dft.source)+"</span>":"")+"</div>"+'<div class="sec">'+md(dft.text,{meta:false})+"</div>";
   else if(S.bl&&IDX){var b=(IDX.backlog||[]).find(x=>x.file===S.bl),c=b&&cdTo(null)+IDX.sae+" new "+shq(b.title)+" --from "+b.file;if(b)h='<div class="ph"><h2 class="sans">'+esc(b.title)+"</h2>"+x+'</div><div class="meta">'+code(b.file)+"<span>"+agoH(b.created)+"</span>"+(b.source?"<span>from "+code(b.source)+"</span>":"")+"</div>"+
     sec("Start it as a task",'<div class="cmdrow"><pre class="cmd">'+esc(c)+"</pre>"+cpy(c,"Copy")+"</div>")+sec("Intent",blankDoc(b.text)?notYet("intent.md"):md(front(b.text)[1].replace(/^#\s.*$/m,""),{meta:false}))}
-  else if(S.job&&t&&!/^(jobs|findings)$/.test(S.tab)){var j=JO(t,S.job),g=!j&&own(changes(t).r.removed,S.job);if(j||g)h='<div class="ph"><div><h2>'+esc(S.job)+'</h2><div class="meta">'+esc(j?j.kind+" · "+j.difficulty+(j.final?" · final":""):g.kind+" · removed")+"</div></div>"+x+'</div><div class="sec">'+jobBody(t,S.job)+"</div>"}
+  else if(S.job&&t&&!/^(jobs|findings)$/.test(S.tab)){var j=JO(t,S.job),g=!j&&own(changes(t).r.removed,S.job);if(j||g)h='<div class="ph"><div><h2>'+esc(S.job)+'</h2><div class="meta">'+esc(j?j.kind+" · "+difOf(t,S.job)+(j.final?" · final":""):g.kind+" · removed")+"</div></div>"+x+'</div><div class="sec">'+jobBody(t,S.job)+"</div>"}
   p.hidden=!h;p.innerHTML=h}
 var fkey=x=>x&&x.dataset?(x.dataset.act||"")+"|"+(x.dataset.id||x.dataset.tab||x.dataset.f||x.dataset.d||x.dataset.m||x.dataset.k||"")+"|"+(x.dataset.v||""):"",
  refocus=(root,k)=>{if(k&&k!=="||"){var e=[...root.querySelectorAll("[data-act]")].find(x=>fkey(x)===k);if(e)try{e.focus({preventScroll:true})}catch(_){}}};

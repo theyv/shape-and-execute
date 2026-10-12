@@ -50,7 +50,7 @@ var SXMODE={
  harness:"<p><b>Claude | Codex</b> — each harness has its own model list, tiers and tables. Jobs run on the orchestrator's harness; reviews on the harness the review provider names.</p>",
  tiers:"<p><b>Tiers</b> — four presets, each a model · effort, colored by number: L1 blue, L2 yellow, L3 orange, L4 red.</p>"+sxT([["on","every cell picks a tier; editing a tier changes every cell that uses it."],["off","cells pick a model · effort directly; the tiers are greyed out."]])+"<p>A cell can keep both a tier and a model · effort; the switch picks which one counts. Switching off below Global writes each tier's model · effort into the cells that had only a tier, on this level.</p>",
  models:"<p><b>Models</b> — the models offered in tiers and tables, lightest first. The order sets the colors: blue, yellow, orange, red, purple, brown. A family entry always means the newest version; sae resolves it at dispatch. Pin an older version only when you need it.</p>"+sxT([["checkbox","ticked: offered in tiers and tables. Unticked: kept in the list (and its color), not offered."],["↑ ↓","change the order, and so the colors."],["✕","remove the entry."]])+"<p>A cell or tier that uses a removed or unticked model shows \"(not in list)\" with a red dashed outline; Save waits until it changes.</p>",
- claudeold:"<p><b>Claude: families only</b> — the Agent tool accepts only family names and always runs the newest version of the family. A family removed here can be added back until you reload the page.</p>",
+ claudeold:"<p><b>Claude: families only</b> — the Agent tool accepts only family names and always runs the newest version of the family. \"Add family\" offers every Claude family sae knows that is not in the list. A family removed here comes back with its efforts; a new one takes the efforts of the families listed.</p>",
  codexadd:"<p><b>Codex: older versions</b> — offered from the Codex model catalog on this machine (<code>models_cache.json</code>, or <code>codex debug models</code>), with the efforts each version accepts. Nothing is typed by hand.</p>"};
 
 /* ---------- data: GET /api/settings for the task (Task tab) and for the project (Project, Global) ---------- */
@@ -173,9 +173,13 @@ var sxVer=s=>((/\d+(?:\.\d+)*/.exec(s)||[""])[0]).split(".").filter(Boolean).map
  // mirrors family_of and newest_of_family in sae_lib (setup_mode.py, routing.py): a family is the last part of a versioned name
  sxCat=()=>{var c=sxData(),d=c&&(c.proj||c.task);return((d&&d.codex_catalog)||[]).filter(m=>m&&m.model&&(m.visibility==null||m.visibility==="list"))},
  sxFam=s=>{var l=s.split("-").pop();return s.includes("-")&&/^[a-z]+$/i.test(l)&&/\d/.test(s)?l:null},
- sxNewest=f=>sxCat().filter(m=>m.model.endsWith("-"+f)).sort((a,b)=>sxCmpV(sxVer(b.model),sxVer(a.model)))[0]||null;
+ sxNewest=f=>sxCat().filter(m=>m.model.endsWith("-"+f)).sort((a,b)=>sxCmpV(sxVer(b.model),sxVer(a.model)))[0]||null,
+ // the Claude families sae knows (settings answer, claude_families); a new one takes the efforts of the families listed
+ sxCF=()=>{var c=sxData(),d=c&&(c.proj||c.task);return(d&&d.claude_families)||[]},
+ sxEff=L=>[...new Set(L.flatMap(x=>x.efforts||[]))];
 function sxAddable(h,L){var has=m=>L.some(x=>x.model===m);
-  if(h!=="codex")return(SX.removed[h]||[]).filter(x=>!has(x.model)).map(x=>["rm:"+x.model,x.model+" · family"]);
+  if(h!=="codex"){var rm=(SX.removed[h]||[]).filter(x=>!has(x.model)),back=rm.map(x=>x.model);
+    return rm.map(x=>["rm:"+x.model,x.model+" · family"]).concat((sxEff(L).length?sxCF():[]).filter(f=>!has(f)&&!back.includes(f)).map(f=>["cf:"+f,f+" · family"]))}
   var cat=sxCat(),fams=[...new Set(cat.map(m=>sxFam(m.model)).filter(Boolean))].sort(),out=fams.filter(f=>!has(f)).map(f=>["fam:"+f,f+" · newest"]);
   return out.concat(cat.filter(m=>!has(m.model)&&!(sxFam(m.model)&&sxNewest(sxFam(m.model))===m)).sort((a,b)=>a.model<b.model?-1:1).map(m=>["ver:"+m.model,m.model+" · pinned version"]))}
 function sxModelsSec(){var h=SX.h,M=(sxConf()||{}).models||{},L=M[h]||[],add=sxAddable(h,L),K="global|";
@@ -236,6 +240,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dat
     else if(P[2]==="rm"){x=L.splice(i,1)[0];(SX.removed[P[1]]=SX.removed[P[1]]||[]).push(x)}
     else if(P[2]==="add"&&sel&&sel.value){var v=sel.value,n=v.slice(v.indexOf(":")+1),m;
       if(/^rm:/.test(v))x=(SX.removed[P[1]]||[]).find(r=>r.model===n);
+      else if(/^cf:/.test(v)){m=sxEff(L);x=m.length&&{model:n,family:true,enabled:true,efforts:m}}
       else if(/^fam:/.test(v)){m=sxNewest(n);x=m&&{model:n,family:true,enabled:true,efforts:m.efforts.slice()}}
       else{m=sxCat().find(r=>r.model===n);x=m&&{model:n,family:false,enabled:true,efforts:m.efforts.slice()}}
       if(x&&!L.some(r=>r.model===x.model))L.push(sxClone(x))}});

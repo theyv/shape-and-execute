@@ -145,6 +145,9 @@ function node(t,id,ch,p,at,NW,NH){var js=JS(t),g=!js[id]&&!p,j=js[id]||(p?{kind:
     (vp?'<g class="sp k-'+VC[r.v]+'" transform="translate('+(NW-8-vp)+',44)"><rect width="'+vp+'" height="18" rx="4"/><text x="7" y="13">'+(r.v[0]==="c"?"✕ ":"✓ ")+r.v+"</text></g>":"")+
     (right?'<text x="'+(NW-(vp?vp+14:10))+'" y="58" text-anchor="end">'+esc(right)+"</text>":"")+m4+"</g>"}
 
+// the process map of `sae status` ([VIEWER-PROCESS-MAP]): the server sends its lines, the page only shows them
+var pmap=t=>(t.map||[]).length?'<pre class="pmap" aria-label="Process map">'+esc(t.map.join("\n"))+"</pre>":"";
+
 /* ---------- tabs ---------- */
 var TAB={};
 TAB.overview=t=>{var js=JS(t),ids=Object.keys(js),info=t.state.task,c={},tok=0,L=[],R="",need=[],plan=t.files["plan.md"];
@@ -248,7 +251,7 @@ function jobOrder(t){var js=JS(t),ids=Object.keys(js),lay={},kids={},base=[],out
   base.sort((a,b)=>key(a)-key(b)||ids.indexOf(a)-ids.indexOf(b)).forEach(id=>add(id,0));ids.forEach(id=>add(id,0));return out}
 TAB.jobs=t=>{var js=JS(t);if(!Object.keys(js).length)return empty("No jobs yet.");
   return tbl("nw","ID,-Kind,Status,Last change,~Attempts,Models,~Tokens,Review",jobOrder(t).map(x=>{var id=x[0],j=js[id],op=S.job===id,tk=tokens(j);
-    return tr([[x[1]?"mono mut":"mono",esc(id)],["hm",esc(j.kind)+'<span class="mut"> · '+esc(j.difficulty)+"</span>"],jpill(t,id),["ink2",agoH(j.last_change)],["n",j.attempts.length],["mono ink2",esc([...new Set(j.attempts.map(model))].join(", ")||"–")],["n",tk?num(tk):"–"],(r=>r.v?vpill(r.v):r.x?'<span class="mut">'+r.x+"</span>":"")(revInfo(t,id))],
+    return tr([[x[1]?"mono mut":"mono",esc(id)],["hm",esc(j.kind)+'<span class="mut"> · '+esc(difOf(t,id))+"</span>"],jpill(t,id),["ink2",agoH(j.last_change)],["n",j.attempts.length],["mono ink2",esc([...new Set(j.attempts.map(model))].join(", ")||"–")],["n",tk?num(tk):"–"],(r=>r.v?vpill(r.v):r.x?'<span class="mut">'+r.x+"</span>":"")(revInfo(t,id))],
       ' class="r1'+(op?" open":"")+'"'+dataJ("row",id)+' tabindex="0" aria-expanded="'+op+'"')+(op?'<tr><td colspan="8" class="xd">'+jobBody(t,id)+"</td></tr>":"")}))};
 /* ---------- timeline overview: one row per job, one bar per attempt; long idle gaps are cut out of the axis ---------- */
 function gantt(t){var js=JS(t),ev=t.events||[],info=t.state.task,M=v=>Date.parse(v),now=Date.now();
