@@ -361,7 +361,7 @@ def cmd_setup_show(args) -> int:
         lines += ["", "As JSON:", json.dumps(proposal, indent=2, ensure_ascii=False)]
         data = {"facts": facts, "config": config, "schema": 1, "proposal": proposal}
     elif config is not None:
-        errors = validate_config(config)
+        errors = validate_config(config, codex_catalog())
         lines += ["", f"Current config ({config_path()}):"] + config_text(config)
         if errors:
             lines += ["", "Problems:"] + [f"  - {e}" for e in errors]
@@ -381,7 +381,7 @@ def cmd_setup_save(args) -> int:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         fail(EXIT_USAGE, f"stdin is not valid JSON: {exc}")
-    errors = validate_config(data)
+    errors = validate_config(data, codex_catalog())
     if errors:
         fail(EXIT_USAGE, "Config not saved:\n" + "\n".join(f"  - {e}" for e in errors))
     path = save_config(data)
@@ -550,7 +550,8 @@ def register_setup(sub, command):
             ["setup show"], [0, 1], cmd_setup_show)
     command(setup_sub, "save", "Validate config JSON from stdin and write it (old file kept as .bak).",
             "Refuses unfilled <...> values, and any cell or tier whose model is not in the harness's model list\n"
-            "or whose effort that model does not accept.",
+            "or whose effort that model does not accept. With a Codex catalog it also refuses a Codex exact\n"
+            "version that the catalog does not offer or hides, and an effort it does not list for that version.",
             ["setup save < proposal.json"], [0, 1], cmd_setup_save)
     command(setup_sub, "snippets", "Print harness permission snippets for the configured worktree root.",
             "Codex: a permission profile (git writes, worktree root) and the subagent cap. Claude Code:\n"

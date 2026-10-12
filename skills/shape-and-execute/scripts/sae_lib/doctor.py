@@ -14,7 +14,8 @@ from pathlib import Path
 from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
-from .setup_mode import codex_cap_text, codex_subagent_cap
+from .routing import newest_of_family
+from .setup_mode import codex_cap_text, codex_catalog, codex_subagent_cap
 from .tasks import locate_tasks, tasks_dir
 from .viewer import VIEWER_ASSETS, remember_repo_safely, repo_known
 from .workspaces import discard_worktree, leftover_reason, sae_worktrees, setup_worktree, sweep_merged_task_worktrees
@@ -30,7 +31,7 @@ def cmd_doctor(args) -> int:
     config, config_ok = None, False
     try:
         config = load_config(allow_old=True)
-        errors = validate_config(config)
+        errors = validate_config(config, codex_catalog())
         config_ok = not errors
         check(config_ok, f"config {config_path()}" + ("" if config_ok else ": " + "; ".join(errors)),
               "Run setup mode and save a valid config.")
@@ -53,6 +54,8 @@ def cmd_doctor(args) -> int:
         cap = codex_subagent_cap()
         check(cap["ok"], codex_cap_text(cap).splitlines()[0],
               f"Set [agents] max_threads = {cap['recommended']} in {cap['config']} (setup mode can do it).")
+    if config_ok:
+        doctor_codex_families(config, check)
     discarded = doctor_worktrees(config if config_ok else None, check, args.discard)
     if args.repo:
         doctor_repo(config if config_ok else None, check)
@@ -65,6 +68,20 @@ def cmd_doctor(args) -> int:
     if not config_ok:
         return EXIT_CONFIG
     return EXIT_USAGE if failed else EXIT_OK
+
+
+def doctor_codex_families(config: dict, check) -> None:
+    """Each enabled Codex family resolves to a listed catalog version ([DOCTOR-CODEX-FAMILIES])."""
+    catalog = codex_catalog()
+    for entry in config["models"].get("codex") or []:
+        if not entry.get("family") or not entry.get("enabled"):
+            continue
+        family = entry["model"]
+        newest = newest_of_family(catalog or [], family)
+        why = "no Codex catalog" if catalog is None else "the Codex catalog lists no version"
+        check(newest is not None,
+              f"Codex family {family}: " + (f"resolves to {newest['model']}" if newest else f"does not resolve ({why})"),
+              "Run setup mode: pick another family, or pin an exact version from `sae setup show`, or switch it off.")
 
 
 def doctor_worktrees(config: dict | None, check, discard: str | None) -> list[str]:
@@ -157,7 +174,9 @@ def hooks_found(root: Path) -> str:
 def register_doctor(sub, command):
     """Add the `doctor` command to the parser."""
     p = command(sub, "doctor", "Check the environment; prints a fix for each problem.",
-                "Python, config, worktree root, git, harness detection, the other harness CLI, the Codex subagent cap.\n"
+                "Python, config, worktree root, git, harness detection, the other harness CLI, the Codex subagent cap,\n"
+                "the Codex families (each enabled one resolves to a listed catalog version). With a Codex catalog the\n"
+                "config check also checks Codex exact versions and their efforts against it.\n"
                 "In a git repository: removes the task worktrees of finished tasks whose branch is merged (when\n"
                 "they hold no uncommitted work), then lists every leftover worktree with the reason it stays.\n"
                 "--repo also checks .tasks/, the repo profile, a throwaway worktree (setup.sh, commit) and the viewer.\n"
