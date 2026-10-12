@@ -1,6 +1,9 @@
 ---
 # artifact_language: en   # optional: pin the artifact language for everyone in this repository
-# adr_folder: docs/adr     # optional: where accepted decision records go
+# adr_folder: docs/adr     # optional: one flat folder for accepted decision records
+# adr_rules:               # optional, instead: ADR rules, path prefix -> folder; longest prefix wins
+#   - services/billing/ -> docs/adr/billing/
+#   - services/claims/ -> docs/adr/claims/
 ---
 
 # Repo profile
