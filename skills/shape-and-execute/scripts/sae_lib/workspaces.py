@@ -73,7 +73,7 @@ def require_on_task_branch(task: Task) -> None:
     branch = task.info.get("branch")
     current = git(task.root, "branch", "--show-current", check=False)
     if current != branch:
-        fail(EXIT_GIT, f"The task checkout {task.root} is on {current or 'a detached HEAD'}, not on {branch}. "
+        fail(EXIT_GIT, f"The task worktree {task.root} is on {current or 'a detached HEAD'}, not on {branch}. "
                        f"Run there: git switch {branch}")
     dirty = tracked_changes_outside_tasks(task.root)
     if dirty:
@@ -394,8 +394,15 @@ def leftover_reason(repo: Path, path: Path, task_id: str, name: str, located: di
     info, jobs = state.get("task") or {}, state.get("jobs") or {}
     phase = info.get("phase") or "unknown"
     work = unpreserved_work(path, task_copy_sources(info, repo) if name == TASK_WORKTREE_NAME else [])
-    held = f"; it holds uncommitted work: {work_text(work)}" if work else ""
     closed = phase in CLOSED_PHASES
+    live = (name == TASK_WORKTREE_NAME and not closed and copy is not None and copy.live
+            and copy.checkout.resolve() == path.resolve())
+    if live:  # the task's own live folder is not work to save, and --discard refuses this worktree
+        own = f".tasks/{task_id}/"
+        work = [w for w in work if not w.startswith(own)]
+    held = f"; it holds uncommitted work: {work_text(work)}" if work else ""
+    if live:
+        return f"task worktree of the live task ({phase}){held}", False
     if name == TASK_WORKTREE_NAME:
         if phase == "done":
             base = merged_into_base(repo, task_id, info)

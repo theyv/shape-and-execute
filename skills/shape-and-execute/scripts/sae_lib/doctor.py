@@ -26,7 +26,7 @@ def cmd_doctor(args) -> int:
     def check(ok: bool | None, text: str, fix: str = "") -> None:
         checks.append(("✓" if ok else ("!" if ok is None else "✗"), text, "" if ok else fix))
 
-    check(sys.version_info >= (3, 10), f"Python {platform.python_version()}", "Install Python 3.10 or newer.")
+    check(sys.version_info >= (3, 9), f"Python {platform.python_version()}", "Install Python 3.9 or newer.")
     config, config_ok = None, False
     try:
         config = load_config(allow_old=True)
