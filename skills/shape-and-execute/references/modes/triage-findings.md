@@ -15,10 +15,11 @@ open, or reject.
 4. Ask in the grill format ([grill.md](../grill.md)) what to do with each group: fix now (a new
    task), later (a backlog item), leave open, or reject (with a reason).
 5. Fix now → start a new task with [shape.md](shape.md), with the findings as the note. The
-   intent links the finding files.
+   intent links the finding files; the job that fixes one names it in `resolves`, and its
+   success closes it.
    Later → `sae new "<title>" --backlog`, and write its intent from the findings: what should
    be true when it is done, with the finding files as evidence.
-6. Close what was handled:
+6. Close what was handled (a finding a job resolved is closed already):
    `sae finding close <file> --outcome "fixed in <task-id>"` (when that task finishes),
    `--outcome "moved to backlog/<file>"`, `--outcome "rejected: <reason>"` or
    `--outcome "duplicate of <finding>"`.

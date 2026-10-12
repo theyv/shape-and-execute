@@ -144,8 +144,12 @@ def repo_data(key: str) -> dict:
                 entry["checkout"] = str(copy.checkout)
             tasks.append(entry)
     tasks.sort(key=lambda t: t["id"], reverse=True)
+    from .findings import closed_lines, closed_text
+    closed = closed_lines(root)  # [CLOSED-VISIBLE]: closed in any counting checkout
     findings = []
     for checkout, path in merged_items(root, "findings"):
+        if path.stem in closed:
+            continue
         meta, body = split_frontmatter(read_text(path, ""))
         findings.append({"file": rel(path, checkout), "path": str(path), "title": first_heading(body) or path.stem,
                          "type": meta.get("type"), "confidence": meta.get("confidence"),
@@ -167,7 +171,7 @@ def repo_data(key: str) -> dict:
     open_drafts = sum(1 for d in drafts if d["status"] in (None, "proposed"))
     return {"repo": root.name, "root": str(root), "key": key, "sae": sae_prefix(), "tasks": tasks,
             "findings": findings, "backlog": backlog, "drafts": drafts, "open_drafts": open_drafts,
-            "closed_findings": read_text(tasks_dir(root) / "findings" / "closed.md", "")}
+            "closed_findings": closed_text(root)}
 
 
 def load_config_quietly() -> tuple[dict | None, str | None]:

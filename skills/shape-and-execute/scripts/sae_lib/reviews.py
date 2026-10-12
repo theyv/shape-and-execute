@@ -23,6 +23,7 @@ from .common import (
     write_atomic,
 )
 from .config import cfg, load_config, max_verify_failures
+from .findings import close_resolved, resolution_notes
 from .gitutil import find_root, git, run
 from .graph import (
     add_generated_job,
@@ -188,7 +189,8 @@ def merged_after(task: Task, review_id: str) -> list[str]:
 
 def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> int:
     """Merges a done writer job (and its fix jobs) into the task branch, or only marks it
-    merged in the chain layout and without git. Returns an exit code."""
+    merged in the chain layout and without git, then closes the findings the group resolved.
+    Returns an exit code."""
     job = task.jobs[job_id]
     group = [job_id] + [i for i, j in task.jobs.items() if fix_target(task, i) == job_id and j["status"] == "done"]
     if job["kind"] == "integration" and job.get("target") in task.jobs:
@@ -219,6 +221,7 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
         task.touch(task.jobs[member])
     task.event("job.merged", job=job_id, commit=commit)
     out.append(f"{job_id}: merged" + (f" into {task.info['branch']} ({commit})" if commit else ""))
+    close_resolved(task, group, out)  # [RESOLVES-CLOSE], [EDGE-FIX-GROUP]
     reset_final_after_late_merge(task, job_id, group, out)
     return EXIT_OK
 
@@ -580,8 +583,10 @@ def collect_checked_job(task: Task, job_id: str, meta: dict, config: dict | None
                 out.append(f"warning: {job_id} changed files outside its scope: {', '.join(outside)}")
         job["commits"] = job["commits"] + [c for c in new_commits if c not in job["commits"]]
     job["status"] = "done"
+    out.extend(resolution_notes(task, job_id))
     if writer:
         return after_writer_done(task, job_id, config, out)
+    close_resolved(task, [job_id], out)  # a validation job succeeds when it is collected done
     return EXIT_OK
 
 

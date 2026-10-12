@@ -37,6 +37,7 @@ from .control import (
     process_map,
     record_card,
 )
+from .findings import open_findings
 from .graph import (
     active_holds,
     add_due_review,
@@ -180,7 +181,7 @@ def cmd_status(args) -> int:
         backlog.append({"file": rel(path, root), "title": re.sub(r"^Intent:\s*", "", first_heading(body) or path.stem),
                         "source": meta.get("source"), "created": stamp_time(path.name),
                         "picked_up_by": picked.get(rel(path, root))})
-    findings = len(stamped_items(tasks_dir(root) / "findings"))
+    findings = len(open_findings(root))
     lines = []
     if tasks:
         lines.append("Tasks:")
