@@ -49,15 +49,14 @@ def finished(sb: Sandbox, slug: str, jobs=("LEFT", "RIGHT")) -> tuple[str, Path]
     for job_id in jobs:
         done_job(sb, task, slug, job_id)
     out = sb.sae("finish", slug).stdout
-    # the first task of a repository: `sae new` left .tasks/.gitignore and .gitattributes untracked at home
-    assert "Before you merge, delete these untracked copies" in out and ".tasks/.gitignore" in out, out
+    # the first task of a repository: `sae new` left .tasks/.gitignore and .gitattributes untracked at home;
+    # finish removes them, as the task record commits them unchanged ([OWNER-MERGE-FIRST-TASK])
+    assert "Removed untracked copies" in out and ".tasks/.gitignore" in out, out
     return task, sb.task_worktree(task)
 
 
 def owner_merges(sb: Sandbox, task: str) -> None:
-    """The owner follows finish's advice, then merges the task branch into main."""
-    for name in (".gitignore", ".gitattributes"):
-        (sb.repo / ".tasks" / name).unlink(missing_ok=True)
+    """The owner merges the task branch into main, with no manual step first."""
     sb.git("merge", "-q", "--no-ff", "-m", "merge", f"task/{task}")
 
 

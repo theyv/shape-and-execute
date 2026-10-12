@@ -504,12 +504,34 @@ def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list
                + (f", with {len(moved)} earlier finished task(s) moved to .tasks/done/." if moved else "."))
     home = Path(task.info.get("home") or root)
     if home.is_dir() and home.resolve() != root.resolve():
-        committed = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", check=False).splitlines()
-        blocking = [p for p in committed if (home / p).is_file()
-                    and not git_ok(home, "ls-files", "--error-unmatch", "--", p)]
-        if blocking:
-            out.append(f"Before you merge, delete these untracked copies in {home}; the task record "
-                       "commits them, and git refuses to overwrite untracked files: " + ", ".join(blocking))
+        removed, differing = remove_identical_home_copies(root, home)
+        if removed:
+            out.append(f"Removed untracked copies in {home} that the task record commits unchanged, so "
+                       "git can merge it: " + ", ".join(removed))
+        if differing:
+            out.append(f"Before you merge, move these untracked files in {home} aside; the task record "
+                       "commits other content, and git refuses to overwrite untracked files: "
+                       + ", ".join(differing))
+
+
+def remove_identical_home_copies(root: Path, home: Path) -> tuple[list[str], list[str]]:
+    """[OWNER-MERGE-FIRST-TASK], [DECISION-MERGE-CLEANUP]: untracked `.tasks/` files in the home
+    checkout block the owner's merge of the task record (HEAD of the task branch). A byte-identical
+    copy is deleted (nothing is lost); a differing one stays. Returns (removed, differing)."""
+    committed = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", check=False).splitlines()
+    removed, differing = [], []
+    for path in committed:
+        copy = home / path
+        if not copy.is_file() or git_ok(home, "ls-files", "--error-unmatch", "--", path):
+            continue
+        blob = git(root, "rev-parse", f"HEAD:{path}", check=False)
+        if (path.startswith(".tasks/") and not copy.is_symlink() and blob
+                and git(home, "hash-object", "--no-filters", "--", str(copy), check=False) == blob):
+            copy.unlink()
+            removed.append(path)
+        else:
+            differing.append(path)
+    return removed, differing
 
 
 def cmd_abandon(args) -> int:

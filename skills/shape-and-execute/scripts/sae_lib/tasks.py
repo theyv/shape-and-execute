@@ -328,13 +328,28 @@ def append_event_to(root: Path, ref: str, type_: str, **fields) -> bool:
     return True
 
 
+TASKS_GIT_FILES = {".gitignore": ".lock\n", ".gitattributes": "findings/closed.md merge=union\n"}
+
+
 def ensure_tasks_folder(root: Path) -> None:
     folder = tasks_dir(root)
     folder.mkdir(parents=True, exist_ok=True)
-    if not (folder / ".gitignore").exists():
-        write_atomic(folder / ".gitignore", ".lock\n")
-    if not (folder / ".gitattributes").exists():
-        write_atomic(folder / ".gitattributes", "findings/closed.md merge=union\n")
+    for name, text in TASKS_GIT_FILES.items():
+        if not (folder / name).exists() and not unmerged_task_branch_has(root, f".tasks/{name}"):
+            write_atomic(folder / name, text)
+
+
+def unmerged_task_branch_has(root: Path, path: str) -> bool:
+    """[OWNER-MERGE-FIRST-TASK]: in the home checkout (not on a task or job branch), a finished
+    task branch that commits `path` brings it with the owner's merge. An untracked copy here
+    would block that merge, so sae does not create one."""
+    if not (root / ".git").exists():
+        return False
+    head = git(root, "rev-parse", "--abbrev-ref", "HEAD", check=False)
+    if not head or head.startswith(("task/", "job/")):
+        return False
+    branches = git(root, "for-each-ref", "--format=%(refname)", "refs/heads/task/", check=False).split()
+    return any(git_ok(root, "cat-file", "-e", f"{ref}:{path}") for ref in branches)
 
 
 def template(name: str) -> str:

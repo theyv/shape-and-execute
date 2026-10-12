@@ -346,19 +346,26 @@ def interpret_result(kind: str, meta: dict, path: Path) -> tuple[str, str, dict]
     return status, str(meta.get("summary") or ""), {}
 
 
-DISPUTE_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$|^#{3,6}\s+(.*)$")
+DISPUTE_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$")  # top-level only: no indent
+DISPUTE_HEADING_RE = re.compile(r"^(#{3,6})\s+(.*)$")
 NO_DISPUTE_RE = re.compile(r"^[\s*_`(]*(none|n/?a|no disputed findings|no disputes|nothing|-+)[\s.*_`)]*$", re.I)
 
 
 def disputed_findings(body: str) -> int:
-    """[FINDINGS-ARE-CLAIMS]: the number of substantive items under `## Disputed findings`: top-level
-    list items or `###` headings, each one finding; text without items counts as one. Template
-    comments and "none" placeholders count as zero."""
+    """[FINDINGS-ARE-CLAIMS], [DISPUTE-COUNT]: the number of substantive findings under
+    `## Disputed findings`. Finding headings count (the highest heading level used, so `####`
+    subsections do not); with no heading, top-level list items count (not nested bullets); text
+    without items counts as one. Template comments and "none" placeholders count as zero."""
     section = md_section(body, "Disputed findings")
     if section is None:
         return 0
     lines = [line for line in strip_html_comments(section).splitlines() if line.strip()]
-    items = [m.group(1) or m.group(2) or "" for m in (DISPUTE_ITEM_RE.match(line) for line in lines) if m]
+    headings = [m for m in (DISPUTE_HEADING_RE.match(line) for line in lines) if m]
+    if headings:
+        top = min(len(m.group(1)) for m in headings)
+        items = [m.group(2) for m in headings if len(m.group(1)) == top]
+    else:
+        items = [m.group(1) for m in (DISPUTE_ITEM_RE.match(line) for line in lines) if m]
     if items:
         return sum(1 for item in items if item.strip() and not NO_DISPUTE_RE.match(item))
     return 0 if all(NO_DISPUTE_RE.match(line) for line in lines) else 1
@@ -598,6 +605,12 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         return EXIT_OK
     subject = task.jobs[target]
     if verdict in ("pass", "pass-with-notes"):
+        if subject["status"] == "parked":
+            # [PARKED-THEN-PASSED]: a later round passed, so the park for a human decision is over.
+            subject["status"] = "done"
+            subject["summary"] = f"{review_id}: {verdict}"
+            task.touch(subject)
+            out.append(f"{target} is no longer parked: {review_id} passed.")
         return merge_job(task, target, config, out)
     subject["review_rounds"] += 1
     task.touch(subject)
