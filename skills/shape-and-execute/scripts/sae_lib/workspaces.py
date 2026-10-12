@@ -412,11 +412,29 @@ def leftover_reason(repo: Path, path: Path, task_id: str, name: str, located: di
                     f"{(info.get('base') or {}).get('branch') or 'its base'} yet (test here, then merge){held}",
                     bool(work))
         return f"task worktree of a task in {phase}{held}", bool(work) or closed
+    running = running_workspace_job(state, name)
+    if running:
+        return f"job running: {running}, task in {phase}{held}", False
     job = jobs.get(name) or {}
     if job.get("status") == "failed":
         return f"job {name} failed: kept for inspection{held}", True
     status = "merged" if job.get("merged") else job.get("status") or "not in the task's record"
     return f"job {name} is {status}, task in {phase}{held}", bool(work) or closed
+
+
+def running_workspace_job(state: dict, name: str) -> str | None:
+    """Find a running writer in this job worktree, including fixes that share its branch."""
+    if (state.get("task") or {}).get("phase") in CLOSED_PHASES:
+        return None
+    jobs = state.get("jobs") or {}
+    for job_id, job in jobs.items():
+        if job.get("status") != "running" or job.get("kind") not in WRITER_KINDS:
+            continue
+        target = job.get("fix_of")
+        owner = target if (jobs.get(target) or {}).get("kind") in WRITER_KINDS else job_id
+        if owner == name:
+            return job_id
+    return None
 
 
 def discard_worktree(repo: Path, target: Path, located: dict) -> list[str]:
@@ -428,13 +446,21 @@ def discard_worktree(repo: Path, target: Path, located: dict) -> list[str]:
         fail(EXIT_GIT, f"{target} is not a sae worktree of this repository. sae doctor lists them.")
     path, task_id, name = match
     copy = located.get(task_id)
+    state = None
+    if copy is not None:
+        with contextlib.suppress(OSError, ValueError):
+            state = read_json(copy.folder / "state.json")
+    state = state or record_in(path, task_id) or {}
+    running = running_workspace_job(state, name)
+    if running:
+        fail(EXIT_GIT, f"Cannot discard: job running ({running}). Collect its result first.\nWorktree: {path}")
     if copy is not None and copy.live and copy.checkout.resolve() == target:
         phase = ""
         with contextlib.suppress(OSError, ValueError, KeyError):
             phase = read_json(copy.folder / "state.json")["task"]["phase"]
         if phase not in CLOSED_PHASES:
-            fail(EXIT_GIT, f"{target} holds the live folder of {task_id} ({phase}). Run sae abandon "
-                           f"{task_id} --reason \"...\" first, or finish the task.")
+            fail(EXIT_GIT, f"Worktree: {target}\nIt holds the live folder of {task_id} ({phase}).\n"
+                           f"Finish the task, or first run:\n  sae abandon {task_id} --reason \"...\"")
     work = unpreserved_work(path)
     lost = [f"Discarding {path}."]
     lost.append(f"Lost: {work_text(work)}." if work else "It holds no uncommitted work.")
