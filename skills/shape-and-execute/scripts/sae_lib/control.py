@@ -16,6 +16,7 @@ from .common import (
     LEVEL_PHASES,
     SaeError,
     WRITER_KINDS,
+    changed_by,
     emit,
     fail,
     iso,
@@ -354,13 +355,13 @@ def cmd_hold(args) -> int:
             if job_id not in holds:
                 fail(EXIT_USAGE, f"No hold after {job_id}.")
             reason = holds.pop(job_id).get("reason")
-            task.event("hold.released", job=job_id, reason=reason, by="cli")
+            task.event("hold.released", job=job_id, reason=reason, by=changed_by())
             emit(args, f"Released the hold after {job_id}.", {"job": job_id, "released": True})
             return EXIT_OK
         if job_id not in task.jobs:
             fail(EXIT_USAGE, f"No job {job_id} in task {task.id}: a hold needs an existing job.")
         holds[job_id] = {"at": iso(), "reason": args.reason}
-        task.event("hold.set", job=job_id, reason=args.reason, by="cli")
+        task.event("hold.set", job=job_id, reason=args.reason, by=changed_by())
         task.touch()
         if hold_active(task, job_id):
             when = f"{job_id} is done: nothing new is dispatched from now on."

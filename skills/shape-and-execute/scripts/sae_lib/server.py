@@ -7,8 +7,10 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
   /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
-  /api/task?repo=K&task=ID         one task: files, events, routing, review marks, waits, next
-  /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config
+  /api/task?repo=K&task=ID         one task: files, events, process map, routing, effective
+                                   difficulty, review marks, waits, next
+  /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config,
+                                   Codex catalog, known Claude families
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
                          is kept in the URL, so relative CSS, scripts, images and links load
   POST /api/<route>      a write route of WRITE_ROUTES; body JSON {repo, …}
@@ -217,10 +219,14 @@ def computed(task, config: dict | None) -> dict:
     """What the views need, from the same functions as the CLI (07-cli-spec §5, §10.4, `sae next`)."""
     from .progress import next_data, task_status_data
     from .reviews import planned_reviews, review_mark
-    from .routing import resolve_model
+    from .control import process_map
+    from .routing import job_context, resolve_model
     from .graph import active_holds, waits_for
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
-                 "waits": {}, "holds_active": []}
+                 "waits": {}, "holds_active": [], "map": [], "difficulty": {}}
+    # the process map of `sae status`, in every phase ([VIEWER-PROCESS-MAP])
+    with contextlib.suppress(Exception):
+        out["map"] = process_map(task)["lines"]
     # readiness for the graph and job panels: the rules of `sae next`, never a copy in app.js
     with contextlib.suppress(Exception):
         out["waits"] = {i: waits_for(task, i) for i, j in task.jobs.items() if j["status"] == "pending"}
@@ -228,6 +234,9 @@ def computed(task, config: dict | None) -> dict:
     for job_id in task.jobs:
         with contextlib.suppress(Exception):
             out["review_marks"][job_id] = review_mark(task, job_id)
+        # the effective difficulty, as `sae next` shows it ([DIFFICULTY-DISPLAY])
+        with contextlib.suppress(Exception):
+            out["difficulty"][job_id] = job_context(task, job_id)["difficulty"]
     with contextlib.suppress(Exception):
         out["status"] = task_status_data(task)
     if config is None:
@@ -236,6 +245,9 @@ def computed(task, config: dict | None) -> dict:
         out["planned_reviews"] = planned_reviews(task, config)
     except Exception as exc:
         out["planned_reviews_error"] = str(exc)
+    for planned in out["planned_reviews"]:
+        with contextlib.suppress(Exception):
+            out["difficulty"][planned["id"]] = job_context(task, planned["id"])["difficulty"]
     for job_id in list(task.jobs) + [p["id"] for p in out["planned_reviews"]]:
         try:
             out["routing"][job_id] = resolve_model(task, job_id, config, exact=False)
@@ -314,7 +326,7 @@ def _project_sets(defaults: dict, flat_name: str) -> bool:
 def settings_data(key: str, task_id: str | None) -> dict:
     from .common import HARNESSES
     from .config import effective_routing, routing_layers
-    from .setup_mode import codex_catalog
+    from .setup_mode import CLAUDE_FAMILIES, codex_catalog
     root = repo_by_key(key)
     config, config_error = load_config_quietly()
     project = ((config or {}).get("projects") or {}).get(str(root)) or {}
@@ -342,7 +354,7 @@ def settings_data(key: str, task_id: str | None) -> dict:
             "task": task_id, "task_settings": task_settings,
             "sources": level_sources(task_settings, (config or {}).get("defaults") or {}, project.get("defaults") or {})
             if task_settings and config else {},
-            "routing": routing, "codex_catalog": codex_catalog()}
+            "routing": routing, "codex_catalog": codex_catalog(), "claude_families": list(CLAUDE_FAMILIES)}
 
 
 def prototype_path(url_path: str) -> Path:
