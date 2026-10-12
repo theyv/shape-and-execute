@@ -1,7 +1,7 @@
-"""Owner control: holds, launch cards, the process map, narrow output, read-only commands.
+"""Owner control: holds, next-step cards, the process map, read-only commands.
 
-[HOLD-AFTER-JOB], [FLOW-HOLD], [EDGE-HOLD-ON-RUNNING], [LAUNCH-CARD], [PROCESS-MAP],
-[NARROW-OUTPUT], [SETTINGS-VISIBLE], [RESUME-HARNESS-HINT], [READ-ONLY-COMMANDS].
+[HOLD-AFTER-JOB], [FLOW-HOLD], [EDGE-HOLD-ON-RUNNING], [OUT-NEXT-STEP-CARD], [OUT-MAP-LAYOUT],
+[SETTINGS-VISIBLE], [RESUME-HARNESS-HINT], [READ-ONLY-COMMANDS].
 """
 
 from __future__ import annotations
@@ -12,12 +12,7 @@ import stat
 import unittest
 from pathlib import Path
 
-from saetest import MAP_PREFIXES, SKILL_DIR, Sandbox, SaeTestCase, dispatch_workspace, wide_lines
-
-
-def owner_lines(text: str) -> list[str]:
-    """Every printed line except process map lines (they may be longer)."""
-    return [l for l in text.splitlines() if not l.startswith(MAP_PREFIXES)]
+from saetest import SKILL_DIR, Sandbox, SaeTestCase, dispatch_workspace
 
 
 class ControlCase(SaeTestCase):
@@ -60,7 +55,8 @@ class HoldTests(ControlCase):
         text = sb.sae("next", "holdflow").stdout
         self.assertIn("Hold after VERIFY", text)
         self.assertIn(f"sae hold {task} VERIFY --release", text)
-        self.assertIn("hold after VERIFY", text.splitlines()[4])  # the map's current step names it
+        current = next(line for line in text.splitlines() if "►" in line)
+        self.assertIn("hold after VERIFY", current)  # the map's current step names it
         refused = sb.sae("dispatch", "holdflow", "OTHER", code=3).stderr
         self.assertIn("--release", refused)
         self.assertIn("(active)", sb.sae("status", "holdflow").stdout)
@@ -95,7 +91,7 @@ class CardAndMapTests(ControlCase):
                                                      "Acceptance:\n- [ ] one\n")
         nxt = sb.json("next", "cards")
         self.assertEqual([r["id"] for r in nxt["ready"]], ["REVIEW-SPEC"])
-        self.assertIn("LAUNCH · spec review · 1 job", nxt["card"]["text"])
+        self.assertIn("NEXT STEP · spec review · 1 job", nxt["card"]["text"])
         self.assertNotIn("REVIEW-SPEC", sb.state(task)["jobs"])  # next only prints the card
         sb.sae("dispatch", "cards", "REVIEW-SPEC")
         state = sb.state(task)
@@ -108,7 +104,7 @@ class CardAndMapTests(ControlCase):
         sb.sae("job", "add", "cards", "PLAN", "--kind", "planning")
         sb.job_file(task, "PLAN", objective="Plan the jobs. Then stop.")
         card = sb.json("next", "cards")["card"]
-        self.assertIn("LAUNCH · planner · 1 job", card["text"])
+        self.assertIn("NEXT STEP · planner · 1 job", card["text"])
         self.assertIn("review points: plan removed", card["changes"])
         self.assertIn("Plan the jobs.", card["text"])
         self.assertNotIn("Then stop", card["text"])
@@ -116,7 +112,7 @@ class CardAndMapTests(ControlCase):
         sb.sae("dispatch", "cards", "PLAN", "--resume", "--reason", "follow-up")
         self.assertEqual(sb.json("next", "cards")["card"], None)  # PLAN is running, nothing ready
 
-    def test_start_card_and_width(self):
+    def test_start_card(self):
         sb = self.sandbox(points=["plan", "selected-jobs"])
         task = sb.new_task("Width", "width")
         sb.sae("approve", "width", "spec")
@@ -130,17 +126,12 @@ class CardAndMapTests(ControlCase):
         sb.sae("collect", "width", "REVIEW-PLAN")
         sb.sae("approve", "width", "plan")
         start = sb.sae("start", "width").stdout
-        self.assertIn("LAUNCH · start of execution · 1 job", start)
-        self.assertIn("Flagged, but no job review will run: A-VERY-LONG-JOB-IDENTIFIER-FOR-WIDTH", " ".join(start.split()))
+        self.assertIn("NEXT STEP · start of execution · 1 job", start)
+        self.assertIn("Flagged, but no job review will run: A-VERY-LONG-JOB-IDENTIFIER-FOR-WIDTH", start)
         self.assertIn("--harness claude|codex", start)
         self.assertEqual(sb.state(task)["task"]["last_card"]["phase"], "executing")  # start records it
         nxt = sb.sae("next", "width").stdout
-        self.assertNotIn("LAUNCH", nxt)  # recorded: an ordinary writer gets no new card
-        for text in (start, nxt, sb.sae("status", "width").stdout):
-            for line in owner_lines(text):
-                if "/" in line:  # paths are not wrapped
-                    continue
-                self.assertLessEqual(len(line), 72, line)
+        self.assertNotIn("NEXT STEP", nxt)  # recorded: an ordinary writer gets no new card
 
     def test_compiled_skill_uses_no_old_terms(self):
         """[DESIGN-DOCS-FIRST]: no rung, level map or task checkout outside the schema-1
@@ -166,9 +157,9 @@ class CardAndMapTests(ControlCase):
                     hits.append(f"{name}:{n}: {line.strip()}")
         self.assertEqual(hits, [])
 
-    def test_new_set_job_add_and_setup_show_width(self):
-        """[NARROW-OUTPUT] beyond the cards: the settings that `new` and `set` print, the
-        `job add --review` warning and `sae setup show`."""
+    def test_new_set_job_add_and_setup_show_output(self):
+        """The settings that `new` and `set` print, the `job add --review` warning and
+        `sae setup show`."""
         sb = self.sandbox(points=["spec", "plan", "integration"], provider="cross-harness")
         new = sb.sae("new", "Width of the settings", "--slug", "widths").stdout
         changed = sb.sae("set", "widths", "interaction=collaborative", "task-difficulty=hard").stdout
@@ -176,28 +167,26 @@ class CardAndMapTests(ControlCase):
         added = sb.sae("job", "add", "widths", "A-VERY-LONG-JOB-IDENTIFIER-FOR-WIDTH", "--kind", "implementation",
                        "--review").stdout
         shown = sb.sae("setup", "show").stdout
-        self.assertIn("Settings:\n  interaction:", new)
-        self.assertIn("Settings (unchanged):", same)
+        self.assertIn("Settings\n  interaction      critical-only\n", new)
+        self.assertIn("  interaction      collaborative\n", changed)
+        self.assertIn("Settings (unchanged)\n", same)
         self.assertIn("job reviews are off", added)
         self.assertIn("Codex subagent cap", shown)
-        for text in (new, changed, same, added, shown):
-            self.assertEqual(wide_lines(text), [], text)
 
     def test_map_with_review_points_off(self):
         sb = self.sandbox(points=["plan"])
         task = sb.new_task("Map", "mapoff")
         lines = sb.json("status", "mapoff")["map"]
-        self.assertEqual(lines[0], "💡 SHAPE    ✓ intake | ► research | □ spec | – spec-review (off) | "
-                                   "⬥ spec approval")
-        self.assertEqual(lines[2], "🔨 EXECUTE  □ jobs 0/0 | – job-reviews (off) | – integration-review (off) | "
-                                   "– final-validation (none) | □ finish")
+        self.assertEqual(lines[:3], ["💡 SHAPE", "✓ intake | ► research | □ spec", "– spec-review (off) | □ spec approval"])
+        self.assertEqual(lines[-4:], ["🔨 EXECUTE", "□ jobs 0/0 | – job-reviews (off)",
+                                      "– integration-review (off) | – final-validation (none)", "□ finish"])
         sb.sae("approve", "mapoff", "spec")
         sb.sae("job", "add", "mapoff", "ONE", "--kind", "implementation")
         sb.job_file(task, "ONE")
         text = sb.sae("status", "mapoff").stdout
-        self.assertIn("📐 PLAN     – planner (none) | ► plan-review | ⬥ plan approval", text)
+        self.assertIn("📐 PLAN\n– planner (none) | ► plan-review | □ plan approval\n", text)
         self.assertIn("– spec-review (off)", text)
-        self.assertIn("\n\n📐 PLAN", text)  # an empty line between phases
+        self.assertIn("\n        ↓\n📐 PLAN", text)  # an arrow line between phases
 
 
 class ReadOnlyTests(ControlCase):

@@ -24,9 +24,6 @@ from .common import (
     read_text,
     rel,
     slugify,
-    wrap,
-    wrap_notice_lines,
-    wrap_parts,
     write_atomic,
     write_json,
 )
@@ -53,7 +50,7 @@ from .tasks import (
     tasks_dir,
     template,
 )
-from .viewer import render_viewer_safely, stamped_items, viewer_link
+from .viewer import remember_repo_safely, stamped_items, viewer_link
 from .workspaces import (
     TASK_WORKTREE_NAME,
     job_branch,
@@ -107,10 +104,10 @@ def cmd_new(args) -> int:
         event["from"] = from_item
     write_atomic(folder / "events.jsonl", json.dumps(event, ensure_ascii=False) + "\n")
     sweep_merged_task_worktrees(root)
-    render_viewer_safely(root, [task_id])
+    remember_repo_safely(root)
     url, viewer_line = viewer_link(root, task_id)  # [VIEWER-LINK-AT-NEW]; never fails the command
     text = (f"Task: {task_id}\nFolder: {folder}\nIntent: {folder / 'intent.md'}\n"
-            f"Settings:\n{wrap_parts(settings_card(settings).split(' · '))}")
+            f"{settings_card(settings)}")
     if from_item:
         text += f"\nPicked up from the backlog: {from_item['file']}\nIt stays until execution starts on the task branch."
     text += f"\n{viewer_line}"
@@ -135,7 +132,7 @@ def new_backlog_item(args, root: Path, title: str, slug: str) -> int:
     front = f"---\nsource: {source}   # the task during which the owner deferred the work\n---\n\n" if source else ""
     write_atomic(path, front + body)
     sweep_merged_task_worktrees(root)
-    render_viewer_safely(root, [])
+    remember_repo_safely(root)
     emit(args, f"Backlog item: {path}", {"file": str(path), "source": source})
     return EXIT_OK
 
@@ -178,9 +175,8 @@ def cmd_start(args) -> int:
                 task.info["phase"] = "executing"
             task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
                        layout=task.info["layout"], worktree=task.info.get("worktree"), resumed=resumed)
-            lines.insert(0, f"Executing {task.id}\n"
-                            + wrap_parts([f"branch: {task.info.get('branch') or '-'}",
-                                          f"layout: {task.info['layout']}"]))
+            lines.insert(0, f"Executing {task.id}\n  branch: {task.info.get('branch') or '-'} · "
+                            f"layout: {task.info['layout']}")
             lines += ["", next_text(task, config)]
             task.save()  # inside the rollback: the start counts once its state is on disk
         except BaseException:
@@ -229,8 +225,7 @@ def start_task_worktree(task: Task, config: dict | None, undo: list) -> tuple[li
     worktree = task_worktree_path(task, config)
     branch = f"task/{task.id}"
     if git_ok(home, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"):
-        fail(EXIT_GIT, f"Branch {branch} exists already. Delete it (git branch -D {branch}) or start "
-                       "a new task.")
+        fail(EXIT_GIT, f"Branch {branch} exists already. Delete it, or start a new task:\n  git branch -D {branch}")
     if worktree.exists():
         fail(EXIT_GIT, f"{worktree} exists already. Remove it, then run:\n  sae start {task.id}")
     task_rel = rel(task.dir, home)
@@ -353,34 +348,34 @@ def final_report(task: Task, with_open: bool) -> str:
     finals = [i for i, j in jobs.items() if j["final"]]
     if finals:
         job = jobs[finals[0]]
-        lines += ["", "## Outcome", wrap(f"Final validation {finals[0]}: {job['status']} — {job.get('summary', '')}"),
+        lines += ["", "## Outcome", f"Final validation {finals[0]}: {job['status']} — {job.get('summary', '')}",
                   "Details per requirement:", f"  {result_file(task, finals[0])}"]
     lines += ["", "## Jobs"]
-    for job_id, job in jobs.items():  # short blocks, not a wide table ([NARROW-OUTPUT])
+    for job_id, job in jobs.items():
         tokens = sum(a.get("tokens") or 0 for a in job["attempts"])
         head = [job_id, job["kind"], job["status"] + (", merged" if job["merged"] else "")]
-        lines.append(wrap("- " + " · ".join(head + ([f"{tokens} tokens"] if tokens else []))))
-        lines += [wrap(f"attempt {a.get('n', n)}: {attempt_text(a)}", indent="  ")
+        lines.append("- " + " · ".join(head + ([f"{tokens} tokens"] if tokens else [])))
+        lines += [f"  attempt {a.get('n', n)}: {attempt_text(a)}"
                   for n, a in enumerate(job["attempts"], 1)] or ["  not dispatched"]
     reviews = [e for e in events if e["type"] == "review.completed"]
     if reviews:
-        lines += ["", "## Reviews"] + [wrap(f"- {e['job']} → {e['target']}"
-                                            + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
-                                            + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})")
+        lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}"
+                                       + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
+                                       + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})"
                                        for e in reviews]
     overridden = [e for e in events if e["type"] == "gate.overridden"]
     if overridden:
-        lines += ["", "## Overridden gates"] + [wrap(f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
-                                                     f"Reason: {e.get('reason')}") for e in overridden]
+        lines += ["", "## Overridden gates"] + [f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
+                                                f"Reason: {e.get('reason')}" for e in overridden]
     agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"]
     lines += ["", "## To check before you merge"]
-    lines += [wrap(f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
-                   + (f" ({e['class']})" if e.get("class") else "")) for e in agent] \
+    lines += [f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
+              + (f" ({e['class']})" if e.get("class") else "") for e in agent] \
         or ["- No agent decisions or amendments."]
     if with_open:
         open_items = [(i, j) for i, j in jobs.items() if j["status"] in ("pending", "parked", "failed")]
         if open_items:
-            lines += ["", "## Open items"] + [wrap(f"- {i}: {j['status']} — {j.get('summary') or parked_reason(task, i)}")
+            lines += ["", "## Open items"] + [f"- {i}: {j['status']} — {j.get('summary') or parked_reason(task, i)}"
                                               for i, j in open_items]
     created = [e.get("finding") or e.get("file") for e in events
                if e["type"] in ("finding.created", "backlog.created", "adr.created")
@@ -439,9 +434,9 @@ def cmd_finish(args) -> int:
         report = final_report(task, args.with_open)  # after the move: its paths point into done/
         if task.info.get("git"):
             commit_task_record(task, moved, out)
-        emit(args, "\n".join([wrap_notice_lines("\n".join(out)), "", report]).strip(), {"report": report, "messages": out,
-                                                            "overridden": overridden})
-    render_viewer_safely(root, [task.id])
+        emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out,
+                                                         "overridden": overridden})
+    remember_repo_safely(root)
     return EXIT_OK
 
 

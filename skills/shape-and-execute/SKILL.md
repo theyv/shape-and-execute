@@ -65,16 +65,17 @@ option that your mode reference does not show, run `sae --help` or `sae <command
   the model and the reasoning effort of every one exactly as `sae dispatch` prints them
   (Claude Code: the Agent tool's `model` and `effort`; Codex: `model` and
   `reasoning_effort`). No subagent inherits your effort.
-- **Launch cards.** Before a bigger launch, `sae next` prints a launch card. Where your mode
-  reference says to wait, wait for one of: **ok** (dispatch); **change** (apply it, show the
-  new card); **refine first** (improve the job files or the plan, then show it again);
-  **skip** (do not launch it). Otherwise show it and continue.
+- **Next-step cards.** Before a bigger dispatch, `sae next` prints a next-step card. Where your
+  mode reference says to wait, wait for one of: **ok** (dispatch); **change** (apply it, show
+  the new card); **refine first** (improve the job files or the plan, then show it again);
+  **skip** (do not dispatch it). Otherwise show it and continue.
 - **Settings change only on the user's word.** Levels, routing, review points, overrides,
   holds: change them only when the user asks (`sae set`, `sae job override`, `sae hold`).
-  `task-difficulty` is yours to set ([shape.md](references/modes/shape.md)). The next launch
-  card lists every change.
-- **Narrow output.** Show the user short blocks that fit 72 columns. Never relay a wide code
-  block or a wide table.
+  `task-difficulty` is yours to set ([shape.md](references/modes/shape.md)). The following
+  next-step card lists every change.
+- **Relay output by kind.** Relay the process map and the fixed-layout blocks (the settings
+  card, the next-step card) in a code block, as `sae` prints them. Relay notices and reports as
+  prose, never in a code block: `sae` does not wrap them, so a code block would not wrap either.
 - **Write it down.** Decisions, answers and changes go into the task files, not only into the
   chat. Tag each decision `[human]`, `[agent]` or `[joint]`.
 - **Pointers, not pastes.** Give a subagent the prompt that `sae dispatch` prints. Do not add

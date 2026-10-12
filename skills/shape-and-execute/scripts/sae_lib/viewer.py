@@ -31,7 +31,6 @@ from .common import (
     read_json,
     sae_prefix,
     warn,
-    wrap_notice_lines,
     write_json,
 )
 from .gitutil import find_root, hash8
@@ -149,13 +148,12 @@ def remember_repo_safely(root: Path) -> None:
         warn(f"viewer: repository not added to the known list: {exc}")
 
 
-def render_viewer_safely(root: Path, task_ids: list[str] | None = None) -> Path | None:
-    """Old name, kept for the writing commands that call it after their work: the viewer is
-    served live now, so this only adds the repository to the known list. Returns the viewer
-    shell when it exists (`sae doctor --repo` checks it)."""
-    remember_repo_safely(root)
-    shell = VIEWER_ASSETS / "index.html"
-    return shell if shell.exists() else None
+def repo_known(root: Path) -> bool:
+    """Whether the repository of `root` is on the known list (`sae doctor --repo`)."""
+    from .config import main_worktree
+    key = repo_key(main_worktree(root))
+    return any(isinstance(r, dict) and r.get("key") == key
+               for r in (read_state("repos.json") or {}).get("repos") or [])
 
 
 def stamped_items(folder: Path) -> list[Path]:
@@ -341,8 +339,7 @@ def cmd_view(args) -> int:
         command = start_command(root, task_id)
         why = ("this sandbox forbids local sockets" if isinstance(exc, NoSockets)
                else f"this sandbox forbids writing the state folder ({exc})")
-        print(wrap_notice_lines(f"The viewer cannot start here: {why}.\n"
-                                f"Run this in your own terminal:\n  {command}"), file=sys.stderr)
+        print(f"The viewer cannot start here: {why}.\nRun this in your own terminal:\n  {command}", file=sys.stderr)
         if args.json:
             print(json.dumps({"url": None, "command": command}))
         return EXIT_USAGE

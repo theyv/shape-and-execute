@@ -306,10 +306,10 @@ def open_task(root: Path, ref: str, write: bool = True):
             task.save()
         changed = task.saved
     if changed:
-        from .viewer import render_viewer_safely  # late import: viewer imports this module
+        from .viewer import remember_repo_safely  # late import: viewer imports this module
         from .workspaces import sweep_merged_task_worktrees
         sweep_merged_task_worktrees(root)  # writing commands only ([TASK-WORKTREE-LIFECYCLE])
-        render_viewer_safely(root, [task.id])
+        remember_repo_safely(root)
 
 
 def task_phase(copy: TaskCopy) -> str:
@@ -332,7 +332,7 @@ def ensure_tasks_folder(root: Path) -> None:
     folder = tasks_dir(root)
     folder.mkdir(parents=True, exist_ok=True)
     if not (folder / ".gitignore").exists():
-        write_atomic(folder / ".gitignore", ".viewer/\n.lock\n")
+        write_atomic(folder / ".gitignore", ".lock\n")
     if not (folder / ".gitattributes").exists():
         write_atomic(folder / ".gitattributes", "findings/closed.md merge=union\n")
 

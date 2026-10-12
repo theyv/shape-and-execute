@@ -205,24 +205,6 @@ class Sandbox:
         self.sae("approve", task, "plan")
 
 
-MAP_PREFIXES = ("💡", "📐", "🔨")  # process map lines may be wider than 72 columns
-
-
-def wide_lines(text: str, width: int = 72) -> list[str]:
-    """[NARROW-OUTPUT]: the printed lines wider than `width`, except process map lines, a command
-    alone on its line, and a path with at most a short label."""
-    wide = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if len(line) <= width or line.startswith(MAP_PREFIXES) or stripped.startswith(("sae ", "python3 ", "cd ")):
-            continue
-        paths = [w for w in stripped.split() if "/" in w]
-        if paths and len(stripped) - max(map(len, paths)) <= 30:
-            continue
-        wide.append(line)
-    return wide
-
-
 def dispatch_workspace(sb: Sandbox, task: str, job: str, *extra: str) -> Path:
     data = sb.json("dispatch", task, job, *extra)
     return Path(data["workspace"])

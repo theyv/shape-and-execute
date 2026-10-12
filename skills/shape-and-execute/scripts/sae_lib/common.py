@@ -11,14 +11,12 @@ import re
 import shlex
 import sys
 import tempfile
-import textwrap
 import unicodedata
 from pathlib import Path
 
 
 SKILL_DIR = Path(__file__).resolve().parent.parent.parent
 SCHEMA_VERSION = 1
-VIEWER_VERSION = 1
 EXIT_OK = 0
 EXIT_USAGE = 1
 EXIT_CONFIG = 2
@@ -71,7 +69,6 @@ HARD_STOPS_LINE = ("Hard stops: no push/deploy, no secrets, no CI/permission cha
 # DL-73: the limit of failed verify re-runs per job. A settings.json without the key uses it;
 # `sae new` writes it into every new task unless config.defaults.max_verify_failures says otherwise.
 DEFAULT_MAX_VERIFY_FAILURES = 3
-OUTPUT_WIDTH = 72            # owner-facing text: cards, notices, hints ([NARROW-OUTPUT]); map lines excepted
 STALE_RUNNING_MINUTES = 60   # `sae status`: a running job without change this long → "check on it"
 BRIEF_MAX_LINES = 80         # `sae check`: warning above this length
 # Codex shell detection: the Codex shell tool sets these in every command it runs
@@ -103,7 +100,7 @@ def fail(code: int, message: str):
 
 
 def warn(message: str) -> None:
-    print(wrap_notice_lines(f"warning: {message}"), file=sys.stderr)
+    print(f"warning: {message}", file=sys.stderr)
 
 
 def now() -> dt.datetime:
@@ -193,12 +190,13 @@ def rel(path: Path, root: Path) -> str:
         return str(path)
 
 
-def emit(args, text: str, data=None, *, verbatim: tuple[str, ...] = ()) -> None:
-    """Print owner text through the shared wrapper; JSON and explicit agent artifacts stay exact."""
+def emit(args, text: str, data=None) -> None:
+    """Print owner text as written ([OUT-NO-PROSE-WRAP]): the terminal wraps prose, so no word,
+    command or path is split. With --json, print `data` instead."""
     if getattr(args, "json", False):
         print(json.dumps(data if data is not None else {"text": text}, indent=2, ensure_ascii=False))
     elif text:
-        print(wrap_notice_lines(text, verbatim=verbatim))
+        print(text)
 
 
 def table(rows: list[list[str]], indent: str = "  ") -> str:
@@ -206,81 +204,6 @@ def table(rows: list[list[str]], indent: str = "  ") -> str:
         return ""
     widths = [max(len(str(row[i])) for row in rows) for i in range(len(rows[0]))]
     return "\n".join(indent + "  ".join(str(c).ljust(w) for c, w in zip(row, widths)).rstrip() for row in rows)
-
-
-def wrap(text: str, indent: str = "", hang: str = "  ", width: int = OUTPUT_WIDTH) -> str:
-    """One owner-facing line wrapped within `width` columns; continuation lines get `hang`
-    after `indent` ([NARROW-OUTPUT])."""
-    return wrap_notice_lines("\n".join(indent + line for line in text.split("\n")), hang=hang, width=width)
-
-
-OWNER_COMMAND_PREFIXES = ("sae ", "python3 ", "cd ", "/shape-and-execute ", "$shape-and-execute ")
-PROCESS_MAP_PREFIXES = ("💡", "📐", "🔨")
-LABELED_COMMAND_RE = re.compile(r"^(.*?:)\s+((?:sae|python3|cd|/shape-and-execute|\$shape-and-execute) .*)$")
-
-
-def wrap_notice_lines(text: str, *, hang: str = "  ", width: int = OUTPUT_WIDTH,
-                      verbatim: tuple[str, ...] = ()) -> str:
-    """One owner output formatter: wrap prose, indent whole commands and preserve paste artifacts.
-
-    Commands belong after a label or on their own line. Only explicit agent artifacts,
-    process map lines, whole commands and paths with short labels may exceed the width.
-    """
-    if verbatim:
-        blocks = set(block for block in verbatim if block)
-        if blocks:
-            pattern = "(" + "|".join(re.escape(block) for block in sorted(blocks, key=len, reverse=True)) + ")"
-            return "".join(part if part in blocks else wrap_notice_lines(part, hang=hang, width=width)
-                           for part in re.split(pattern, text))
-    lines = []
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        indent = line[:len(line) - len(stripped)]
-        if line.startswith(PROCESS_MAP_PREFIXES):
-            lines.append(line)
-            continue
-        if stripped.startswith(OWNER_COMMAND_PREFIXES):
-            lines.append((indent or "  ") + stripped)
-            continue
-        labeled = LABELED_COMMAND_RE.match(stripped)
-        if labeled:
-            label, command = labeled.groups()
-            lines.append(wrap_notice_lines(indent + label, hang=hang, width=width))
-            lines.append(indent + "  " + command)
-            continue
-        if len(line) <= width:
-            lines.append(line)
-            continue
-        words = stripped.split()
-        path_line = bool(words and "/" in words[-1] and len(stripped) - len(words[-1]) <= 30)
-        if path_line:
-            lines.append(line)
-            continue
-        # A long path stays copyable. Other free-text words must obey the width too.
-        available = max(1, width - len(indent) - len(hang))
-        prose = " ".join(word if "/" in word else " ".join(word[i:i + available]
-                        for i in range(0, len(word), available)) for word in words)
-        lines.append("\n".join(textwrap.wrap(prose, width=width, initial_indent=indent,
-                                            subsequent_indent=indent + hang, break_long_words=False,
-                                            break_on_hyphens=False)) or indent.rstrip())
-    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
-
-
-def wrap_parts(parts: list[str], indent: str = "  ", sep: str = " · ", width: int = OUTPUT_WIDTH,
-               hang: str = "") -> str:
-    """Joins `parts` with `sep`, breaking lines only between parts, each line within `width`
-    when every part fits ([NARROW-OUTPUT])."""
-    lines, current = [], ""
-    for part in parts:
-        line_indent = indent + (hang if lines else "")
-        candidate = f"{current}{sep}{part}" if current else part
-        if current and len(line_indent) + len(candidate) > width:
-            lines.append(line_indent + current)
-            candidate = part
-        current = candidate
-    if current:
-        lines.append(indent + (hang if lines else "") + current)
-    return "\n".join(lines)
 
 
 def sae_prefix() -> str:
@@ -309,6 +232,6 @@ class Parser(argparse.ArgumentParser):
     """Usage errors exit 1; exit 2 means a missing user config."""
 
     def error(self, message):
-        print(wrap_notice_lines(self.format_usage()).rstrip(), file=sys.stderr)
-        print(wrap_notice_lines(f"error ({self.prog}): {message}"), file=sys.stderr)
+        print(self.format_usage().rstrip(), file=sys.stderr)
+        print(f"error ({self.prog}): {message}", file=sys.stderr)
         sys.exit(EXIT_USAGE)

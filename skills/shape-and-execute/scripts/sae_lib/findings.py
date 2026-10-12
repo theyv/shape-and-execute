@@ -44,7 +44,7 @@ from .tasks import (
     tasks_dir,
     template,
 )
-from .viewer import render_viewer_safely
+from .viewer import remember_repo_safely
 
 
 def cmd_decision_new(args) -> int:
@@ -134,7 +134,7 @@ def cmd_finding_new(args) -> int:
     if source_task:
         append_event_to(root, source_task, "finding.created", finding=rel(path, home))
     else:
-        render_viewer_safely(root, [])
+        remember_repo_safely(root)
     emit(args, f"Finding: {path}", {"file": str(path)})
     return EXIT_OK
 
@@ -161,7 +161,7 @@ def cmd_finding_close(args) -> int:
     with closed.open("a", encoding="utf-8") as handle:
         handle.write(f"- {now().date().isoformat()} · {path.stem} · {title} · {args.outcome}\n")
     os.remove(path)
-    render_viewer_safely(root, [])
+    remember_repo_safely(root)
     emit(args, f"Closed {path.stem}: {args.outcome}", {"finding": path.stem, "outcome": args.outcome})
     return EXIT_OK
 
@@ -296,7 +296,7 @@ def cmd_adr_accept(args) -> int:
     target_dir.mkdir(parents=True, exist_ok=True)
     write_atomic(target, _replace_front(read_text(draft), "status", "accepted"))
     os.remove(draft)
-    render_viewer_safely(root, [])
+    remember_repo_safely(root)
     note = ("\nFirst record in this folder: propose one line for the agent instructions "
             "that points to it.") if first else ""
     emit(args, f"Accepted: {rel(target, root)} (uncommitted){note}",
@@ -326,7 +326,7 @@ def cmd_adr_reject(args) -> int:
     if meta.get("source") in locate_tasks(root):
         append_event_to(root, str(meta["source"]), "adr.rejected", file=rel(draft, root),
                         closed=rel(closed, root), reason=args.reason)
-    render_viewer_safely(root, [])
+    remember_repo_safely(root)
     emit(args, f"Rejected {draft.stem}: {args.reason}", {"draft": draft.stem, "reason": args.reason})
     return EXIT_OK
 

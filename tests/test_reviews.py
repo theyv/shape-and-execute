@@ -11,7 +11,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from saetest import SCRIPTS, Sandbox, SaeTestCase, dispatch_workspace, wide_lines
+from saetest import SCRIPTS, Sandbox, SaeTestCase, dispatch_workspace
 
 
 class ReviewFlowCase(SaeTestCase):
@@ -97,7 +97,7 @@ class IntegrationRoundTests(ReviewFlowCase):
         report = sb.sae("finish", "override", "--override", "owner accepts the remaining findings").stdout
         self.assertIn("## Overridden gates", report)
         self.assertIn("verdict gate: REVIEW-INTEGRATION, FINAL. Reason: owner accepts the remaining findings",
-                      " ".join(report.split()))  # wrapped within 72 columns
+                      report)
         events = [e for e in sb.events(task) if e["type"] == "gate.overridden"]
         self.assertEqual(events[0]["gate"], "verdict")
         self.assertEqual(events[0]["reason"], "owner accepts the remaining findings")
@@ -377,15 +377,10 @@ class ReviewMarkTests(ReviewFlowCase):
 
 
 
-class NarrowReviewOutputTests(ReviewFlowCase):
-    """[NARROW-OUTPUT] for the notices that ask for a decision, and the final report (07-cli-spec
-    §13): 72 columns, commands and paths on their own lines."""
+class ReviewNoticeTests(ReviewFlowCase):
+    """The notices that ask for a decision, and the final report (07-cli-spec §13)."""
 
-    def assert_narrow(self, *texts: str) -> None:
-        for text in texts:
-            self.assertEqual(wide_lines(text), [], text)
-
-    def test_job_review_notices_fit_72_columns(self):
+    def test_job_review_notices(self):
         sb = self.sandbox()
         task = self.planned(sb, "narrow-job-review-notices", [
             ("A-LONG-CORE-JOB-IDENTIFIER", "implementation", "", ["--review"]),
@@ -399,9 +394,8 @@ class NarrowReviewOutputTests(ReviewFlowCase):
         self.assertIn("Open jobs: SIDE", open_jobs)
         refused = sb.sae("finish", "narrow-job-review-notices", "--with-open", code=3).stderr
         self.assertIn("Finish refused", refused)
-        self.assert_narrow(job_review, open_jobs, refused)
 
-    def test_integration_review_notices_fit_72_columns(self):
+    def test_integration_review_notices(self):
         sb = self.sandbox()
         task = self.integration_task(sb, "narrow-integration-review-notices")
         collect = self.review(sb, task, "narrow-integration-review-notices", "REVIEW-INTEGRATION", "integration",
@@ -410,9 +404,9 @@ class NarrowReviewOutputTests(ReviewFlowCase):
         refused = sb.sae("finish", "narrow-integration-review-notices", code=3).stderr
         self.assertIn("REVIEW-INTEGRATION requires changes", nxt)
         self.assertIn("--fix-of REVIEW-INTEGRATION", collect)
-        self.assert_narrow(collect, nxt, refused)
+        self.assertIn("Finish refused", refused)
 
-    def test_final_report_is_narrow_points_into_done_and_lists_drafts_and_effort(self):
+    def test_final_report_points_into_done_and_lists_drafts_and_effort(self):
         sb = self.sandbox()
         task = self.integration_task(sb, "narrow-final-report")
         self.review(sb, task, "narrow-final-report", "REVIEW-INTEGRATION", "integration", "pass")
@@ -421,7 +415,6 @@ class NarrowReviewOutputTests(ReviewFlowCase):
                         "--type", "business")["file"]
         out = sb.sae("finish", "narrow-final-report").stdout
         report = out[out.index("# Final report"):]
-        self.assert_narrow(report)
         details = report.splitlines()[report.splitlines().index("Details per requirement:") + 1].strip()
         self.assertIn(f"/.tasks/done/{task}/jobs/FINAL.result.md", details)
         self.assertTrue(Path(details).is_file(), details)
