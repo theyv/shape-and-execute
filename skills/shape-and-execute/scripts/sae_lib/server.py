@@ -44,6 +44,7 @@ from .common import (
     rel,
     sae_prefix,
     stamp_time,
+    wrap_notice_lines,
 )
 from .viewer import (
     VIEWER_ASSETS,
@@ -619,7 +620,7 @@ def serve() -> int:
     try:
         server = bind(last.get("port") if isinstance(last.get("port"), int) else 0, token)
     except PermissionError as exc:
-        print(f"sae viewer: cannot listen on 127.0.0.1: {exc}", file=sys.stderr)
+        print(wrap_notice_lines(f"Viewer cannot listen on 127.0.0.1: {exc}"), file=sys.stderr)
         return 1
     try:  # from here on, any failure still closes the socket and removes viewer.pid
         write_private(state_path("viewer.json"), {"port": server.port, "token": token})

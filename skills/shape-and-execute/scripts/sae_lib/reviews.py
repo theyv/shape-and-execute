@@ -429,13 +429,13 @@ def stale_gate(task: Task) -> tuple[list[str], set[str]]:
         late = merged_after(task, last)
         if late:
             problems.append(f"{', '.join(late)} merged after {last} passed; no round covers "
-                            f"{'it' if len(late) == 1 else 'them'} yet (sae next adds it)")
+                            f"{'it' if len(late) == 1 else 'them'} yet. Add the next round:\n  sae next {task.id}")
             held |= {i for i, j in jobs.items() if j["final"] and j["status"] != "done"}
     pending = finish_merges(task)
     if pending and (integration or any(j["final"] for j in jobs.values())):
         for job_id in pending:
             problems.append(f"{job_id} is done but not merged: the checks would not cover it. "
-                            f"Merge it first: sae merge {task.id} {job_id}, then sae next {task.id}")
+                            f"Merge it first:\n  sae merge {task.id} {job_id}\nThen:\n  sae next {task.id}")
     return problems, held
 
 
@@ -534,7 +534,8 @@ def cmd_collect(args) -> int:
         else:
             job["status"] = "parked"
             out.append(f"Parked: {parked_reason(task, job_id)}")
-            out.append("Decision flow: answer it, or sae decision new, or ask the user (mode table).")
+            out.append(f"Decision flow: answer it, or ask the user (mode table). To add a decision job:\n"
+                       f"  sae decision new {task.id} --from {job_id}")
         materialize_integration_review(task, out)
         emit(args, wrap_notice_lines("\n".join(out)), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
                                     "disputed": disputed, "messages": out[1:]})
@@ -553,8 +554,8 @@ def collect_checked_job(task: Task, job_id: str, meta: dict, config: dict | None
         if head:
             new_commits = git(workdir, "rev-list", "--reverse", f"{head}..HEAD").split()
         if meta.get("changes") == "made" and not new_commits:
-            fail(EXIT_USAGE, f"{job_id} reports changes but made no commit since dispatch. Resume the worker: "
-                             f"commit your work (sae dispatch {task.id} {job_id} --resume --reason \"commit your work\").")
+            fail(EXIT_USAGE, f"{job_id} reports changes but made no commit since dispatch. Resume the worker:\n"
+                             f"  sae dispatch {task.id} {job_id} --resume --reason \"commit your work\"")
     if as_list(job_meta(task, job_id).get("verify")):
         ok, command, exit_code = run_verify(task, job_id, workdir, config if config is not None else load_config())
         if not ok:

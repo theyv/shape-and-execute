@@ -36,6 +36,7 @@ from .tasks import (
     ensure_tasks_folder,
     job_file,
     live_checkout,
+    locate_tasks,
     new_job,
     open_task,
     resolve_task,
@@ -306,7 +307,11 @@ def cmd_adr_accept(args) -> int:
 def cmd_adr_reject(args) -> int:
     root, _ = find_root()
     draft = find_draft(root, args.draft)
-    title = split_frontmatter(read_text(draft))[0].get("title") or draft.stem
+    meta = split_frontmatter(read_text(draft))[0]
+    title = meta.get("title") or draft.stem
+    # Absolute draft paths may point into the live task worktree from the home checkout.
+    if draft.parent.name == "adr" and draft.parent.parent.name == ".tasks":
+        root = draft.resolve().parents[2]
     closed = adr_dir(root) / "closed.md"
     if not closed.exists():
         write_atomic(closed, "# Closed decision-record drafts\n\n")
@@ -318,6 +323,9 @@ def cmd_adr_reject(args) -> int:
         write_atomic(attributes, known + ("" if not known or known.endswith("\n") else "\n")
                      + "adr/closed.md merge=union\n")
     os.remove(draft)
+    if meta.get("source") in locate_tasks(root):
+        append_event_to(root, str(meta["source"]), "adr.rejected", file=rel(draft, root),
+                        closed=rel(closed, root), reason=args.reason)
     render_viewer_safely(root, [])
     emit(args, f"Rejected {draft.stem}: {args.reason}", {"draft": draft.stem, "reason": args.reason})
     return EXIT_OK

@@ -31,6 +31,7 @@ from .common import (
     read_json,
     sae_prefix,
     warn,
+    wrap_notice_lines,
     write_json,
 )
 from .gitutil import find_root, hash8
@@ -340,8 +341,8 @@ def cmd_view(args) -> int:
         command = start_command(root, task_id)
         why = ("this sandbox forbids local sockets" if isinstance(exc, NoSockets)
                else f"this sandbox forbids writing the state folder ({exc})")
-        print(f"The viewer cannot start here: {why}.\n"
-              f"Run this in your own terminal:\n  {command}", file=sys.stderr)
+        print(wrap_notice_lines(f"The viewer cannot start here: {why}.\n"
+                                f"Run this in your own terminal:\n  {command}"), file=sys.stderr)
         if args.json:
             print(json.dumps({"url": None, "command": command}))
         return EXIT_USAGE

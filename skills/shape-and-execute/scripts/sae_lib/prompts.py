@@ -205,14 +205,17 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
 
 
 def external_review_command(task: Task, job_id: str, model: dict, prompt: str) -> str:
+    """Print one shell line; printf restores the literal newlines in the review prompt."""
     result = result_file(task, job_id)
     result.parent.mkdir(parents=True, exist_ok=True)
     q = shlex.quote
+    escaped_prompt = prompt.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+    prompt_arg = '"$(printf %b ' + q(escaped_prompt) + ')"'
     if model["harness"] == "codex":
         return (f"rm -f {q(str(result))} && codex exec -m {q(model['model'])} "
                 f"-c model_reasoning_effort={q(model['effort'])} -s read-only "
-                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral {q(prompt)} < /dev/null")
-    return (f"cd {q(str(task.root))} && claude -p {q(prompt)} --model {q(model['model'])} "
+                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral {prompt_arg} < /dev/null")
+    return (f"cd {q(str(task.root))} && claude -p {prompt_arg} --model {q(model['model'])} "
             f"--effort {q(model['effort'])} --permission-mode dontAsk "
             f"--allowedTools {q('Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)')} "
             f"> {q(str(result))}")

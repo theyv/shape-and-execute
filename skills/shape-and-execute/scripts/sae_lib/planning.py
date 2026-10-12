@@ -116,7 +116,8 @@ def cmd_approve(args) -> int:
                 fail(EXIT_GATE, f"Approval refused: {', '.join(open_jobs)} not done.")
             if not any(not is_generated(i, j) and j["kind"] not in ("planning", "research")
                        for i, j in task.jobs.items()):
-                fail(EXIT_GATE, "Approval refused: the plan has no jobs. Add them with sae job add.")
+                fail(EXIT_GATE, f"Approval refused: the plan has no jobs. Add one:\n"
+                                f"  sae job add {task.id} <ID> --kind implementation")
         by = git_user(root)
         task.info["approvals"][gate] = {"at": iso(), "by": by}
         if gate == "spec":
@@ -176,9 +177,9 @@ def cmd_job_add(args) -> int:
         if job_id in task.jobs:
             fail(EXIT_USAGE, f"Job {job_id} exists.")
         if args.kind == "review":
-            fail(EXIT_USAGE, "sae adds review jobs itself (review points in settings, --review on a job).")
+            fail(EXIT_USAGE, "Review jobs are added automatically (review points in settings, --review on a job).")
         if args.kind == "decision":
-            fail(EXIT_USAGE, f"Use: sae decision new {task.id} --from <parked job>")
+            fail(EXIT_USAGE, f"Use: sae decision new {task.id} --from <ID>")
         if args.final and args.kind != "validation":
             fail(EXIT_USAGE, "--final is only for validation jobs.")
         if args.final and any(j["final"] for j in task.jobs.values()):
@@ -243,7 +244,8 @@ def cmd_job_edit(args) -> int:
         if args.difficulty:
             if job["kind"] == "review" and job.get("target") in task.jobs:
                 fail(EXIT_USAGE, f"{args.id} is a job review: it takes the difficulty of {job['target']}. "
-                                 f"For an exception: sae job override {task.id} {job['target']} --review …")
+                                 f"For an exception:\n  sae job override {task.id} {job['target']} --review "
+                                 f"--harness <harness> --model <model> --effort <effort>")
             if job["kind"] in ("review", "planning") and args.difficulty == "mechanical":
                 fail(EXIT_USAGE, f"{job['kind'].capitalize()} is never mechanical: use normal or hard.")
             changes["difficulty"] = [job["difficulty"], args.difficulty]

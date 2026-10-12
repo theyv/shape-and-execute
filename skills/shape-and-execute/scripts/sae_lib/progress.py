@@ -85,16 +85,16 @@ def next_command(task: Task) -> str:
         if ready:
             return f"sae dispatch {task.id} {ready[0]}"
         if any(j["status"] == "running" for j in jobs.values()):
-            return f"sae collect {task.id} <ID> when the subagent returns"
-        return f"sae check {task.id}, then sae approve {task.id} spec"
+            return f"When the subagent returns:\n  sae collect {task.id} <ID>"
+        return f"sae check {task.id}\nThen:\n  sae approve {task.id} spec"
     if phase == "planning":
         if ready:
             return f"sae dispatch {task.id} {ready[0]}"
         if any(j["status"] == "running" for j in jobs.values()):
-            return f"sae collect {task.id} <ID> when the subagent returns"
+            return f"When the subagent returns:\n  sae collect {task.id} <ID>"
         if "plan" in task.info["approvals"]:
             return f"sae start {task.id}"
-        return f"sae check {task.id}, then sae approve {task.id} plan"
+        return f"sae check {task.id}\nThen:\n  sae approve {task.id} plan"
     if phase == "executing":
         return f"sae next {task.id}"
     return "none"
@@ -150,7 +150,7 @@ def cmd_status(args) -> int:
             lines += ["", "Jobs:"]
             for r in data["jobs"]:
                 status = r["status"] + (" ✓merged" if r["merged"] else "")
-                lines.append(wrap_parts([r["id"], r["kind"], status, age_text(r["last_change"])]))
+                lines.append(wrap_parts([r["id"], r["kind"], status, age_text(r["last_change"])], hang="  "))
                 if r["model"] != "-":
                     lines.append(wrap(r["model"], "    "))
         if data["parked"]:
@@ -234,7 +234,7 @@ def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
     if data["parked"]:
         lines += ["Parked:"] + [wrap(f"{p['id']} — {p['reason']}", "  ") for p in data["parked"]]
     if data["ready"]:
-        lines.append("Ready (dispatch each: sae dispatch <task> <ID>):")
+        lines += ["Ready (dispatch each):", "  sae dispatch <task> <ID>"]
         for r in data["ready"]:
             lines.append(wrap_parts([r["id"], r["kind"], r["difficulty"]]))
             lines.append(wrap_parts([r["model"], r["workspace"]], indent="    "))
@@ -436,10 +436,10 @@ def cmd_dispatch(args) -> int:
             fallback = (f"{sae_prefix()} dispatch {task.id} {job_id} --provider {task.info['orchestrator_harness']} "
                         f"--resume --reason \"provider failed: <exit code or empty result>\"")
             data.update({"command": command, "if_it_fails": fallback})
-            emit(args, f"{header}\nCOMMAND:\n{command}\nIF IT FAILS:\n{fallback}", data)
+            emit(args, f"{header}\nCOMMAND:\n{command}\nIF IT FAILS:\n{fallback}", data, verbatim=(command,))
         else:
             data["prompt"] = prompt
-            emit(args, f"{header}\nPROMPT:\n{prompt}", data)
+            emit(args, f"{header}\nPROMPT:\n{prompt}", data, verbatim=(prompt,))
     return EXIT_OK
 
 

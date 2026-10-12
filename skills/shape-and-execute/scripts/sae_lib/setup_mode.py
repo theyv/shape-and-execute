@@ -361,7 +361,8 @@ def cmd_setup_show(args) -> int:
         proposal = convert_schema1(config, codex_catalog())
         lines += ["", f"Your config ({config_path()}) is schema 1 (rungs).",
                   "Proposed conversion to schema 2 (each rung is a tier; fill every",
-                  "<choose> with an effort, then save it with sae setup save):"]
+                  "<choose> with an effort, then save it in setup mode). Save:",
+                  "  sae setup save"]
         lines += config_text(proposal)
         lines += ["", "As JSON:", json.dumps(proposal, indent=2, ensure_ascii=False)]
         data = {"facts": facts, "config": config, "schema": 1, "proposal": proposal}
@@ -376,7 +377,8 @@ def cmd_setup_show(args) -> int:
         lines += ["", f"No config at {config_path()}. Proposal skeleton (fill every <...>):",
                   json.dumps(skeleton, indent=2, ensure_ascii=False)]
         data = {"facts": facts, "config": None, "skeleton": skeleton}
-    emit(args, "\n".join(lines), data)
+    proposal_json = json.dumps(data.get("proposal") or data.get("skeleton"), indent=2, ensure_ascii=False)
+    emit(args, "\n".join(lines), data, verbatim=(proposal_json,))
     return EXIT_OK
 
 
@@ -539,7 +541,8 @@ max_threads = {CODEX_RECOMMENDED_SUBAGENTS}
         json.dumps(claude, indent=2),
     ]
     emit(args, "\n".join(lines), {"codex_profile_file": str(profile_file), "codex_profile": codex_profile,
-                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude})
+                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude},
+         verbatim=(codex_profile.rstrip(), json.dumps(claude, indent=2)))
     return EXIT_OK
 
 
