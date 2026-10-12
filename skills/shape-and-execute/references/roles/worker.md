@@ -69,4 +69,8 @@ that the code does not make obvious (`[agent]`), disputed findings, risks, findi
 into a `follow-up` finding, not into the result. Keep it short: the code is the source of
 truth.
 
+When your job file lists findings in `resolves`, put each one you fixed, or found already
+fixed, in the result's `resolved` field. `sae` closes them when your job succeeds. Leave out
+one you did not fix or believe wrong, and say why under "Decisions taken"; it stays open.
+
 Reply with the result path only.

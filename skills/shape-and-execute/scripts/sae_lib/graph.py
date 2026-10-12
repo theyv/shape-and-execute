@@ -15,6 +15,7 @@ from .common import (
     read_text,
 )
 from .config import cfg
+from .findings import resolves_errors
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 from .tasks import Task, as_list, is_generated, job_file, job_meta, new_job, tasks_dir
 
@@ -307,6 +308,7 @@ def lint_plan(task: Task) -> tuple[list[str], list[str]]:
             if need not in jobs:
                 errors.append(f"{job_id}: needs unknown job {need}")
         if is_generated(job_id, job):
+            errors.extend(resolves_errors(task, job_id, job["kind"], job_meta(task, job_id)))
             continue
         text = read_text(job_file(task, job_id))
         if text is None:
@@ -326,6 +328,7 @@ def lint_plan(task: Task) -> tuple[list[str], list[str]]:
                 errors.append(f"{job_id}: covers [{req}], which does not exist")
             elif job["kind"] != "review":
                 covered.add(req)
+        errors.extend(resolves_errors(task, job_id, job["kind"], meta))
         if job["kind"] in WRITER_KINDS + ("validation",) and not as_list(meta.get("verify")):
             warnings.append(f"{job_id}: no verify commands (only judgement checks this job)")
     cycle = find_cycle(jobs)

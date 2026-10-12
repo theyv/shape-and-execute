@@ -3,6 +3,7 @@ status: done          # done | failed | parked
 summary: <one line>
 validation: pass      # pass | fail | not-run
 changes: made         # made | none
+resolved: []          # finding files of your job's resolves that you fixed or confirmed fixed
 ---
 
 # Result: <JOB-ID>

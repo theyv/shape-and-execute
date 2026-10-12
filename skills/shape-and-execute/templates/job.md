@@ -3,6 +3,7 @@ id: <JOB-ID>
 covers: []        # requirement IDs this job satisfies
 verify: []        # deterministic commands; sae re-runs them at collect
 # scope: []       # optional: globs this job may change (recommended for parallel writers)
+# resolves: []    # optional: finding files in .tasks/findings/ this job fixes (implementation, integration, validation)
 ---
 
 # <JOB-ID>: <title>

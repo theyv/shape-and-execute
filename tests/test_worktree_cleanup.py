@@ -114,7 +114,7 @@ class JobWorktreeTests(SaeTestCase):
         self.assertTrue(sb.state(task)["jobs"]["RIGHT"]["merged"])
         self.assertIn("it holds uncommitted work: notes.txt", proc.stderr)
         out = sb.sae("finish", "careful").stdout
-        self.assertIn(f"Worktree kept: {ws}: it holds uncommitted work: notes.txt", " ".join(out.split()))
+        self.assertIn(f"## Kept worktrees\n- {ws}: it holds uncommitted work: notes.txt", out)
         self.assertTrue((ws / "notes.txt").exists())
         kept = [e for e in sb.events(task) if e["type"] == "worktree.kept"]
         self.assertTrue(kept and kept[-1]["path"] == str(ws))
@@ -242,8 +242,8 @@ class JobWorktreeTests(SaeTestCase):
             done_job(sb, task, "tidy", job_id)
         out = sb.sae("finish", "tidy").stdout
         wt = sb.task_worktree(task)
-        self.assertIn(f"The task worktree stays for your tests: {wt}", " ".join(out.split()))
-        self.assertIn("Or run:\n  sae doctor", out)
+        self.assertIn(f"Task worktree, test the result here:\n  {wt}\n"
+                      f"After you merge task/{task}, sae removes the task worktree.", out)
         self.assertEqual([p.name for p in wt.parent.iterdir()], ["task"])
         self.assertEqual([p.name for p in wt.parent.parent.iterdir()], [task])
         self.assertEqual(sb.git("branch", "--list", f"job/{task}/*"), "")

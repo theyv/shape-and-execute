@@ -32,12 +32,14 @@ from .gitutil import find_root, git, git_ok, git_user, run
 from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
-from .reviews import check_finish_gates, finish_merges, merge_job
+from .findings import finding_stem, open_findings_everywhere
+from .reviews import check_finish_gates, finish_merges, in_scope, merge_job
 from .routing import resolve_model
 from .tasks import (
     CLOSED_PHASES,
     Task,
     TaskCopy,
+    as_list,
     ensure_tasks_folder,
     find_task,
     list_task_ids,
@@ -341,7 +343,8 @@ def attempt_text(attempt: dict) -> str:
     return text + (f" ({source})" if source and source != "global" else "")
 
 
-def final_report(task: Task, with_open: bool) -> str:
+def final_report(task: Task, with_open: bool, kept: list[str] | None = None) -> str:
+    """The report `sae finish` prints. `kept`: "<path>: <reason>" of each kept worktree."""
     jobs = task.jobs
     events = task.events()
     lines = [f"# Final report: {task.info['title']}", f"Task: {task.id}"]
@@ -383,15 +386,45 @@ def final_report(task: Task, with_open: bool) -> str:
     created += [rel(p, task.root) for p in sourced_items(task, ("backlog", "adr")) if rel(p, task.root) not in created]
     if created:
         lines += ["", "## Findings, backlog items and decision drafts"] + [f"- {c}" for c in created]
+    closed = [e for e in events if e["type"] == "finding.closed"]
+    if closed:
+        lines += ["", "## Findings closed by this task"] + [f"- {e['finding']} · {e.get('job')}" for e in closed]
+    check = findings_to_check(task, created)
+    if check:
+        lines += ["", "## Check these findings", "Open findings about files this task changed:"] + check
     lines += ["", "## Branch"]
     if task.info.get("git"):
         base = task.info.get("base") or {}
         count = git(task.root, "rev-list", "--count", f"{base.get('commit')}..{task.info['branch']}", check=False)
         lines += [task.info["branch"], f"base: {base.get('branch') or '-'} @ {base.get('commit')}",
                   f"{count or '?'} commits. Nothing was pushed.", "Merge or open a merge request yourself."]
+        if task.worktree:
+            lines += ["Task worktree, test the result here:", f"  {task.worktree}",
+                      f"After you merge {task.info['branch']}, sae removes the task worktree."]
     else:
         lines.append("No git: the changes are in the working folder.")
+    if kept:
+        lines += ["", "## Kept worktrees"] + [f"- {line}" for line in kept]
     return "\n".join(lines)
+
+
+def findings_to_check(task: Task, listed: list[str]) -> list[str]:
+    """[RESOLVES-REPORT]: "- <file> (<changed files>)" of each open finding whose `paths` overlap
+    the files the task changed, except the ones the report lists already."""
+    base = (task.info.get("base") or {}).get("commit")
+    if not task.info.get("git") or not base:
+        return []
+    changed = git(task.root, "diff", "--name-only", f"{base}..{task.info['branch']}", check=False).splitlines()
+    listed_stems = {finding_stem(entry) for entry in listed if entry}
+    lines = []
+    for path in open_findings_everywhere(task.root):  # the home checkout and other task worktrees too
+        if path.stem in listed_stems:
+            continue
+        paths = [str(p) for p in as_list(split_frontmatter(read_text(path, ""))[0].get("paths"))]
+        hits = [f for f in changed if paths and in_scope(f, paths)]
+        if hits:
+            lines.append(f"- {rel(path, task.root)} ({', '.join(hits[:3])}{', …' if len(hits) > 3 else ''})")
+    return lines
 
 
 def cmd_finish(args) -> int:
@@ -417,21 +450,18 @@ def cmd_finish(args) -> int:
             task.event("gate.overridden", gate=gate["gate"], jobs=gate["jobs"], reason=args.override)
             out.append(f"Gate overridden: {gate['gate']} ({', '.join(gate['jobs'])}).")
         # 3. Close: worktrees, branches, phase, task record, report.
+        kept: list[str] = []
         if task.info.get("git"):
             kept = remove_task_worktrees(task, config)
             for job_id, job in task.jobs.items():
                 if job["merged"] and not fix_target(task, job_id):
                     run(["git", "branch", "-d", job_branch(task, job_id)], task.root)
-            out += [f"Worktree kept: {line}" for line in kept]
-            if task.worktree:
-                out.append(f"The task worktree stays for your tests:\n  {task.worktree}\nOnce you merge "
-                           f"{task.info['branch']}, the next writing command removes it. Or run:\n  sae doctor")
         head = git(task.root, "rev-parse", "--short", "HEAD") if task.info.get("git") else None
         task.info["phase"] = "done"
         task.event("task.finished", branch=task.info.get("branch"), commit=head)
         task.save()
         moved = move_finished_tasks(task)  # [DONE-FOLDER]; on the task branch only
-        report = final_report(task, args.with_open)  # after the move: its paths point into done/
+        report = final_report(task, args.with_open, kept)  # after the move: its paths point into done/
         if task.info.get("git"):
             commit_task_record(task, moved, out)
         emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out,

@@ -1,7 +1,9 @@
-"""Commands finding new|close, decision new and log."""
+"""Commands finding new|close, decision new, log, adr and triage; the closed-findings rule and
+the closing of the findings a job resolves."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import os
 import re
@@ -21,6 +23,7 @@ from .common import (
     fail,
     file_stamp,
     now,
+    read_json,
     read_text,
     rel,
     slugify,
@@ -29,22 +32,25 @@ from .common import (
     warn,
     write_atomic,
 )
-from .gitutil import find_root
+from .gitutil import find_root, git, git_ok, main_worktree, worktree_paths
 from .markdown import first_heading, split_frontmatter
 from .tasks import (
     append_event_to,
+    as_list,
     ensure_tasks_folder,
     job_file,
+    job_meta,
     live_checkout,
     locate_tasks,
     new_job,
     open_task,
     resolve_task,
     result_file,
+    task_phase,
     tasks_dir,
     template,
 )
-from .viewer import remember_repo_safely
+from .viewer import remember_repo_safely, stamped_items
 
 
 def cmd_decision_new(args) -> int:
@@ -139,7 +145,12 @@ def cmd_finding_new(args) -> int:
     return EXIT_OK
 
 
-CLOSE_OUTCOME_RE = re.compile(r"^(fixed in \S+|moved to backlog/\S+|rejected: .+|duplicate of \S+)$")
+CLOSE_OUTCOME_RE = re.compile(r"^(fixed in \S+(?: by \S+)?|moved to backlog/\S+|rejected: .+|duplicate of \S+)$")
+
+
+def fixed_outcome(task_id: str, job_id: str) -> str:
+    """The job form of the outcome ([RESOLVES-CLOSE]): `fixed in <task-id> by <JOB-ID>`."""
+    return f"fixed in {task_id} by {job_id}"
 
 
 def cmd_finding_close(args) -> int:
@@ -148,22 +159,206 @@ def cmd_finding_close(args) -> int:
     if not path.is_absolute():
         candidates = [Path.cwd() / path, root / path, tasks_dir(root) / "findings" / path.name]
         path = next((c for c in candidates if c.exists()), candidates[0])
-    text = read_text(path)
-    if text is None:
+    if read_text(path) is None:
         fail(EXIT_USAGE, f"No finding at {args.file}.")
     if not CLOSE_OUTCOME_RE.match(args.outcome):
-        fail(EXIT_USAGE, 'Outcome must be "fixed in <task-id>", "moved to backlog/<file>", '
-                         '"rejected: <reason>" or "duplicate of <finding>".')
-    title = first_heading(split_frontmatter(text)[1]) or path.stem
-    closed = tasks_dir(root) / "findings" / "closed.md"
-    if not closed.exists():
-        write_atomic(closed, "# Closed findings\n\n")
-    with closed.open("a", encoding="utf-8") as handle:
-        handle.write(f"- {now().date().isoformat()} · {path.stem} · {title} · {args.outcome}\n")
-    os.remove(path)
+        fail(EXIT_USAGE, 'Outcome must be "fixed in <task-id>", "fixed in <task-id> by <JOB-ID>", '
+                         '"moved to backlog/<file>", "rejected: <reason>" or "duplicate of <finding>".')
+    close_finding(root, path, args.outcome)
     remember_repo_safely(root)
     emit(args, f"Closed {path.stem}: {args.outcome}", {"finding": path.stem, "outcome": args.outcome})
     return EXIT_OK
+
+
+# ---- closing findings ([RESOLVES-CLOSE], [CLOSED-VISIBLE], [RULE-ONE-CLOSE]) ----------------
+
+RESOLVING_KINDS = ("implementation", "integration", "validation")  # [RESOLVES-FIELD]
+
+
+def finding_stem(entry) -> str:
+    """A `resolves`/`resolved` entry or a finding path → its file stem (no folder, no `.md`)."""
+    name = Path(str(entry).strip()).name
+    return name[:-3] if name.endswith(".md") else name
+
+
+def close_finding(checkout: Path, path: Path, outcome: str, remove: bool = True) -> str:
+    """The one close path of `sae finding close` and of a resolving job: appends the line
+    `- <date> · <stem> · <title> · <outcome>` to `closed.md` of `checkout` and deletes the
+    finding file (`remove=False` keeps a file that lies in another checkout). Returns the line."""
+    title = first_heading(split_frontmatter(read_text(path, ""))[1]) or path.stem
+    closed = tasks_dir(checkout) / "findings" / "closed.md"
+    if not closed.exists():
+        write_atomic(closed, "# Closed findings\n\n")
+    line = f"- {now().date().isoformat()} · {path.stem} · {title} · {outcome}"
+    with closed.open("a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+    if remove and path.exists():
+        os.remove(path)
+    return line
+
+
+def task_worktrees(root: Path) -> list[Path]:
+    """The existing task worktrees of the tasks that are not abandoned, as each task's own record
+    names them (`task.worktree`; a finished task's until the owner removes it). A checkout that only
+    inherited a task record (a job worktree, an abandoned task's kept worktree) is not one."""
+    existing = {p.resolve() for p in worktree_paths(root)}
+    found = []
+    for copy in locate_tasks(root).values():
+        if task_phase(copy) == "abandoned":
+            continue
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+            path = read_json(copy.folder / "state.json")["task"].get("worktree")
+            if path and Path(path).resolve() in existing:
+                found.append(Path(path))
+    return found
+
+
+def finding_checkouts(root: Path) -> list[Path]:
+    """[CLOSED-VISIBLE]: the checkouts whose `closed.md` counts: `root`, the home checkout (the
+    main worktree) and the task worktree of every task that is not abandoned (while it runs, and
+    after `finish` until the owner merges it). Job worktrees and abandoned tasks do not count:
+    their work is not merged. Without git: `root` only."""
+    if not git_ok(root, "rev-parse", "--git-dir"):
+        return [root]
+    candidates = [root, main_worktree(root)] + task_worktrees(root)
+    found: dict[Path, Path] = {}
+    for checkout in candidates:
+        found.setdefault(checkout.resolve(), checkout)
+    return list(found.values())
+
+
+def closed_lines(root: Path) -> dict[str, str]:
+    """Finding stem → its line in `closed.md`, from every checkout of `finding_checkouts`."""
+    lines: dict[str, str] = {}
+    for checkout in finding_checkouts(root):
+        for line in read_text(tasks_dir(checkout) / "findings" / "closed.md", "").splitlines():
+            parts = line.lstrip("-* ").split(" · ")
+            if line.lstrip().startswith(("-", "*")) and len(parts) >= 2:
+                lines.setdefault(parts[1].strip(), line)
+    return lines
+
+
+def closed_text(root: Path) -> str:
+    """`closed.md` of `root`, plus the lines that only other counting checkouts hold."""
+    text = read_text(tasks_dir(root) / "findings" / "closed.md", "")
+    extra = [line for line in closed_lines(root).values() if line not in text]
+    if extra:
+        text = (text or "# Closed findings\n\n") + ("" if not text or text.endswith("\n") else "\n")
+        text += "\n".join(extra) + "\n"
+    return text
+
+
+def open_findings(root: Path) -> list[Path]:
+    """The finding files of `root` that count as open: not listed in any counting `closed.md`
+    ([CLOSED-VISIBLE]). `sae triage`, `sae status` and the viewer use this rule."""
+    closed = closed_lines(root)
+    return [p for p in stamped_items(tasks_dir(root) / "findings") if p.stem not in closed]
+
+
+def open_findings_everywhere(root: Path) -> list[Path]:
+    """The open finding files of every counting checkout, one per stem, `root`'s copy first
+    ([RESOLVES-REPORT]: a finding filed at home after the task started counts too)."""
+    closed = closed_lines(root)
+    found: dict[str, Path] = {}
+    for checkout in finding_checkouts(root):
+        for path in stamped_items(tasks_dir(checkout) / "findings"):
+            if path.stem not in closed:
+                found.setdefault(path.stem, path)
+    return list(found.values())
+
+
+def finding_file(root: Path, stem: str) -> Path | None:
+    """The file of an open finding in any counting checkout, `root` first."""
+    for checkout in finding_checkouts(root):
+        path = tasks_dir(checkout) / "findings" / f"{stem}.md"
+        if path.is_file():
+            return path
+    return None
+
+
+def resolves_errors(task, job_id: str, kind: str, meta: dict) -> list[str]:
+    """[RESOLVES-FIELD] for `sae check`: `resolves` only on resolving kinds; each entry an open
+    finding file or a line of `closed.md`."""
+    entries = [str(e) for e in as_list(meta.get("resolves"))]
+    if not entries:
+        return []
+    if kind not in RESOLVING_KINDS:
+        return [f"{job_id}: resolves on a {kind} job; only {', '.join(RESOLVING_KINDS)} jobs resolve findings"]
+    closed = closed_lines(task.root)
+    return [f"{job_id}: resolves {entry}, which is neither an open finding in .tasks/findings/ nor in closed.md"
+            for entry in entries
+            if finding_stem(entry) not in closed and finding_file(task.root, finding_stem(entry)) is None]
+
+
+def resolution(task, job_id: str) -> tuple[list[str], list[str], list[str]]:
+    """(to close, stays open, ignored) of a job: `resolves` ∩ `resolved`, `resolves` without
+    `resolved`, `resolved` without `resolves`. Stems, in the order of the files."""
+    resolves = [finding_stem(e) for e in as_list(job_meta(task, job_id).get("resolves"))]
+    if task.jobs[job_id]["kind"] not in RESOLVING_KINDS:
+        resolves = []
+    result = split_frontmatter(read_text(result_file(task, job_id), ""))[0]
+    resolved = [finding_stem(e) for e in as_list(result.get("resolved"))]
+    return ([s for s in resolves if s in resolved], [s for s in resolves if s not in resolved],
+            [s for s in resolved if s not in resolves])
+
+
+def resolution_notes(task, job_id: str) -> list[str]:
+    """Collect output of a done job: the findings that stay open, the `resolved` entries ignored."""
+    _, stays, ignored = resolution(task, job_id)
+    notes = [f"Finding stays open: {s} ({job_id} resolves it, its result does not list it as resolved)."
+             for s in stays]
+    notes += [f"Ignored: {s} is in the resolved list of {job_id}, not in its resolves." for s in ignored]
+    return notes
+
+
+def close_resolved(task, job_ids: list[str], out: list[str]) -> list[str]:
+    """[RESOLVES-CLOSE]: closes the findings that the succeeded jobs `job_ids` resolved (a merged
+    fix group closes the findings of every member, [EDGE-FIX-GROUP]). A finding already in a
+    counting `closed.md` is named and left alone ([RULE-ONE-CLOSE], [EDGE-RESOLVES-CLOSED]). The
+    closure lands in the task's checkout, and with git as one commit on the task branch; the
+    home checkout's branch never changes. Returns the closed stems."""
+    root = task.root
+    is_git = bool(task.info.get("git"))
+    closed_now: list[str] = []
+    closers: list[str] = []
+    commit_paths: list[str] = []
+    closed = closed_lines(root)
+    for job_id in job_ids:
+        to_close = resolution(task, job_id)[0]
+        if not to_close:
+            continue
+        if is_git and task.info.get("branch") and \
+                git(root, "branch", "--show-current", check=False) != task.info["branch"]:
+            out.append(f"Findings not closed: {root} is not on {task.info['branch']}. Close them by hand: "
+                       + ", ".join(to_close))
+            continue
+        for stem in to_close:
+            if stem in closed:
+                outcome = closed[stem].rsplit(" · ", 1)[-1].strip()
+                out.append(f"Finding {stem} was closed already ({outcome}); {job_id} closes nothing more.")
+                continue
+            path = finding_file(root, stem)
+            if path is None:
+                out.append(f"Finding {stem} ({job_id} resolves it) has no file and no line in closed.md; "
+                           "nothing to close.")
+                continue
+            local = path.parent == tasks_dir(root) / "findings"
+            relative = rel(path, root)
+            tracked = local and is_git and git_ok(root, "ls-files", "--error-unmatch", "--", relative)
+            closed[stem] = close_finding(root, path, fixed_outcome(task.id, job_id), remove=local)
+            if tracked:
+                commit_paths.append(relative)
+            closed_now.append(stem)
+            closers += [job_id] if job_id not in closers else []
+            task.event("finding.closed", finding=stem, job=job_id, outcome=fixed_outcome(task.id, job_id))
+            out.append(f"Closed finding {stem}: {fixed_outcome(task.id, job_id)}.")
+    if closed_now and is_git:
+        closed_file = rel(tasks_dir(root) / "findings" / "closed.md", root)
+        paths = [closed_file] + commit_paths
+        git(root, "add", "--", *paths)
+        git(root, "commit", "--quiet", "-m", f"{', '.join(closers)}: close resolved findings",
+            "-m", f"Task: {task.id}", "--", *paths)
+    return closed_now
 
 
 def register_decision(sub, command):
@@ -218,7 +413,8 @@ def register_finding(sub, command):
     given.add_argument("--body", metavar="TEXT", help="the observation: what you saw (required, or --body-file)")
     given.add_argument("--body-file", metavar="PATH", help="read the observation from this file")
     p = command(finding_sub, "close", "Close a finding: delete its file, log a line in findings/closed.md.",
-                'Outcome: "fixed in <task-id>", "moved to backlog/<file>", "rejected: <reason>" or "duplicate of <finding>".',
+                'Outcome: "fixed in <task-id>", "fixed in <task-id> by <JOB-ID>" (the form sae writes when a job\n'
+                'resolves it), "moved to backlog/<file>", "rejected: <reason>" or "duplicate of <finding>".',
                 ['finding close .tasks/findings/2026-10-06-1512--slow-status-lookup.md --outcome "rejected: expected"'],
                 [0, 1], cmd_finding_close)
     p.add_argument("file")
@@ -426,10 +622,7 @@ def _draft_date(path: Path) -> dt.date | None:
 
 def triage_counts(root: Path) -> list[dict]:
     queues = {t: [] for t in FINDING_TYPES}
-    folder = tasks_dir(root) / "findings"
-    for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
-        if path.name == "closed.md":
-            continue
+    for path in open_findings(root):
         kind = split_frontmatter(read_text(path, ""))[0].get("type")
         stamp = stamp_time(path.name)
         queues.setdefault(str(kind), []).append(dt.date.fromisoformat(stamp[:10]) if stamp else None)
@@ -455,4 +648,5 @@ def cmd_triage(args) -> int:
 def register_triage(sub, command):
     """Add the read-only `triage` command."""
     command(sub, "triage", "Print the triage counts: findings by type and decision drafts.",
-            "Read-only. Then pick one queue: findings or decision drafts.", ["triage"], [0], cmd_triage)
+            "Read-only. Then pick one queue: findings or decision drafts. A finding listed in closed.md of the\n"
+            "home checkout or of a task's worktree counts as closed.", ["triage"], [0], cmd_triage)

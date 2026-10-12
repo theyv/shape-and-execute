@@ -47,7 +47,9 @@ orchestrator may adapt it during execution.
    to spec sections, brief sections, files), scope, boundaries, expected output, validation;
    frontmatter `covers`, `verify` (deterministic commands) and, for parallel writers, `scope`.
    Describe the outcome and the limits. Leave implementation choices to the worker. Point to
-   brief sections; do not restate them.
+   brief sections; do not restate them. A job that fixes findings names their files in
+   `resolves` (implementation, integration and validation jobs only); its success closes
+   them.
 3. With two or more jobs:
    - `brief.md` (template `templates/brief.md`), at most about one page: why, what,
      high-level how, invariants, domain terms, constraints, validation pointers;

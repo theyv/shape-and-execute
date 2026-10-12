@@ -44,6 +44,9 @@ Repeat until `sae next` reports that all jobs are done.
    - `parked` → the decision flow below.
    - exit 4 (merge conflict) → `sae` added `INTEGRATE-<ID>`; it shows up in `sae next`.
    - "N disputed findings" → settle them (below).
+   - "Closed finding …" → nothing to do: the job resolved it and `sae` committed the closure
+     on the task branch. "Finding stays open: …" → the worker did not list it as resolved;
+     its result says why. Mention it in your report; it stays for the next triage.
    - job review `changes-required` → add fix jobs
      (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID> --reason "<review>: changes required"`),
      or accept it when the mode lets you decide: `sae merge <task> <ID> --accept-review "<why>"`.
