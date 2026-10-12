@@ -2,7 +2,7 @@
 """sae: the command-line half of the shape-and-execute skill.
 
 Agents decide; sae records, checks, computes and moves files and git refs. It never calls a
-model, never pushes, and holds no configuration value of its own: models, level maps, the
+model, never pushes, and holds no configuration value of its own: models, routing tables, the
 worktree root and the defaults for new tasks come from the user config.
 
 Run `sae --help` for every command, `sae <command> --help` for one command.

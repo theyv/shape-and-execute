@@ -264,15 +264,15 @@ def integration_notice(task: Task) -> str | None:
         return None
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
-        return (f"The task is parked for the owner: {last} still requires changes after a fix round.\n"
-                f"Nothing is dispatched until the owner chooses:\n"
-                f"  - more fix jobs: {fix_job_command(task, last)}\n"
-                f"  - or close anyway: {forward}")
+        return "\n".join([wrap(f"The task is parked for the owner: {last} still requires changes after a "
+                                "fix round. Nothing is dispatched until the owner chooses:"),
+                           "  - more fix jobs:", f"    {fix_job_command(task, last)}",
+                           "  - or close anyway:", f"    {forward}"])
     if any(j.get("fix_of") == last for j in task.jobs.values()):
         return None
-    return (f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):\n"
-            f"  {fix_job_command(task, last)}\n"
-            f"or, on the owner's word: {forward}")
+    return "\n".join([wrap(f"{last} requires changes. Add fix jobs (sae adds the next round when they are "
+                            "merged):"), f"  {fix_job_command(task, last)}",
+                       "Or, on the owner's word:", f"  {forward}"])
 
 
 def next_data(task: Task, config: dict | None) -> dict:

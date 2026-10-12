@@ -20,6 +20,7 @@ from .common import (
     fail,
     iso,
     read_text,
+    wrap,
     write_atomic,
 )
 from .config import cfg, load_config, max_verify_failures
@@ -444,36 +445,39 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
     forward = f"sae finish {task.id} --override \"<reason>\""
     running = [i for i, j in jobs.items() if j["status"] == "running"]
     if running:
-        fail(EXIT_GATE, f"Still running: {', '.join(running)}. Collect them first: sae collect {task.id} <ID>")
+        fail(EXIT_GATE, f"{wrap('Still running: ' + ', '.join(running) + '. Collect them first:')}\n"
+                        f"  sae collect {task.id} <ID>")
     verdicts, verdict_held = verdict_gate(task)
     stale, stale_held = stale_gate(task)
     held = verdict_held | stale_held
     open_jobs = [i for i, j in jobs.items() if j["status"] in ("pending", "parked") and i not in held]
     if open_jobs and not with_open:
-        fail(EXIT_GATE, f"Open jobs: {', '.join(open_jobs)}. Finish them, or add --with-open when the user "
-                        "accepts open items.")
+        fail(EXIT_GATE, wrap(f"Open jobs: {', '.join(open_jobs)}. Finish them, or add --with-open when the user "
+                             "accepts open items."))
     overridden: list[dict] = []
     if verdicts:
         if override is None:
-            lines = [f"Finish refused: {review} says changes-required." for review, _ in verdicts]
-            lines += ["Ways forward:"] + [f"  - fix jobs: {fix_job_command(task, target)}" for _, target in verdicts]
-            lines.append(f"  - or close anyway, with the owner's reason: {forward}")
+            lines = [wrap(f"Finish refused: {review} says changes-required.") for review, _ in verdicts]
+            lines.append("Ways forward:")
+            for _, target in verdicts:
+                lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}"]
+            lines += ["  - or close anyway, with the owner's reason:", f"    {forward}"]
             fail(EXIT_GATE, "\n".join(lines))
         overridden.append({"gate": "verdict", "jobs": [r for r, _ in verdicts] + sorted(verdict_held)})
     if stale:
         if override is None:
             fail(EXIT_GATE, "\n".join(["Finish refused: the checks do not cover the code that will be closed."]
-                                      + [f"  - {p}" for p in stale]
-                                      + [f"Run the checks: sae next {task.id}. Or close anyway, with the owner's "
-                                         f"reason: {forward}"]))
+                                      + [wrap(f"- {p}", indent="  ") for p in stale]
+                                      + ["Run the checks:", f"  sae next {task.id}",
+                                         "Or close anyway, with the owner's reason:", f"  {forward}"]))
         overridden.append({"gate": "stale", "jobs": sorted(stale_held) + finish_merges(task)})
     passed = held if override is not None else set()
     finals = [i for i, j in jobs.items() if j["final"] and j["status"] != "done" and i not in passed]
     if finals:
-        fail(EXIT_GATE, f"The final validation {finals[0]} is not done. Next: sae next {task.id}")
+        fail(EXIT_GATE, f"The final validation {finals[0]} is not done. Next:\n  sae next {task.id}")
     last = last_round(task, "integration")
     if last and jobs[last]["status"] != "done" and last not in passed:
-        fail(EXIT_GATE, f"{last} is not done. Next: sae dispatch {task.id} {last}")
+        fail(EXIT_GATE, f"{last} is not done. Next:\n  sae dispatch {task.id} {last}")
     return overridden
 
 
@@ -600,12 +604,16 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
     if subject["review_rounds"] >= 2:
         subject["status"] = "parked"
         subject["summary"] = f"{review_id}: changes required after two review rounds — human decision"
-        out.append(f"{target} parked: the second review round still requires changes. Ask the user; "
-                   f"accept with sae merge {task.id} {target} --accept-review \"<why>\", or adapt the graph.")
+        out.append("\n".join([wrap(f"{target} parked: the second review round still requires changes. Ask the "
+                                    "user. Accept with:"),
+                               f"  sae merge {task.id} {target} --accept-review \"<why>\"",
+                               "Or adapt the graph."]))
     else:
-        out.append(f"{target}: changes required. Add fix jobs: sae job add {task.id} {target}-FIX-1 --kind "
-                   f"implementation --fix-of {target} --reason \"{review_id}: changes required\"\n"
-                   f"or accept when the mode lets you decide: sae merge {task.id} {target} --accept-review \"<why>\"")
+        out.append("\n".join([f"{target}: changes required. Add fix jobs:",
+                               f"  sae job add {task.id} {target}-FIX-1 --kind implementation --fix-of {target} "
+                               f"--reason \"{review_id}: changes required\"",
+                               "Or accept when the mode lets you decide:",
+                               f"  sae merge {task.id} {target} --accept-review \"<why>\""]))
     return EXIT_OK
 
 
@@ -616,13 +624,14 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
         return EXIT_OK
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
-        out.append(f"The task is parked: {review_id} still requires changes after a fix round. Ask the owner:\n"
-                   f"  - more fix jobs: {fix_job_command(task, review_id)}\n"
-                   f"  - or close anyway: {forward}")
+        out.append("\n".join([wrap(f"The task is parked: {review_id} still requires changes after a fix round. "
+                                    "Ask the owner:"),
+                               "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
+                               "  - or close anyway:", f"    {forward}"]))
     else:
-        out.append(f"{review_id}: changes required. Add fix jobs (sae adds the next round when they are merged):\n"
-                   f"  {fix_job_command(task, review_id)}\n"
-                   f"or, on the owner's word, close anyway: {forward}")
+        out.append("\n".join([wrap(f"{review_id}: changes required. Add fix jobs (sae adds the next round when "
+                                    "they are merged):"), f"  {fix_job_command(task, review_id)}",
+                               "Or, on the owner's word, close anyway:", f"  {forward}"]))
     return EXIT_OK
 
 

@@ -23,6 +23,8 @@ from .common import (
     emit,
     fail,
     iso,
+    wrap,
+    wrap_parts,
     write_atomic,
 )
 from .config import (
@@ -81,7 +83,8 @@ def cmd_set(args) -> int:
             task.write_settings(new)
             task.event("settings.changed", changes=changes, by=changed_by())
         card = settings_card(new, task.info.get("orchestrator_harness"))
-        emit(args, f"Settings: {card}" + ("" if changes else " (unchanged)"), {"settings": new, "changes": changes})
+        emit(args, ("Settings:" if changes else "Settings (unchanged):") + "\n" + wrap_parts(card.split(" · ")),
+             {"settings": new, "changes": changes})
     return EXIT_OK
 
 
@@ -212,8 +215,8 @@ def cmd_job_add(args) -> int:
             task.touch(fixed)
             notes.append(f"{args.fix_of} is no longer parked: its next review round follows {job_id}.")
         if args.review and not {"selected-jobs", "all-jobs"} & set(task.settings["review"]["points"]):
-            notes.append(f"warning: {job_id} is flagged for review, but job reviews are off "
-                         "(review points have neither selected-jobs nor all-jobs).")
+            notes.append(wrap(f"warning: {job_id} is flagged for review, but job reviews are off "
+                              "(review points have neither selected-jobs nor all-jobs)."))
         path = job_file(task, job_id)
         if not path.exists():
             name = "job-research.md" if args.kind == "research" else "job.md"
@@ -221,7 +224,7 @@ def cmd_job_add(args) -> int:
             write_atomic(path, text)
         task.event("job.added", job=job_id, kind=args.kind, needs=needs, difficulty=args.difficulty,
                    review=args.review, final=args.final, fix_of=args.fix_of, reason=args.reason)
-        emit(args, "\n".join([f"Added {job_id} ({args.kind}, {args.difficulty}). Job file: {path}"] + notes),
+        emit(args, "\n".join([wrap(f"Added {job_id} ({args.kind}, {args.difficulty}). Job file:"), f"  {path}"] + notes),
              {"job": job_id, "file": str(path), "notes": notes})
     return EXIT_OK
 
