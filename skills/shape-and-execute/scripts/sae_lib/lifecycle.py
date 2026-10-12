@@ -112,7 +112,7 @@ def cmd_new(args) -> int:
     text = (f"Task: {task_id}\nFolder: {folder}\nIntent: {folder / 'intent.md'}\n"
             f"Settings:\n{wrap_parts(settings_card(settings).split(' · '))}")
     if from_item:
-        text += f"\nPicked up from the backlog: {from_item['file']} (it stays; sae start removes it on the task branch)."
+        text += f"\nPicked up from the backlog: {from_item['file']}\nIt stays until execution starts on the task branch."
     text += f"\n{viewer_line}"
     emit(args, text, {"task": task_id, "folder": str(folder), "intent": str(folder / "intent.md"),
                       "settings": settings, "from": from_item, "viewer": url, "viewer_hint": viewer_line})
@@ -225,14 +225,14 @@ def start_task_worktree(task: Task, config: dict | None, undo: list) -> tuple[li
     checkout never changes branch."""
     home = task.root
     if not git_ok(home, "rev-parse", "--verify", "--quiet", "HEAD"):
-        fail(EXIT_GIT, "The repository has no commits. Make a first commit, then run sae start again.")
+        fail(EXIT_GIT, f"The repository has no commits. Make a first commit, then run:\n  sae start {task.id}")
     worktree = task_worktree_path(task, config)
     branch = f"task/{task.id}"
     if git_ok(home, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"):
         fail(EXIT_GIT, f"Branch {branch} exists already. Delete it (git branch -D {branch}) or start "
                        "a new task.")
     if worktree.exists():
-        fail(EXIT_GIT, f"{worktree} exists already. Remove it, then run sae start again.")
+        fail(EXIT_GIT, f"{worktree} exists already. Remove it, then run:\n  sae start {task.id}")
     task_rel = rel(task.dir, home)
     if git_ok(home, "cat-file", "-e", f"HEAD:{task_rel}"):
         fail(EXIT_USAGE, f"{task_rel} is committed on the current branch. sae moves an uncommitted task "
@@ -275,7 +275,7 @@ def start_task_worktree(task: Task, config: dict | None, undo: list) -> tuple[li
                                 task.dir / "jobs" / f"{TASK_WORKTREE_NAME}.setup.log")
     except SaeError as exc:
         first = str(exc).splitlines()[0].split(". Log:")[0]
-        raise SaeError(exc.code, f"Task worktree setup: {first}. sae start was undone; the task stays "
+        raise SaeError(exc.code, f"Task worktree setup: {first}. Starting was undone; the task stays "
                                  f"in planning. Log: {home / task_rel / 'jobs' / 'task.setup.log'}") from exc
     task.info.update({"branch": branch, "worktree": str(worktree),
                       "base": {"branch": current or None, "commit": commit[:7]}})
@@ -383,7 +383,8 @@ def final_report(task: Task, with_open: bool) -> str:
             lines += ["", "## Open items"] + [wrap(f"- {i}: {j['status']} — {j.get('summary') or parked_reason(task, i)}")
                                               for i, j in open_items]
     created = [e.get("finding") or e.get("file") for e in events
-               if e["type"] in ("finding.created", "backlog.created", "adr.created")]
+               if e["type"] in ("finding.created", "backlog.created", "adr.created")
+               and (e["type"] != "adr.created" or (task.root / e["file"]).is_file())]
     created += [rel(p, task.root) for p in sourced_items(task, ("backlog", "adr")) if rel(p, task.root) not in created]
     if created:
         lines += ["", "## Findings, backlog items and decision drafts"] + [f"- {c}" for c in created]
@@ -428,8 +429,8 @@ def cmd_finish(args) -> int:
                     run(["git", "branch", "-d", job_branch(task, job_id)], task.root)
             out += [f"Worktree kept: {line}" for line in kept]
             if task.worktree:
-                out.append(f"The task worktree stays for your tests: {task.worktree}. Once you merge "
-                           f"{task.info['branch']}, sae doctor or the next writing sae command removes it.")
+                out.append(f"The task worktree stays for your tests:\n  {task.worktree}\nOnce you merge "
+                           f"{task.info['branch']}, the next writing command removes it. Or run:\n  sae doctor")
         head = git(task.root, "rev-parse", "--short", "HEAD") if task.info.get("git") else None
         task.info["phase"] = "done"
         task.event("task.finished", branch=task.info.get("branch"), commit=head)
@@ -492,6 +493,8 @@ def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
 def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list[str]) -> None:
     root = task.root
     paths = [f".tasks/done/{task.id}"] + [rel(p, root) for p in sourced_items(task)]
+    paths += sorted({e["closed"] for e in task.events() if e["type"] == "adr.rejected"
+                     and (root / e["closed"]).is_file()})
     for extra in (".tasks/repo", ".tasks/.gitignore", ".tasks/.gitattributes"):
         if (root / extra).exists():
             paths.append(extra)

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from .common import EXIT_GIT, TASK_ID_RE, WRITER_KINDS, fail, read_json, read_text, warn, write_atomic
+from .common import EXIT_GIT, TASK_ID_RE, WRITER_KINDS, fail, read_json, read_text, warn, wrap_notice_lines, write_atomic
 from .config import worktree_root
 from .gitutil import git, git_ok, main_worktree, repo_cache_name, run
 from .tasks import CLOSED_PHASES, Task, tasks_dir
@@ -368,7 +369,8 @@ def sweep_merged_task_worktrees(repo: Path, quiet: bool = False) -> tuple[list[s
             line = f"{path}: task branch merged into {base}, but {reason}"
             kept.append(line)
             if not quiet:
-                warn(f"task worktree kept, {line}. Commit or move it, or: sae doctor --discard {path}")
+                warn(f"task worktree kept, {line}. Commit or move it, or:\n"
+                     f"  sae doctor --discard {shlex.quote(str(path))}")
             continue
         branch = info.get("branch") or f"task/{task_id}"
         # `-D` after the ancestry check above: `-d` compares with the HEAD of the checkout that runs
@@ -378,7 +380,7 @@ def sweep_merged_task_worktrees(repo: Path, quiet: bool = False) -> tuple[list[s
                 + (f" and deleted {branch}." if deleted else f"; {branch} stays."))
         removed.append(line)
         if not quiet:
-            print(line, file=sys.stderr)
+            print(wrap_notice_lines(line), file=sys.stderr)
     return removed, kept
 
 
@@ -443,7 +445,7 @@ def discard_worktree(repo: Path, target: Path, located: dict) -> list[str]:
     target = target.resolve()
     match = next(((p, t, n) for p, t, n in sae_worktrees(repo) if p.resolve() == target), None)
     if match is None:
-        fail(EXIT_GIT, f"{target} is not a sae worktree of this repository. sae doctor lists them.")
+        fail(EXIT_GIT, f"{target} is not a sae worktree of this repository. List them:\n  sae doctor")
     path, task_id, name = match
     copy = located.get(task_id)
     state = None

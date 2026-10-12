@@ -45,7 +45,8 @@ PHASE_DIFFICULTIES = {"research": DIFFICULTIES, "planning": TASK_DIFFICULTIES,
 ROUTING_SOURCES = ("global", "project", "task")
 SCHEMA1_TEXT = ("Your user config uses schema 1 (rungs and level maps).\n"
                 "This sae needs schema 2 (routing tables). Run setup mode to\n"
-                'convert it: "/shape-and-execute setup" or "$shape-and-execute setup".')
+                'convert it. Claude Code:\n  /shape-and-execute setup\n'
+                'Codex:\n  $shape-and-execute setup')
 
 
 # ---------------------------------------------------------------- reading and writing

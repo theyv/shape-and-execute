@@ -85,8 +85,9 @@ CODEX_RECOMMENDED_SUBAGENTS = 10
 JOB_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$")
 TASK_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{4}--[a-z0-9][a-z0-9-]*$")
 STAMPED_FILE_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})--")
-CONFIG_HINT = ('Run the shape-and-execute skill in setup mode: "/shape-and-execute setup" (Claude Code)\n'
-               'or "$shape-and-execute setup" (Codex).')
+CONFIG_HINT = ('Run the shape-and-execute skill in setup mode.\n'
+               'Claude Code:\n  /shape-and-execute setup\n'
+               'Codex:\n  $shape-and-execute setup')
 
 
 class SaeError(Exception):
@@ -192,11 +193,12 @@ def rel(path: Path, root: Path) -> str:
         return str(path)
 
 
-def emit(args, text: str, data=None) -> None:
+def emit(args, text: str, data=None, *, verbatim: tuple[str, ...] = ()) -> None:
+    """Print owner text through the shared wrapper; JSON and explicit agent artifacts stay exact."""
     if getattr(args, "json", False):
         print(json.dumps(data if data is not None else {"text": text}, indent=2, ensure_ascii=False))
     elif text:
-        print(text)
+        print(wrap_notice_lines(text, verbatim=verbatim))
 
 
 def table(rows: list[list[str]], indent: str = "  ") -> str:
@@ -209,35 +211,75 @@ def table(rows: list[list[str]], indent: str = "  ") -> str:
 def wrap(text: str, indent: str = "", hang: str = "  ", width: int = OUTPUT_WIDTH) -> str:
     """One owner-facing line wrapped within `width` columns; continuation lines get `hang`
     after `indent` ([NARROW-OUTPUT])."""
-    return "\n".join(textwrap.wrap(text, width=width, initial_indent=indent, subsequent_indent=indent + hang,
-                                    break_long_words=False, break_on_hyphens=False)) or indent.rstrip()
+    return wrap_notice_lines("\n".join(indent + line for line in text.split("\n")), hang=hang, width=width)
 
 
-def wrap_notice_lines(text: str) -> str:
-    """Wrap owner notices; keep standalone commands and paths with short labels whole."""
+OWNER_COMMAND_PREFIXES = ("sae ", "python3 ", "cd ", "/shape-and-execute ", "$shape-and-execute ")
+PROCESS_MAP_PREFIXES = ("💡", "📐", "🔨")
+LABELED_COMMAND_RE = re.compile(r"^(.*?:)\s+((?:sae|python3|cd|/shape-and-execute|\$shape-and-execute) .*)$")
+
+
+def wrap_notice_lines(text: str, *, hang: str = "  ", width: int = OUTPUT_WIDTH,
+                      verbatim: tuple[str, ...] = ()) -> str:
+    """One owner output formatter: wrap prose, indent whole commands and preserve paste artifacts.
+
+    Commands belong after a label or on their own line. Only explicit agent artifacts,
+    process map lines, whole commands and paths with short labels may exceed the width.
+    """
+    if verbatim:
+        blocks = set(block for block in verbatim if block)
+        if blocks:
+            pattern = "(" + "|".join(re.escape(block) for block in sorted(blocks, key=len, reverse=True)) + ")"
+            return "".join(part if part in blocks else wrap_notice_lines(part, hang=hang, width=width)
+                           for part in re.split(pattern, text))
     lines = []
     for line in text.splitlines():
         stripped = line.lstrip()
         indent = line[:len(line) - len(stripped)]
+        if line.startswith(PROCESS_MAP_PREFIXES):
+            lines.append(line)
+            continue
+        if stripped.startswith(OWNER_COMMAND_PREFIXES):
+            lines.append((indent or "  ") + stripped)
+            continue
+        labeled = LABELED_COMMAND_RE.match(stripped)
+        if labeled:
+            label, command = labeled.groups()
+            lines.append(wrap_notice_lines(indent + label, hang=hang, width=width))
+            lines.append(indent + "  " + command)
+            continue
+        if len(line) <= width:
+            lines.append(line)
+            continue
         words = stripped.split()
         path_line = bool(words and "/" in words[-1] and len(stripped) - len(words[-1]) <= 30)
-        lines.append(line if path_line or stripped.startswith(("sae ", "python3 ", "cd "))
-                     else wrap(stripped, indent=indent))
-    return "\n".join(lines)
+        if path_line:
+            lines.append(line)
+            continue
+        # A long path stays copyable. Other free-text words must obey the width too.
+        available = max(1, width - len(indent) - len(hang))
+        prose = " ".join(word if "/" in word else " ".join(word[i:i + available]
+                        for i in range(0, len(word), available)) for word in words)
+        lines.append("\n".join(textwrap.wrap(prose, width=width, initial_indent=indent,
+                                            subsequent_indent=indent + hang, break_long_words=False,
+                                            break_on_hyphens=False)) or indent.rstrip())
+    return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
 
-def wrap_parts(parts: list[str], indent: str = "  ", sep: str = " · ", width: int = OUTPUT_WIDTH) -> str:
+def wrap_parts(parts: list[str], indent: str = "  ", sep: str = " · ", width: int = OUTPUT_WIDTH,
+               hang: str = "") -> str:
     """Joins `parts` with `sep`, breaking lines only between parts, each line within `width`
     when every part fits ([NARROW-OUTPUT])."""
     lines, current = [], ""
     for part in parts:
+        line_indent = indent + (hang if lines else "")
         candidate = f"{current}{sep}{part}" if current else part
-        if current and len(indent) + len(candidate) > width:
-            lines.append(indent + current)
+        if current and len(line_indent) + len(candidate) > width:
+            lines.append(line_indent + current)
             candidate = part
         current = candidate
     if current:
-        lines.append(indent + current)
+        lines.append(indent + (hang if lines else "") + current)
     return "\n".join(lines)
 
 
@@ -267,6 +309,6 @@ class Parser(argparse.ArgumentParser):
     """Usage errors exit 1; exit 2 means a missing user config."""
 
     def error(self, message):
-        self.print_usage(sys.stderr)
-        print(f"{self.prog}: error: {message}", file=sys.stderr)
+        print(wrap_notice_lines(self.format_usage()).rstrip(), file=sys.stderr)
+        print(wrap_notice_lines(f"error ({self.prog}): {message}"), file=sys.stderr)
         sys.exit(EXIT_USAGE)

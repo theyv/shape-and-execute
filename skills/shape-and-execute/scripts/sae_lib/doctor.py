@@ -35,7 +35,7 @@ def cmd_doctor(args) -> int:
         check(config_ok, f"config {config_path()}" + ("" if config_ok else ": " + "; ".join(errors)),
               "Run setup mode and save a valid config.")
     except SaeError:
-        check(False, f"config {config_path()} missing or not JSON", "Run setup mode: \"/shape-and-execute setup\".")
+        check(False, f"config {config_path()} missing or not JSON", "Run setup mode:\n  /shape-and-execute setup")
     if config_ok:
         root = worktree_root(config)
         writable = root.is_dir() and os.access(root, os.W_OK)
@@ -126,7 +126,7 @@ def doctor_repo(config: dict | None, check) -> None:
             git(path, "commit", "--quiet", "--allow-empty", "-m", "sae doctor: throwaway commit")
             check(True, "throwaway worktree: create, setup.sh, commit")
         except SaeError as exc:
-            check(False, f"throwaway worktree: {exc}", "Check the harness permissions (sae setup snippets) and setup.sh.")
+            check(False, f"throwaway worktree: {exc}", "Check setup.sh and the harness permissions:\n  sae setup snippets")
         finally:
             run(["git", "worktree", "remove", "--force", str(path)], root)
             run(["git", "branch", "-D", branch], root)
