@@ -29,8 +29,10 @@ from .common import (
     emit,
     fail,
     read_text,
+    OUTPUT_WIDTH,
     table,
     warn,
+    wrap,
 )
 from .config import (
     CONFIG_SCHEMA,
@@ -118,15 +120,21 @@ def codex_subagent_cap() -> dict:
             "minimum": CODEX_MIN_SUBAGENTS, "recommended": CODEX_RECOMMENDED_SUBAGENTS}
 
 
-def codex_cap_text(cap: dict) -> str:
-    current = (f"{cap['subagents']} subagents ({cap['source']})" if cap["subagents"] is not None
-               else "not set: Codex default, 3 subagents for multi-agent v2 models, 6 for v1")
-    if cap["ok"]:
-        return f"Codex subagent cap: {current}."
-    return (f"Codex subagent cap: {current}. Below {cap['minimum']}: parallel writers, reviews and research "
-            f"hit \"agent thread limit reached\".\n"
-            f"Recommended, in {cap['config']}:\n  [agents]\n  max_threads = {cap['recommended']}\n"
-            f"Setup mode can apply it after you agree (with a backup).")
+def codex_cap_text(cap: dict, indent: str = "") -> str:
+    """The cap in short lines within 72 columns, each after `indent` ([NARROW-OUTPUT]); the first
+    line alone is the summary that `sae doctor` prints."""
+    width = OUTPUT_WIDTH - len(indent)
+    if cap["subagents"] is not None:
+        lines = [f"Codex subagent cap: {cap['subagents']} subagents", wrap(f"from {cap['source']}", "  ", width=width)]
+    else:
+        lines = ["Codex subagent cap: not set (Codex default)",
+                 wrap("The default is 3 subagents for multi-agent v2 models, 6 for v1.", "  ", width=width)]
+    if not cap["ok"]:
+        lines += [wrap(f"Below {cap['minimum']}: parallel writers, reviews and research hit "
+                       "\"agent thread limit reached\".", width=width),
+                  "Recommended, in:", f"  {cap['config']}", "  [agents]", f"  max_threads = {cap['recommended']}",
+                  wrap("Setup mode can apply it after you agree (with a backup).", width=width)]
+    return "\n".join(indent + line for block in lines for line in block.splitlines())
 
 
 @functools.lru_cache(maxsize=1)
@@ -313,15 +321,17 @@ def config_text(config: dict) -> list[str]:
         for i, entry in enumerate(entries if isinstance(entries, list) else [], 1):
             kind = "family" if entry.get("family") else "exact"
             off = "" if entry.get("enabled", True) else " · off"
-            lines.append(f"  {i}. {entry.get('model')} ({kind}{off}) · {', '.join(entry.get('efforts') or [])}")
+            lines.append(wrap(f"{i}. {entry.get('model')} ({kind}{off}) · {', '.join(entry.get('efforts') or [])}",
+                              indent="  ", hang="   "))
         if harness in (config.get("routing") or {}):
             lines += [f"{harness} routing:"] + routing_tables_text(layers, harness)
     defaults = config.get("defaults") or {}
     review = defaults.get("review") or {}
     lines += ["", "Defaults for new tasks:",
               f"  interaction: {defaults.get('interaction')}",
-              "  levels: " + ", ".join(f"{k} {v}" for k, v in (defaults.get("levels") or {}).items()),
-              f"  review: {', '.join(review.get('points') or []) or 'off'} · {provider_text(review.get('provider'))}"]
+              wrap("levels: " + ", ".join(f"{k} {v}" for k, v in (defaults.get("levels") or {}).items()), indent="  "),
+              wrap(f"review: {', '.join(review.get('points') or []) or 'off'} · {provider_text(review.get('provider'))}",
+                   indent="  ")]
     for path, entry in (config.get("projects") or {}).items():
         lines.append(f"Project {path}:")
         lines += [f"  {k} = {json.dumps(v)}" for k, v in flatten_project(entry).items()]
@@ -343,9 +353,10 @@ def cmd_setup_show(args) -> int:
         lines.append("  Codex families (newest · older versions):")
         for name, info in facts["codex_families"].items():
             older = ", ".join(m["model"] for m in info["older"]) or "-"
-            lines.append(f"    {name}: {info['newest']} ({', '.join(info['efforts'])}) · older: {older}")
+            lines += [f"    {name}: {info['newest']}", wrap(f"efforts: {', '.join(info['efforts'])}", indent="      "),
+                      wrap(f"older: {older}", indent="      ")]
     if facts.get("codex_subagent_cap"):
-        lines.append("  " + codex_cap_text(facts["codex_subagent_cap"]).replace("\n", "\n  "))
+        lines.append(codex_cap_text(facts["codex_subagent_cap"], indent="  "))
     if config is not None and config.get("schema") == 1:
         proposal = convert_schema1(config, codex_catalog())
         lines += ["", f"Your config ({config_path()}) is schema 1 (rungs).",

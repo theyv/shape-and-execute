@@ -299,7 +299,7 @@ def viewer_link(root: Path, task_id: str) -> tuple[str | None, str]:
     server cannot start, the line names the command that starts it."""
     command = start_command(root, task_id)
     if os.environ.get(VIEWER_SWITCH_ENV) == "off":
-        return None, f"Viewer: {command}"
+        return None, f"Viewer:\n  {command}"
     try:
         entry, info = start_for(root)
         url = viewer_url(info, entry["key"], task_id)
