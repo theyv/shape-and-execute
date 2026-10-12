@@ -8,5 +8,5 @@ own commands).
     python3 sae.py --help              # every command and the exit codes
     python3 sae.py <command> --help    # one command: usage, options, examples, exit codes
 
-Tests: the unittest suite of the design notes, run from the skill folder. Shared helpers
-are in `saetest.py` in the tests of the design notes.
+Tests: `python3 -m unittest discover -s tests` from the repository root. Shared helpers
+are in `tests/saetest.py` (repository root).
