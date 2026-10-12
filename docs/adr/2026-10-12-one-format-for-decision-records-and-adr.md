@@ -20,11 +20,11 @@ One repository can hold several areas, such as several skills, each with its own
   names the record governs. File names are the date and a slug.
 - [joint] The repo profile may hold ADR rules: a path prefix → an ADR folder. `sae adr accept`
   puts a record into the folder of the rule whose prefix matches the draft's `applies-to`
-  paths, the longest prefix first. A draft whose paths match rules of different folders is
-  refused, with the folders named; the user narrows `applies-to` or splits the draft. Without
-  rules, or when no rule matches: the `adr_folder` pin of the profile, else the repository's
-  existing ADR folder, else `docs/decisions/`. Setup asks once per repository: one flat folder,
-  or rules per path.
+  paths, the longest prefix first. Without rules, or when no rule matches: the `adr_folder` pin
+  of the profile, else the repository's existing ADR folder, else `docs/decisions/`. Setup asks
+  once per repository: one flat folder, or rules per path.
+- [agent] A draft whose paths match rules of different folders is refused, with the folders
+  named; the user narrows `applies-to` or splits the draft.
 
 ## Why
 - A search in the code must find the "why" of the code it reads; `applies-to` makes that work.

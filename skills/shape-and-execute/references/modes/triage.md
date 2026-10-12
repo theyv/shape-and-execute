@@ -9,7 +9,7 @@ Two queues wait for the user: **findings** that agents left in `.tasks/findings/
    - findings → [triage-findings.md](triage-findings.md) — fix now, later, leave open or
      reject;
    - decision drafts → [triage-decisions.md](triage-decisions.md) — accept into the
-     repository's ADR folder, or reject.
+     repository's ADR folder (with its line in the folder's `index.md`), or reject.
 3. After one queue, offer the other when it is not empty.
 
 Triage commits nothing: tell the user which files changed; they commit them.

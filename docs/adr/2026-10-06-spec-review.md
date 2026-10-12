@@ -18,9 +18,9 @@ Idea [human], design [joint]: a review point `spec`. When it is on and `specs.md
 `REVIEW-SPEC` runs after the grill rounds, before the spec gate, with the same level, provider
 and fallback as the other reviews. Setup proposes it as on by default. Its findings become the
 last grill round; the owner decides; there is no automatic second round. The reviewer reads the
-intent, the spec, the research reports the spec links and the code area. A `spec` section in
-the review template tells it to attack the design against the intent, not implementation
-detail.
+intent, the spec, the research reports the spec links and the code area. The reviewer protocol
+(`references/roles/reviewer.md`, section "Target `spec`") tells it to attack the design against
+the intent, not implementation detail.
 
 ## Why
 - The owner: "This could have a substantial effect at the right point in the process.".
