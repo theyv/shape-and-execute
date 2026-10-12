@@ -316,12 +316,16 @@ def close_resolved(task, job_ids: list[str], out: list[str]) -> list[str]:
     fix group closes the findings of every member, [EDGE-FIX-GROUP]). A finding already in a
     counting `closed.md` is named and left alone ([RULE-ONE-CLOSE], [EDGE-RESOLVES-CLOSED]). The
     closure lands in the task's checkout, and with git as one commit on the task branch; the
-    home checkout's branch never changes. Returns the closed stems."""
+    home checkout's branch never changes. A finding file that is untracked in another checkout
+    (filed at home, never committed) is removed there after that commit: no merge would remove
+    it. A tracked one there leaves with the owner's merge only when the task branch has it too;
+    otherwise the output names it. Returns the closed stems."""
     root = task.root
     is_git = bool(task.info.get("git"))
     closed_now: list[str] = []
     closers: list[str] = []
     commit_paths: list[str] = []
+    elsewhere: list[Path] = []  # untracked finding files in another checkout, removed after the commit
     closed = closed_lines(root)
     for job_id in job_ids:
         to_close = resolution(task, job_id)[0]
@@ -348,6 +352,13 @@ def close_resolved(task, job_ids: list[str], out: list[str]) -> list[str]:
             closed[stem] = close_finding(root, path, fixed_outcome(task.id, job_id), remove=local)
             if tracked:
                 commit_paths.append(relative)
+            if not local:
+                checkout = path.parent.parent.parent
+                if git_ok(checkout, "ls-files", "--error-unmatch", "--", rel(path, checkout)):
+                    out.append(f"Finding file {path} is committed in {checkout} but not on the task branch; "
+                               "remove it there by hand.")
+                else:
+                    elsewhere.append(path)
             closed_now.append(stem)
             closers += [job_id] if job_id not in closers else []
             task.event("finding.closed", finding=stem, job=job_id, outcome=fixed_outcome(task.id, job_id))
@@ -358,6 +369,8 @@ def close_resolved(task, job_ids: list[str], out: list[str]) -> list[str]:
         git(root, "add", "--", *paths)
         git(root, "commit", "--quiet", "-m", f"{', '.join(closers)}: close resolved findings",
             "-m", f"Task: {task.id}", "--", *paths)
+    for path in elsewhere:
+        path.unlink(missing_ok=True)
     return closed_now
 
 
@@ -534,6 +547,8 @@ _ADR_INDEX_INTRO = ("Read this index first, then open only the records you need.
 def adr_index_summary(text: str) -> str:
     """The first sentence of a record's Decision section, without provenance tags ([AMEND-ADR-INDEX])."""
     match = re.search(r"(?ms)^## Decision[ \t]*\n(.*?)(?=^## |\Z)", text)
+    if not match:  # a research note: its first paragraph after the title
+        match = re.search(r"(?ms)^(?!#)(\S.*?)(?=^\s*$|^#|\Z)", split_frontmatter(text)[1])
     body = re.sub(r"(?s)<!--.*?-->", " ", match.group(1)) if match else ""
     body = " ".join(body.split()).lstrip("- ")
     # a leading provenance clause: "[joint] ", "Idea [human], design [joint]: ", "[agent], refined [human]: "
@@ -551,23 +566,34 @@ def adr_index_line(name: str, text: str) -> str:
     return f"- [{title}]({name})" + (f" — {summary}" if summary else "")
 
 
+def new_adr_index(folder: Path) -> list[str]:
+    """The lines of a new index.md: `_intent.md` first, then every record of the folder, then the
+    notes in its subfolders (research notes) under their own heading."""
+    lines = [f"# Index: {folder.name}", "", *_ADR_INDEX_INTRO.splitlines(), ""]
+    intent = folder / "_intent.md"
+    if intent.exists():
+        lines.append(f"- [{first_heading(read_text(intent)) or 'Intent'}](_intent.md)"
+                     " — Why the code exists and what it must do; read it first.")
+    records = sorted(p for p in folder.glob("*.md") if p.name not in (ADR_INDEX, "_intent.md"))
+    lines += [adr_index_line(p.name, read_text(p)) for p in records]
+    notes = sorted(p for p in folder.glob("*/**/*.md"))
+    if notes:
+        lines += ["", "## Research notes", ""]
+        lines += [adr_index_line(p.relative_to(folder).as_posix(), read_text(p)) for p in notes]
+    return lines
+
+
 def add_to_adr_index(folder: Path, name: str, text: str) -> Path:
     """Add a record's line to the folder's index.md, after the last record line; create the index
-    (heading, `_intent.md` line when that file exists) when the folder has none."""
+    from every file of the folder ([AMEND-ADR-INDEX]) when the folder has none."""
     index = folder / ADR_INDEX
-    if index.exists():
-        lines = read_text(index).splitlines()
-    else:
-        lines = [f"# Index: {folder.name}", "", *_ADR_INDEX_INTRO.splitlines(), ""]
-        intent = folder / "_intent.md"
-        if intent.exists():
-            lines.append(f"- [{first_heading(read_text(intent)) or 'Intent'}](_intent.md)"
-                         " — Why the code exists and what it must do; read it first.")
-    if any(f"]({name})" in line for line in lines):
+    lines = read_text(index).splitlines() if index.exists() else new_adr_index(folder)
+    if not any(f"]({name})" in line for line in lines):
+        links = [i for i, line in enumerate(lines) if re.match(r"- \[.*\]\([^/)]+\.md\)", line)]
+        at = links[-1] + 1 if links else len(lines)
+        lines.insert(at, adr_index_line(name, text))
+    elif index.exists():
         return index
-    links = [i for i, line in enumerate(lines) if re.match(r"- \[.*\]\([^/)]+\.md\)", line)]
-    at = links[-1] + 1 if links else len(lines)
-    lines.insert(at, adr_index_line(name, text))
     write_atomic(index, "\n".join(lines).rstrip("\n") + "\n")
     return index
 
