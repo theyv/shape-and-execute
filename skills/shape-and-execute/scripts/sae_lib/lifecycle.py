@@ -32,7 +32,7 @@ from .gitutil import find_root, git, git_ok, git_user, run
 from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
-from .findings import open_findings
+from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, in_scope, merge_job
 from .routing import resolve_model
 from .tasks import (
@@ -415,9 +415,10 @@ def findings_to_check(task: Task, listed: list[str]) -> list[str]:
     if not task.info.get("git") or not base:
         return []
     changed = git(task.root, "diff", "--name-only", f"{base}..{task.info['branch']}", check=False).splitlines()
+    listed_stems = {finding_stem(entry) for entry in listed if entry}
     lines = []
-    for path in open_findings(task.root):
-        if rel(path, task.root) in listed:
+    for path in open_findings_everywhere(task.root):  # the home checkout and other task worktrees too
+        if path.stem in listed_stems:
             continue
         paths = [str(p) for p in as_list(split_frontmatter(read_text(path, ""))[0].get("paths"))]
         hits = [f for f in changed if paths and in_scope(f, paths)]

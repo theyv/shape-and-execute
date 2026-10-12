@@ -3,6 +3,7 @@ the closing of the findings a job resolves."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import os
 import re
@@ -22,6 +23,7 @@ from .common import (
     fail,
     file_stamp,
     now,
+    read_json,
     read_text,
     rel,
     slugify,
@@ -30,7 +32,7 @@ from .common import (
     warn,
     write_atomic,
 )
-from .gitutil import find_root, git, git_ok, main_worktree
+from .gitutil import find_root, git, git_ok, main_worktree, worktree_paths
 from .markdown import first_heading, split_frontmatter
 from .tasks import (
     append_event_to,
@@ -44,7 +46,6 @@ from .tasks import (
     open_task,
     resolve_task,
     result_file,
-    task_copies,
     task_phase,
     tasks_dir,
     template,
@@ -196,15 +197,30 @@ def close_finding(checkout: Path, path: Path, outcome: str, remove: bool = True)
     return line
 
 
+def task_worktrees(root: Path) -> list[Path]:
+    """The existing task worktrees of the tasks that are not abandoned, as each task's own record
+    names them (`task.worktree`; a finished task's until the owner removes it). A checkout that only
+    inherited a task record (a job worktree, an abandoned task's kept worktree) is not one."""
+    existing = {p.resolve() for p in worktree_paths(root)}
+    found = []
+    for copy in locate_tasks(root).values():
+        if task_phase(copy) == "abandoned":
+            continue
+        with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+            path = read_json(copy.folder / "state.json")["task"].get("worktree")
+            if path and Path(path).resolve() in existing:
+                found.append(Path(path))
+    return found
+
+
 def finding_checkouts(root: Path) -> list[Path]:
     """[CLOSED-VISIBLE]: the checkouts whose `closed.md` counts: `root`, the home checkout (the
-    main worktree) and the checkout of every task that is not abandoned (its task worktree while
-    it runs, and after `finish` until the owner merges it). Job worktrees do not count: their
-    work is not merged. Without git: `root` only."""
+    main worktree) and the task worktree of every task that is not abandoned (while it runs, and
+    after `finish` until the owner merges it). Job worktrees and abandoned tasks do not count:
+    their work is not merged. Without git: `root` only."""
     if not git_ok(root, "rev-parse", "--git-dir"):
         return [root]
-    candidates = [root, main_worktree(root)]
-    candidates += [c.checkout for c in task_copies(root) if task_phase(c) != "abandoned"]
+    candidates = [root, main_worktree(root)] + task_worktrees(root)
     found: dict[Path, Path] = {}
     for checkout in candidates:
         found.setdefault(checkout.resolve(), checkout)
@@ -237,6 +253,18 @@ def open_findings(root: Path) -> list[Path]:
     ([CLOSED-VISIBLE]). `sae triage`, `sae status` and the viewer use this rule."""
     closed = closed_lines(root)
     return [p for p in stamped_items(tasks_dir(root) / "findings") if p.stem not in closed]
+
+
+def open_findings_everywhere(root: Path) -> list[Path]:
+    """The open finding files of every counting checkout, one per stem, `root`'s copy first
+    ([RESOLVES-REPORT]: a finding filed at home after the task started counts too)."""
+    closed = closed_lines(root)
+    found: dict[str, Path] = {}
+    for checkout in finding_checkouts(root):
+        for path in stamped_items(tasks_dir(checkout) / "findings"):
+            if path.stem not in closed:
+                found.setdefault(path.stem, path)
+    return list(found.values())
 
 
 def finding_file(root: Path, stem: str) -> Path | None:

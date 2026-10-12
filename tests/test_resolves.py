@@ -265,6 +265,74 @@ class CloseOnceTests(SaeTestCase):
         return " ".join(sb.sae("collect", slug, review).stdout.split())
 
 
+class CountingCheckoutTests(SaeTestCase):
+    def test_inherited_task_records_do_not_make_a_checkout_count(self):
+        """[CLOSED-VISIBLE]: a job worktree and an abandoned task's kept worktree inherit a finished
+        task's record from main; a closure written only there does not hide the finding."""
+        sb = self.sandbox()
+        name = finding(sb, "Still open")
+        commit_tasks_folder(sb)
+        old = planned(sb, "old", [("ONE", "implementation", "", [], [])])
+        run_writer(sb, old, "old", "ONE")
+        sb.sae("finish", "old")
+        sb.git("merge", "-q", "--no-ff", "-m", "merge old", f"task/{old}")
+        line = f"- 2026-10-12 · {name[:-3]} · Still open · rejected: not merged\n"
+        task = planned(sb, "live", [("JOB", "implementation", "", [], []), ("PAR", "implementation", "", [], [])])
+        ws = dispatch_workspace(sb, task, "JOB")
+        self.assertNotEqual(ws, sb.task_worktree(task))
+        self.assertTrue((ws / ".tasks" / "done" / old / "state.json").exists())
+        (ws / ".tasks" / "findings" / "closed.md").write_text("# Closed findings\n\n" + line)
+        gone = planned(sb, "gone", [("TWO", "implementation", "", [], [])])
+        kept = sb.task_worktree(gone)
+        (kept / "notes.txt").write_text("uncommitted\n")  # abandon keeps the worktree
+        sb.sae("abandon", "gone", "--reason", "not needed")
+        (kept / ".tasks" / "findings" / "closed.md").write_text("# Closed findings\n\n" + line)
+        self.assertTrue((kept / ".tasks" / "done" / old / "state.json").exists())
+        self.assertEqual(triage_open(sb), 1)
+        self.assertEqual(sb.json("status")["open_findings"], 1)
+
+
+class ConflictGroupTests(SaeTestCase):
+    def test_integration_of_a_fix_group_closes_the_fix_findings(self):
+        """[EDGE-FIX-GROUP] through a merge conflict: the integration carries CORE and CORE-FIX-1."""
+        sb = self.sandbox()
+        first, second = finding(sb, "Target finding"), finding(sb, "Fix finding")
+        commit_tasks_folder(sb)
+        task = planned(sb, "clash", [("CORE", "implementation", "", ["--review"], [first]),
+                                     ("SIDE", "implementation", "", [], [])], settings=["review=selected-jobs"])
+        side = dispatch_workspace(sb, task, "SIDE")
+        core = dispatch_workspace(sb, task, "CORE")
+        sb.work(side, "app.txt", "side\n", "SIDE: edit")
+        sb.result(task, "jobs/SIDE.result.md", status="done", summary="s", validation="pass", changes="made")
+        sb.sae("collect", "clash", "SIDE")
+        sb.work(core, "app.txt", "core\n", "CORE: edit")
+        sb.result(task, "jobs/CORE.result.md", status="done", summary="c", validation="pass", changes="made",
+                  resolved=f"[{first}]")
+        sb.sae("collect", "clash", "CORE")
+        self.review(sb, task, "REVIEW-CORE", "changes-required")
+        sb.sae("job", "add", "clash", "CORE-FIX-1", "--kind", "implementation", "--fix-of", "CORE",
+               "--reason", "REVIEW-CORE: changes required")
+        job_file(sb, task, "CORE-FIX-1", [second])
+        run_writer(sb, task, "clash", "CORE-FIX-1", resolved=[second])
+        self.assertIn("INTEGRATE-CORE", self.review(sb, task, "REVIEW-CORE-2", "pass", code=4))
+        ws = dispatch_workspace(sb, task, "INTEGRATE-CORE")
+        (ws / "app.txt").write_text("side and core\n")
+        sb.git("add", "app.txt", cwd=ws)
+        sb.git("commit", "-q", "--no-edit", cwd=ws)
+        sb.result(task, "jobs/INTEGRATE-CORE.result.md", status="done", summary="i", validation="pass",
+                  changes="made")
+        out = " ".join(sb.sae("collect", "clash", "INTEGRATE-CORE").stdout.split())
+        self.assertIn(f"Closed finding {first[:-3]}: fixed in {task} by CORE.", out)
+        self.assertIn(f"Closed finding {second[:-3]}: fixed in {task} by CORE-FIX-1.", out)
+        self.assertTrue(sb.state(task)["jobs"]["CORE-FIX-1"]["merged"])
+        self.assertEqual(triage_open(sb), 0)
+
+    def review(self, sb: Sandbox, task: str, review: str, verdict: str, code: int = 0) -> str:
+        sb.sae("dispatch", "clash", review)
+        sb.result(task, f"reviews/{review}.md", target="CORE", verdict=verdict)
+        return " ".join(sb.sae("collect", "clash", review, code=code).stdout.split())
+
+
 class FinalReportTests(SaeTestCase):
     def test_closed_and_check_sections_branch_lines_and_kept_worktrees(self):
         """[RESOLVES-REPORT], [FINAL-REPORT-WORKTREES]"""
@@ -293,6 +361,19 @@ class FinalReportTests(SaeTestCase):
         self.assertNotIn("Worktree kept:", out)
         report = out[out.index("# Final report"):]
         self.assertLess(report.index("## Branch"), report.index("## Kept worktrees"))
+
+    def test_a_finding_filed_at_home_after_start_is_checked(self):
+        """[RESOLVES-REPORT]: open findings of the home checkout count, not only the task's copy."""
+        sb = self.sandbox()
+        task = planned(sb, "late", [("APP", "implementation", "", [], [])])
+        name = finding(sb, "Filed later", "app.txt")
+        ws = dispatch_workspace(sb, task, "APP")
+        sb.work(ws, "app.txt", "changed\n", "APP: edit")
+        sb.result(task, "jobs/APP.result.md", status="done", summary="a", validation="pass", changes="made")
+        sb.sae("collect", "late", "APP")
+        out = sb.sae("finish", "late").stdout
+        self.assertIn(f"## Check these findings\nOpen findings about files this task changed:\n"
+                      f"- {sb.repo / '.tasks' / 'findings' / name} (app.txt)\n", out)
 
     def test_sections_are_absent_when_empty(self):
         sb = self.sandbox()

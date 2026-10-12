@@ -194,7 +194,10 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
     job = task.jobs[job_id]
     group = [job_id] + [i for i, j in task.jobs.items() if fix_target(task, i) == job_id and j["status"] == "done"]
     if job["kind"] == "integration" and job.get("target") in task.jobs:
-        group.append(job["target"])
+        # The integration branch carries the target and its fix jobs ([EDGE-FIX-GROUP]).
+        target = job["target"]
+        group += [target] + [i for i, j in task.jobs.items()
+                             if fix_target(task, i) == target and j["status"] == "done" and i not in group]
     commit = None
     if task.uses_worktrees:
         require_on_task_branch(task)
