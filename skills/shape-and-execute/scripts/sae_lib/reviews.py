@@ -21,6 +21,7 @@ from .common import (
     iso,
     read_text,
     wrap,
+    wrap_notice_lines,
     write_atomic,
 )
 from .config import cfg, load_config, max_verify_failures
@@ -535,7 +536,7 @@ def cmd_collect(args) -> int:
             out.append(f"Parked: {parked_reason(task, job_id)}")
             out.append("Decision flow: answer it, or sae decision new, or ask the user (mode table).")
         materialize_integration_review(task, out)
-        emit(args, "\n".join(out), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
+        emit(args, wrap_notice_lines("\n".join(out)), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
                                     "disputed": disputed, "messages": out[1:]})
     return code
 
@@ -566,8 +567,8 @@ def collect_checked_job(task: Task, job_id: str, meta: dict, config: dict | None
                 job["summary"] = f"verify failed {count} times (limit {limit}): {command}"
                 out.append(f"{job_id}: failed — verify failed {count} times. Log: {log}")
                 return EXIT_OK
-            out.append(f"Verify failed ({count} of {limit}): `{command}` exit {exit_code}. Log: {log}\n"
-                       f"Resume the same worker: sae dispatch {task.id} {job_id} --resume --reason verify-failed")
+            out.append(f"Verify failed ({count} of {limit}): `{command}` exit {exit_code}.\nLog: {log}\n"
+                       f"Resume the same worker:\n  sae dispatch {task.id} {job_id} --resume --reason verify-failed")
             return EXIT_VERIFY
     if writer and task.info.get("git"):
         scope = [str(s) for s in as_list(job_meta(task, job_id).get("scope"))]
@@ -662,7 +663,7 @@ def cmd_merge(args) -> int:
         out: list[str] = []
         code = merge_job(task, args.id, config, out)
         materialize_integration_review(task, out)
-        emit(args, "\n".join(out), {"job": args.id, "exit": code, "messages": out})
+        emit(args, wrap_notice_lines("\n".join(out)), {"job": args.id, "exit": code, "messages": out})
     return code
 
 

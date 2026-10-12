@@ -102,7 +102,7 @@ def fail(code: int, message: str):
 
 
 def warn(message: str) -> None:
-    print(f"warning: {message}", file=sys.stderr)
+    print(wrap_notice_lines(f"warning: {message}"), file=sys.stderr)
 
 
 def now() -> dt.datetime:
@@ -211,6 +211,19 @@ def wrap(text: str, indent: str = "", hang: str = "  ", width: int = OUTPUT_WIDT
     after `indent` ([NARROW-OUTPUT])."""
     return "\n".join(textwrap.wrap(text, width=width, initial_indent=indent, subsequent_indent=indent + hang,
                                     break_long_words=False, break_on_hyphens=False)) or indent.rstrip()
+
+
+def wrap_notice_lines(text: str) -> str:
+    """Wrap owner notices; keep standalone commands and paths with short labels whole."""
+    lines = []
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        indent = line[:len(line) - len(stripped)]
+        words = stripped.split()
+        path_line = bool(words and "/" in words[-1] and len(stripped) - len(words[-1]) <= 30)
+        lines.append(line if path_line or stripped.startswith(("sae ", "python3 ", "cd "))
+                     else wrap(stripped, indent=indent))
+    return "\n".join(lines)
 
 
 def wrap_parts(parts: list[str], indent: str = "  ", sep: str = " · ", width: int = OUTPUT_WIDTH) -> str:

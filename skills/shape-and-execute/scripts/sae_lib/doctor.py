@@ -11,7 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
+from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp, wrap_notice_lines
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .setup_mode import codex_cap_text, codex_subagent_cap
@@ -58,7 +58,8 @@ def cmd_doctor(args) -> int:
         doctor_repo(config if config_ok else None, check)
     lines = discarded + [f"{mark} {text}" + (f"\n    fix: {fix}" if fix else "") for mark, text, fix in checks]
     failed = [c for c in checks if c[0] == "✗"]
-    emit(args, "\n".join(lines), {"checks": [{"ok": m != "✗", "mark": m, "text": t, "fix": f} for m, t, f in checks]})
+    emit(args, wrap_notice_lines("\n".join(lines)),
+         {"checks": [{"ok": m != "✗", "mark": m, "text": t, "fix": f} for m, t, f in checks]})
     if not config_ok:
         return EXIT_CONFIG
     return EXIT_USAGE if failed else EXIT_OK
@@ -82,7 +83,7 @@ def doctor_worktrees(config: dict | None, check, discard: str | None) -> list[st
     for path, task_id, name in registered:
         reason, attention = leftover_reason(root, path, task_id, name, located)
         check(None if attention else True, f"worktree {path}\n    why it stays: {reason}",
-              f"Commit or move what you need, then: sae doctor --discard {shlex.quote(str(path))}")
+              f"Commit or move what you need, then:\n      sae doctor --discard {shlex.quote(str(path))}")
     if config is not None:
         cache = worktree_root(config) / repo_cache_name(root)
         known = {p.resolve() for p, _, _ in registered}
@@ -156,7 +157,8 @@ def register_doctor(sub, command):
                 "they hold no uncommitted work), then lists every leftover worktree with the reason it stays.\n"
                 "--repo also checks .tasks/, the repo profile, a throwaway worktree (setup.sh, commit) and the viewer.\n"
                 "--discard <worktree> removes one sae worktree although it holds work, after printing what is\n"
-                "lost; its branch stays. It refuses the task worktree of a task that is not finished or abandoned.",
+                "lost; its branch stays. It refuses running jobs' worktrees and the task worktree of a task\n"
+                "that is not finished or abandoned.",
                 ["doctor", "doctor --repo", "doctor --discard ~/Library/Caches/shape-and-execute/worktrees/app-1a2b3c4d/"
                  "2026-10-06-1430--claims-status/task"], [0, 1, 2, 4], cmd_doctor)
     p.add_argument("--repo", action="store_true", help="also check this repository's setup")

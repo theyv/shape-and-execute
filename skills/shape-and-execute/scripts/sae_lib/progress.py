@@ -187,13 +187,13 @@ def cmd_status(args) -> int:
     findings = len(stamped_items(tasks_dir(root) / "findings"))
     lines = []
     if tasks:
-        rows = [["task", "phase", "title", "last change", "running", "parked"]]
-        rows += [[t["id"], t["phase"], t["title"], age_text(t["last_change"]), str(t["running"]), str(t["parked"])]
-                 for t in tasks]
-        elsewhere = [t for t in tasks if Path(t["location"]).resolve() != root.resolve()]
-        lines += ["Tasks:", table(rows)]
-        if elsewhere:
-            lines += ["Locations:"] + [f"  {t['id']}: {t['location']}" for t in elsewhere]
+        lines.append("Tasks:")
+        for entry in tasks:
+            lines += [wrap(entry["id"], "  "), wrap(entry["title"], "    "),
+                      wrap_parts([entry["phase"], age_text(entry["last_change"]),
+                                  f"running: {entry['running']}", f"parked: {entry['parked']}"], indent="    ")]
+            if Path(entry["location"]).resolve() != root.resolve():
+                lines += ["    Location:", f"      {entry['location']}"]
     else:
         lines.append("No tasks.")
     if backlog:
@@ -428,8 +428,8 @@ def cmd_dispatch(args) -> int:
             prompt = "\n".join([f"RESUME {job_id} — reason: {args.reason}", *extra,
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
-        header = (f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}\n"
-                  f"ROUTING: {routing_text(model)}")
+        header = (wrap(f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}")
+                  + "\n" + wrap(f"ROUTING: {routing_text(model)}"))
         data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model}
         if external:
             command = external_review_command(task, job_id, model, prompt)

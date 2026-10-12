@@ -24,6 +24,7 @@ from .common import (
     fail,
     iso,
     wrap,
+    wrap_notice_lines,
     wrap_parts,
     write_atomic,
 )
@@ -121,9 +122,9 @@ def cmd_approve(args) -> int:
         if gate == "spec":
             task.info["phase"] = "planning"
         task.event(f"{gate}.approved", by=by)
-        follow = (f"sae start {task.id}\n  (another session: sae start {task.id} --harness claude|codex)"
-                  if gate == "plan" else "planning: load references/modes/plan.md")  # [RESUME-HARNESS-HINT]
-        emit(args, (report + "\n" if report else "") + f"{gate.capitalize()} approved by {by}. Next: {follow}",
+        follow = (f"Next:\n  sae start {task.id}\nAnother session:\n  sae start {task.id} --harness claude|codex"
+                  if gate == "plan" else "Next: planning: load references/modes/plan.md")  # [RESUME-HARNESS-HINT]
+        emit(args, (report + "\n" if report else "") + wrap(f"{gate.capitalize()} approved by {by}.") + "\n" + follow,
              {"approved": gate, "by": by, "phase": task.phase, "warnings": warnings})
     return EXIT_OK
 
@@ -135,7 +136,7 @@ def check_text(errors: list[str], warnings: list[str], added: list[str], task_id
         lines += [f"{a} is due: sae dispatch {task_id} {a}" for a in added]
     else:
         lines += [f"Added {a}: dispatch it." for a in added]
-    return "\n".join(lines)
+    return wrap_notice_lines("\n".join(lines))
 
 
 def cmd_check(args) -> int:
@@ -256,7 +257,7 @@ def cmd_job_edit(args) -> int:
             job[key] = value
         task.touch(job)
         task.event("job.changed", job=args.id, changes=changes, reason=args.reason)
-        emit(args, f"{args.id}: " + ", ".join(f"{k} {v[0]} → {v[1]}" for k, v in changes.items()),
+        emit(args, wrap(f"{args.id}: " + ", ".join(f"{k} {v[0]} → {v[1]}" for k, v in changes.items())),
              {"job": args.id, "changes": changes})
     return EXIT_OK
 
@@ -336,9 +337,9 @@ def cmd_job_override(args) -> int:
             fail(EXIT_USAGE, f"Override not set: {exc}")
         task.event("override.set", job=key, harness=override.get("harness"), model=override.get("model"),
                    effort=override.get("effort"), reason=args.reason, by=changed_by())
-        emit(args, f"{key}: override {res['harness']} · {res['model']} · {res['effort']} (routing: "
+        emit(args, wrap(f"{key}: override {res['harness']} · {res['model']} · {res['effort']} (routing: "
                    + (f"{res['routed']['harness']} · {res['routed']['model_entry']} · {res['routed']['effort']})"
-                      if res.get("routed") else "n/a)"),
+                      if res.get("routed") else "n/a)")),
              {"key": key, "override": override, "resolved": res})
     return EXIT_OK
 

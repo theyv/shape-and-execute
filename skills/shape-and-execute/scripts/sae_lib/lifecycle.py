@@ -25,6 +25,7 @@ from .common import (
     rel,
     slugify,
     wrap,
+    wrap_notice_lines,
     wrap_parts,
     write_atomic,
     write_json,
@@ -146,7 +147,7 @@ def cmd_start(args) -> int:
         if task.phase not in ("planning", "executing"):
             fail(EXIT_USAGE, f"The task is in {task.phase}.")
         if "plan" not in task.info["approvals"]:
-            fail(EXIT_GATE, f"The plan is not approved. Run: sae approve {task.id} plan")
+            fail(EXIT_GATE, f"The plan is not approved. Run:\n  sae approve {task.id} plan")
         if args.harness:
             task.info["orchestrator_harness"] = args.harness
         elif not task.info.get("orchestrator_harness"):
@@ -177,8 +178,9 @@ def cmd_start(args) -> int:
                 task.info["phase"] = "executing"
             task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
                        layout=task.info["layout"], worktree=task.info.get("worktree"), resumed=resumed)
-            lines.insert(0, f"Executing {task.id} · branch: {task.info.get('branch') or '-'} · "
-                            f"layout: {task.info['layout']}")
+            lines.insert(0, f"Executing {task.id}\n"
+                            + wrap_parts([f"branch: {task.info.get('branch') or '-'}",
+                                          f"layout: {task.info['layout']}"]))
             lines += ["", next_text(task, config)]
             task.save()  # inside the rollback: the start counts once its state is on disk
         except BaseException:
@@ -436,7 +438,7 @@ def cmd_finish(args) -> int:
         report = final_report(task, args.with_open)  # after the move: its paths point into done/
         if task.info.get("git"):
             commit_task_record(task, moved, out)
-        emit(args, "\n".join(out + ["", report]).strip(), {"report": report, "messages": out,
+        emit(args, "\n".join([wrap_notice_lines("\n".join(out)), "", report]).strip(), {"report": report, "messages": out,
                                                             "overridden": overridden})
     render_viewer_safely(root, [task.id])
     return EXIT_OK
