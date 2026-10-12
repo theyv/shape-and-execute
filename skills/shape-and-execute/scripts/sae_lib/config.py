@@ -198,6 +198,30 @@ def model_list_errors(data: dict) -> list[str]:
     return errors
 
 
+def codex_catalog_errors(data: dict, catalog: list[dict] | None) -> list[str]:
+    """Enabled Codex exact versions and their efforts against the Codex catalog
+    ([CODEX-CATALOG-CHECK]); none without a catalog. Families resolve at dispatch."""
+    if catalog is None:
+        return []
+    by_slug = {m.get("model"): m for m in catalog}
+    errors: list[str] = []
+    for i, entry in enumerate((data.get("models") or {}).get("codex") or []):
+        if entry.get("family") or not entry.get("enabled"):
+            continue
+        at, name = f"models.codex[{i}]", entry["model"]
+        found = by_slug.get(name)
+        if found is None:
+            errors.append(f"{at}: {name} is not in the Codex catalog (pick versions from `sae setup show`)")
+        elif found.get("visibility") not in (None, "list"):
+            errors.append(f"{at}: {name} is hidden in the Codex catalog")
+        elif found.get("efforts"):
+            extra = [e for e in entry["efforts"] if e not in found["efforts"]]
+            if extra:
+                errors.append(f"{at}: the Codex catalog lists no effort {', '.join(map(repr, extra))} for {name} "
+                              f"(lists {', '.join(found['efforts'])})")
+    return errors
+
+
 # ---------------------------------------------------------------- routing blocks
 
 def routing_shape_errors(block, where: str, partial: bool) -> list[str]:
@@ -404,8 +428,9 @@ def level_routing_errors(config: dict, routing, where: str, layers: list[tuple[s
 
 # ---------------------------------------------------------------- the whole config
 
-def validate_config(data) -> list[str]:
-    """Errors against the config schema 2 (07-cli-spec §3.1)."""
+def validate_config(data, catalog: list[dict] | None = None) -> list[str]:
+    """Errors against the config schema 2 (07-cli-spec §3.1); with the Codex `catalog`, also its
+    Codex exact versions and efforts against it."""
     errors: list[str] = []
 
     def need(cond: bool, message: str) -> bool:
@@ -424,6 +449,7 @@ def validate_config(data) -> list[str]:
     model_errors = model_list_errors(data)
     errors += model_errors
     if not model_errors:
+        errors += codex_catalog_errors(data, catalog)
         errors += routing_errors(data)
     defaults = data.get("defaults")
     if need(isinstance(defaults, dict), "defaults missing"):

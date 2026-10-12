@@ -44,39 +44,89 @@ How models are chosen
 
 This proposal is advice for you; `sae` never reads this text. Show each part as a small table.
 
-**Model lists**, lightest to strongest (the order sets each model's color):
+**Model lists**, lightest to strongest (the order sets each model's color). Every entry is a
+family (the newest version of it), switched on:
 
-| harness | entries |
-|---|---|
-| Claude | haiku, sonnet, opus, fable — families (the newest of each); efforts low … max |
-| Codex | luna, terra, sol, astra — families with the newest versions from `sae setup show`; older versions only picked from the catalog, never typed; efforts from the catalog (`ultra` only where listed) |
+| harness | family | efforts |
+|---|---|---|
+| Claude | sonnet | low, medium, high, xhigh, max |
+| Claude | opus | low, medium, high, xhigh, max |
+| Codex | luna | low, medium, high, xhigh, max |
+| Codex | sol | low, medium, high, xhigh, max, ultra |
+| Codex | astra | low, medium, high, xhigh, max, ultra |
 
-Drop a family the user does not want; it can be ticked on again later.
+Drop a family the user does not want; it can be ticked on again later. Other families (for
+example haiku, fable, terra) and older Codex versions can be added; pick Codex versions from the
+catalog of `sae setup show`, never type them.
+
+**Codex against the catalog.** Without a Codex catalog in `sae setup show`, leave the Codex
+part (model list and routing) out. With one:
+- Keep only the efforts that the catalog lists for the family's newest version.
+- A seed family missing from the catalog is replaced, in the tiers and the cells, by the
+  nearest stronger family that is there (luna → sol → astra), else the nearest weaker one; drop
+  its entry. Keep each effort when the new model's list has it, else take the nearest effort in
+  that list (the stronger on a tie). Effort order: low, medium, high, xhigh, max, ultra.
 
 **Tiers** (model · effort):
 
 | tier | Claude | Codex |
 |---|---|---|
 | L1 | sonnet · medium | luna · xhigh |
-| L2 | opus · low | sol · low |
-| L3 | opus · medium | sol · medium |
-| L4 | opus · high | sol · high |
+| L2 | opus · medium | sol · low |
+| L3 | opus · high | sol · medium |
+| L4 | opus · xhigh | sol · high |
 
-**Routing tables**, the same tiers for both harnesses, "tiers in cells" on:
+**Routing tables**, "tiers in cells" on. Each cell is tier · model · effort: the tier applies
+while tiers in cells is on, the model · effort when the user turns it off. Save both in every
+cell.
 
-| research, execution | mechanical | normal | hard |
+| claude · research | mechanical | normal | hard |
 |---|---|---|---|
-| economy | L1 | L1 | L2 |
-| balanced | L1 | L2 | L3 |
-| max | L2 | L3 | L4 |
+| economy | L1 · sonnet · medium | L1 · sonnet · medium | L2 · sonnet · high |
+| balanced | L1 · sonnet · medium | L2 · sonnet · high | L3 · opus · low |
+| max | L2 · sonnet · high | L3 · opus · low | L4 · opus · medium |
 
-| planning, review | normal | hard |
+| claude · execution | mechanical | normal | hard |
+|---|---|---|---|
+| economy | L1 · sonnet · medium | L1 · sonnet · high | L2 · opus · low |
+| balanced | L1 · sonnet · high | L2 · opus · medium | L3 · opus · high |
+| max | L2 · opus · low | L3 · opus · high | L4 · opus · xhigh |
+
+| claude · planning | normal | hard |
 |---|---|---|
-| economy | L2 | L3 |
-| balanced | L2 | L3 |
-| max | L3 | L4 |
+| economy | L2 · sonnet · high | L3 · opus · medium |
+| balanced | L3 · opus · high | L4 · opus · xhigh |
+| max | L4 · opus · xhigh | L4 · opus · xhigh |
 
-A cell may also hold its own model · effort, for example haiku for cheap mechanical work.
+| claude · review | normal | hard |
+|---|---|---|
+| economy | L1 · sonnet · high | L2 · opus · medium |
+| balanced | L2 · opus · medium | L3 · opus · high |
+| max | L3 · opus · high | L4 · opus · xhigh |
+
+| codex · research | mechanical | normal | hard |
+|---|---|---|---|
+| economy | L1 · luna · high | L1 · luna · xhigh | L2 · sol · low |
+| balanced | L1 · luna · xhigh | L3 · sol · medium | L4 · sol · high |
+| max | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+
+| codex · execution | mechanical | normal | hard |
+|---|---|---|---|
+| economy | L1 · luna · xhigh | L1 · luna · xhigh | L2 · sol · low |
+| balanced | L2 · sol · low | L3 · sol · medium | L4 · sol · high |
+| max | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+
+| codex · planning | normal | hard |
+|---|---|---|
+| economy | L2 · sol · low | L3 · sol · medium |
+| balanced | L4 · sol · high | L4 · sol · xhigh |
+| max | L4 · sol · xhigh | L4 · sol · max |
+
+| codex · review | normal | hard |
+|---|---|---|
+| economy | L2 · sol · low | L3 · sol · medium |
+| balanced | L3 · sol · medium | L4 · sol · high |
+| max | L4 · sol · high | L4 · sol · xhigh |
 
 **Defaults for new tasks:** interaction mode `critical-only`; levels per phase; review points
 `spec, plan, selected-jobs, integration` (a second model checks the spec against the intent
@@ -93,8 +143,8 @@ Ask in the conversation language: "ok, or change something?"
 ## 4. Save
 
 Build the schema-2 JSON from the skeleton or the conversion that `sae setup show` prints, and
-pipe it to `sae setup save`. It validates the file, refuses an invalid model–effort pair, and backs up
-the old one.
+pipe it to `sae setup save`. It validates the file, refuses an invalid model–effort pair and a
+Codex exact version or effort that the catalog does not offer, and backs up the old one.
 
 ## 5. Harness permissions
 
