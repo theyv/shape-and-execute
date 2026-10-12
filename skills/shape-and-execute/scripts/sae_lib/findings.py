@@ -275,10 +275,55 @@ def find_draft(root: Path, ref: str) -> Path:
     return found
 
 
-def adr_target_folder(root: Path) -> Path:
-    """The `adr_folder` pin of the repo profile, else an existing ADR folder, else docs/decisions/."""
+def _norm_path(path: str) -> str:
+    path = str(path).strip().strip("`").replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    return path.strip("/")
+
+
+def adr_rules(meta: dict) -> tuple[list[tuple[str, str]], list[str]]:
+    """The ADR rules of a repo profile's frontmatter (`adr_rules:` items `<path prefix> -> <folder>`).
+
+    Returns (rules, errors): rules as (prefix, folder) without outer slashes, longest prefix first."""
+    raw = meta.get("adr_rules")
+    if raw in (None, ""):
+        return [], []
+    items = raw if isinstance(raw, list) else [raw]
+    rules, errors = [], []
+    for item in items:
+        parts = re.split(r"\s*(?:->|→)\s*", str(item), maxsplit=1)
+        prefix, folder = (_norm_path(parts[0]), _norm_path(parts[1])) if len(parts) == 2 else ("", "")
+        if not prefix or not folder:
+            errors.append(f"adr_rules item {item!r}: expected '<path prefix> -> <folder>'")
+            continue
+        rules.append((prefix, folder))
+    rules.sort(key=lambda rule: len(rule[0]), reverse=True)
+    return rules, errors
+
+
+def _rule_folder(rules: list[tuple[str, str]], path: str) -> str | None:
+    """The folder of the longest rule prefix that covers `path` (whole path segments only)."""
+    path = _norm_path(path)
+    return next((folder for prefix, folder in rules if path == prefix or path.startswith(prefix + "/")), None)
+
+
+def adr_target_folder(root: Path, applies_to=()) -> Path:
+    """The folder of the ADR rule that matches the draft's `applies-to` paths ([ADR-RULES]);
+    without rules or a match: the `adr_folder` pin, else an existing ADR folder, else docs/decisions/."""
     profile = read_text(tasks_dir(root) / "repo" / "profile.md")
-    pin = split_frontmatter(profile)[0].get("adr_folder") if profile else None
+    meta = split_frontmatter(profile)[0] if profile else {}
+    rules, errors = adr_rules(meta)
+    if errors:
+        fail(EXIT_USAGE, "Invalid ADR rules in .tasks/repo/profile.md:\n  " + "\n  ".join(errors))
+    paths = applies_to if isinstance(applies_to, list) else [applies_to] if applies_to else []
+    folders = sorted({f for f in (_rule_folder(rules, str(p)) for p in paths if p) if f})
+    if len(folders) > 1:  # [EDGE-ADR-TWO-RULES]
+        fail(EXIT_USAGE, f"The draft's applies-to paths match ADR rules of different folders: "
+                         f"{', '.join(folders)}. Narrow applies-to or split the draft.")
+    if folders:
+        return root / folders[0]
+    pin = meta.get("adr_folder")
     if pin:
         return root / str(pin).strip("/")
     existing = next((name for name in ADR_FOLDERS if (root / name).is_dir()), None)
@@ -288,7 +333,7 @@ def adr_target_folder(root: Path) -> Path:
 def cmd_adr_accept(args) -> int:
     root, _ = find_root()
     draft = find_draft(root, args.draft)
-    target_dir = adr_target_folder(root)
+    target_dir = adr_target_folder(root, split_frontmatter(read_text(draft))[0].get("applies-to"))
     first = not (target_dir.is_dir() and any(p.suffix == ".md" for p in target_dir.iterdir()))
     target = target_dir / draft.name
     if target.exists():
@@ -346,8 +391,10 @@ def register_adr(sub, command):
     p.add_argument("--type", required=True, choices=ADR_TYPES, help="architecture | business")
     p.add_argument("--applies-to", metavar="A,B", help="comma list of paths and code names the decision governs")
     p = command(adr_sub, "accept", "Accept a draft: status accepted, moved into the ADR folder.",
-                "Folder: adr_folder in .tasks/repo/profile.md, else an existing ADR folder, else\n"
-                "docs/decisions/. Leaves the change uncommitted for the owner.",
+                "Folder: the ADR rule (adr_rules in .tasks/repo/profile.md) with the longest path prefix\n"
+                "that matches the draft's applies-to paths; refused when the paths match rules of different\n"
+                "folders. Without a matching rule: adr_folder in the profile, else an existing ADR folder,\n"
+                "else docs/decisions/. Leaves the change uncommitted for the owner.",
                 ["adr accept .tasks/adr/2026-10-10-status-is-cached-for-60-s.md"], [0, 1], cmd_adr_accept)
     p.add_argument("draft", help="path or file name of the draft")
     p = command(adr_sub, "reject", "Reject a draft: delete it, log a line in adr/closed.md.",

@@ -13,7 +13,9 @@ from pathlib import Path
 
 from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
+from .findings import adr_rules
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
+from .markdown import split_frontmatter
 from .routing import newest_of_family
 from .setup_mode import codex_cap_text, codex_catalog, codex_subagent_cap
 from .tasks import locate_tasks, tasks_dir
@@ -128,6 +130,12 @@ def doctor_repo(config: dict | None, check) -> None:
     check(folder_ok, f".tasks/ writable in {root}", "Fix the folder permissions.")
     check((folder / "repo" / "profile.md").exists() or None, "repo profile .tasks/repo/profile.md",
           "Setup mode drafts it from the repository (optional).")
+    profile = folder / "repo" / "profile.md"
+    if profile.is_file():
+        rules, errors = adr_rules(split_frontmatter(profile.read_text(encoding="utf-8"))[0])
+        if rules or errors:
+            check(not errors, f"ADR rules in the repo profile: {len(rules)} valid" + "".join(f"; {e}" for e in errors),
+                  "Write each adr_rules item as '<path prefix> -> <folder>'.")
     if is_git:
         hooks = hooks_found(root)
         if hooks:
@@ -179,7 +187,8 @@ def register_doctor(sub, command):
                 "config check also checks Codex exact versions and their efforts against it.\n"
                 "In a git repository: removes the task worktrees of finished tasks whose branch is merged (when\n"
                 "they hold no uncommitted work), then lists every leftover worktree with the reason it stays.\n"
-                "--repo also checks .tasks/, the repo profile, a throwaway worktree (setup.sh, commit) and the viewer.\n"
+                "--repo also checks .tasks/, the repo profile and its ADR rules, a throwaway worktree\n"
+                "(setup.sh, commit) and the viewer.\n"
                 "--discard <worktree> removes one sae worktree although it holds work, after printing what is\n"
                 "lost; its branch stays. It refuses running jobs' worktrees and the task worktree of a task\n"
                 "that is not finished or abandoned.",

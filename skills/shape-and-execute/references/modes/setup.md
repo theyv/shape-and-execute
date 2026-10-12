@@ -172,8 +172,14 @@ At the first task in a repository, or when the user asks:
 
 - `.tasks/repo/profile.md` (template `templates/repo/profile.md`): only what AGENTS.md and
   CLAUDE.md do not already say — validation commands (unit, typecheck, lint, end-to-end),
-  known hot files, notes for worktree setup. Optional frontmatter pins: `artifact_language`
-  (for a team) and `adr_folder` (where accepted decision records go).
+  known hot files, notes for worktree setup. Optional frontmatter pin: `artifact_language`
+  (for a team).
+- Ask once where decision records go, and write the answer into the profile:
+  - one flat folder: `adr_folder: docs/adr` (no answer: an existing ADR folder, else
+    `docs/decisions/`);
+  - rules per path: `adr_rules`, one ADR rule `<path prefix> -> <folder>` per item, for
+    example `- skills/billing/ -> docs/adr/billing/`. `sae adr accept` uses the rule with the
+    longest prefix that matches the draft's `applies-to`; with no match, the flat folder.
 - `.tasks/repo/setup.sh`: prepares a new task or job worktree, for example
   `pnpm install --frozen-lockfile`. Optional. `sae` runs its own git operations with hooks
   off, so a dependency install that a git hook does belongs here.
