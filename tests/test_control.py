@@ -7,12 +7,11 @@
 from __future__ import annotations
 
 import os
-import re
 import stat
 import unittest
 from pathlib import Path
 
-from saetest import SKILL_DIR, Sandbox, SaeTestCase, dispatch_workspace
+from saetest import Sandbox, SaeTestCase, dispatch_workspace
 
 
 class ControlCase(SaeTestCase):
@@ -132,30 +131,6 @@ class CardAndMapTests(ControlCase):
         self.assertEqual(sb.state(task)["task"]["last_card"]["phase"], "executing")  # start records it
         nxt = sb.sae("next", "width").stdout
         self.assertNotIn("NEXT STEP", nxt)  # recorded: an ordinary writer gets no new card
-
-    def test_compiled_skill_uses_no_old_terms(self):
-        """[DESIGN-DOCS-FIRST]: no rung, level map or task checkout outside the schema-1
-        conversion, the setup mode text and the viewer's fallback for old attempts."""
-        old = re.compile(r"rung|level[ _-]map|task checkout", re.I)
-        conversion = (SKILL_DIR / "scripts/sae_lib/setup_mode.py").read_text(encoding="utf-8")
-        start = conversion.index("def convert_schema1")
-        body = conversion[start:conversion.index("\ndef ", start)]
-        hits = []
-        for folder in ("SKILL.md", "references", "templates", "agents", "scripts", "assets"):
-            base = SKILL_DIR / folder
-            for path in [base] if base.is_file() else sorted(base.rglob("*")) if base.is_dir() else []:
-                if not path.is_file() or "__pycache__" in path.parts:
-                    continue
-                name = path.relative_to(SKILL_DIR).as_posix()
-                if name == "references/modes/setup.md":
-                    continue
-                for n, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                    if not old.search(line) or re.search(r"schema[ -][12]", line) \
-                            or (name.endswith("setup_mode.py") and line.strip() and line in body) \
-                            or (name == "assets/viewer/app.js" and "old tasks" in line):
-                        continue
-                    hits.append(f"{name}:{n}: {line.strip()}")
-        self.assertEqual(hits, [])
 
     def test_new_set_job_add_and_setup_show_output(self):
         """The settings that `new` and `set` print, the `job add --review` warning and

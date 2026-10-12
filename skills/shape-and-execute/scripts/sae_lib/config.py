@@ -1,6 +1,6 @@
 """User config, settings validation and card, harness detection, settings of a new task.
 
-The user config is schema 2 (07-cli-spec §3.1): model lists and routing tables per harness,
+The user config is schema 2: model lists and routing tables per harness,
 defaults for new tasks and personal project entries. Routing has three levels, global (the
 config), project (`projects.<main worktree>`) and task (`settings.json`); `routing_layers` and
 `effective_routing` merge them, and `routing.py` resolves one job against the result.
@@ -429,7 +429,7 @@ def level_routing_errors(config: dict, routing, where: str, layers: list[tuple[s
 # ---------------------------------------------------------------- the whole config
 
 def validate_config(data, catalog: list[dict] | None = None) -> list[str]:
-    """Errors against the config schema 2 (07-cli-spec §3.1); with the Codex `catalog`, also its
+    """Errors against the config schema 2; with the Codex `catalog`, also its
     Codex exact versions and efforts against it."""
     errors: list[str] = []
 

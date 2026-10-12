@@ -11,7 +11,8 @@ from pathlib import Path
 from .common import EXIT_GIT, TASK_ID_RE, fail
 
 
-# sae's own git operations run without the owner's hooks ([GIT-HOOKS-OFF-FOR-SAE], DL-115):
+# sae's own git operations run without the owner's hooks ([GIT-HOOKS-OFF-FOR-SAE],
+# record 2026-10-10-sae-s-git-plumbing-skips-hooks.md):
 # a hook that rewrites a tracked file would dirty the task worktree after every merge.
 # Workers commit with their hooks; they never go through this module.
 HOOKS_OFF = ["-c", "core.hooksPath=/dev/null"]
@@ -64,7 +65,8 @@ def worktree_paths(root: Path) -> list[Path]:
 
 
 def main_worktree(root: Path) -> Path:
-    """The repository's main worktree: the first entry of `git worktree list` (DL-140)."""
+    """The repository's main worktree: the first entry of `git worktree list`
+    (record 2026-10-10-every-task-executes-in-its-own-task-work.md)."""
     listing = git(root, "worktree", "list", "--porcelain", check=False)
     for line in listing.splitlines():
         if line.startswith("worktree "):

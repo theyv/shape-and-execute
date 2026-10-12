@@ -66,7 +66,8 @@ ASK_CLASSES = {
 PARK_CLASSES = {"auto": ("spec-change",)}
 HARD_STOPS_LINE = ("Hard stops: no push/deploy, no secrets, no CI/permission changes outside the plan, "
                    "no destroying what a job did not create.")
-# DL-73: the limit of failed verify re-runs per job. A settings.json without the key uses it;
+# The limit of failed verify re-runs per job (record 2026-10-07-sae-re-runs-verify-up-to-a-per-task-limi.md).
+# A settings.json without the key uses it;
 # `sae new` writes it into every new task unless config.defaults.max_verify_failures says otherwise.
 DEFAULT_MAX_VERIFY_FAILURES = 3
 STALE_RUNNING_MINUTES = 60   # `sae status`: a running job without change this long → "check on it"

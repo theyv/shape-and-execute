@@ -1,4 +1,4 @@
-"""The viewer server (07-cli-spec §12, 13-viewer-spec): serves assets/viewer/, reads task data
+"""The viewer server: serves assets/viewer/, reads task data
 live from every worktree of every known repository, and writes only by running `sae` itself.
 
 Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origin `Origin`):
@@ -220,7 +220,7 @@ def prototype_url(key: str, task_id: str, inner: str) -> str:
 
 
 def computed(task, config: dict | None) -> dict:
-    """What the views need, from the same functions as the CLI (07-cli-spec §5, §10.4, `sae next`)."""
+    """What the views need, from the same functions as the CLI (`sae next`)."""
     from .progress import next_data, task_status_data
     from .reviews import planned_reviews, review_mark
     from .control import process_map

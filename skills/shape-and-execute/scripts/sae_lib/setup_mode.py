@@ -241,7 +241,7 @@ def config_skeleton(facts: dict) -> dict:
 
 
 def convert_schema1(old: dict, catalog: list[dict] | None) -> dict:
-    """The schema-2 proposal for a schema-1 config (07-cli-spec §3.2): each rung becomes a tier,
+    """The schema-2 proposal for a schema-1 config: each rung becomes a tier,
     each cell points to the tier the old level map chose. Claude rungs had no effort: `<choose>`."""
     by_slug = {m["model"]: m for m in catalog or []}
     models, routing = {}, {}
