@@ -7,7 +7,7 @@ execute.
 
 - **Planner subagent** when the task will likely have two or more jobs, or when shaping went
   deep: `sae job add <task> PLAN --kind planning` (its difficulty is the task difficulty).
-  `sae next <task>` prints the launch card: show it and wait (ok, change, refine first, skip;
+  `sae next <task>` prints the next-step card: show it and wait (ok, change, refine first, skip;
   skip means you plan inline). Then `sae dispatch <task> PLAN` and spawn a subagent with the
   printed prompt, model and effort. Collect it when it returns.
 - **Inline** for a small task (one or two jobs, shallow shaping): load
@@ -28,7 +28,7 @@ send the printed message), then check again.
 
 ## 3. Plan review (when `plan` is a review point)
 
-A clean `sae check` makes `REVIEW-PLAN` due. `sae next <task>` prints its launch card: show it
+A clean `sae check` makes `REVIEW-PLAN` due. `sae next <task>` prints its next-step card: show it
 and wait (skip turns the `plan` review point off with `sae set`). Dispatch it. When the printed
 output is a COMMAND (review in the other harness), run it in the background; when it fails,
 run the IF IT FAILS line printed with it. Collect it.

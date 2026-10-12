@@ -55,11 +55,11 @@ class TaskTests(SaeTestCase):
         self.assertIn("Intent: Claims status self-service", (folder / "intent.md").read_text())
         settings = json.loads((folder / "settings.json").read_text())
         self.assertEqual(settings["max_verify_failures"], 3)
-        self.assertEqual((sb.repo / ".tasks" / ".gitignore").read_text(), ".viewer/\n.lock\n")
+        self.assertEqual((sb.repo / ".tasks" / ".gitignore").read_text(), ".lock\n")
         self.assertEqual(sb.state(task)["task"]["orchestrator_harness"], "claude")
         status = sb.json("status", "claims-status")
         self.assertEqual(status["phase"], "shaping")
-        self.assertIn("review: off", status["settings_card"])
+        self.assertIn("  review points    off\n", status["settings_card"])
         sb.sae("set", "claims-status", "execution=economy", "review=spec,plan", "reviewer=codex")
         sb.sae("set", "claims-status", "review=selected-jobs,all-jobs", code=1)
         sb.sae("set", "claims-status", "max-verify-failures=11", code=1)
@@ -204,7 +204,7 @@ class ExecutionTests(SaeTestCase):
         ], settings=["review=selected-jobs,integration"])
         start = sb.sae("start", "wt-flow").stdout
         self.assertIn("layout: worktrees", start)
-        self.assertIn("Mode: critical-only — ask on: consequential, spec-clarification,\n  spec-change.", start)
+        self.assertIn("Mode: critical-only — ask on: consequential, spec-clarification, spec-change.", start)
         self.assertEqual(sb.git("branch", "--show-current"), "main")  # the home checkout never switches
         wt = sb.task_worktree(task)
         self.assertEqual(sb.git("branch", "--show-current", cwd=wt), f"task/{task}")
@@ -515,7 +515,7 @@ class ViewerAndSetupTests(SaeTestCase):
         self.assertIn("✓ throwaway worktree", out)
         self.assertIn("✗ Codex subagent cap", out)
         self.assertEqual(sb.git("branch", "--list", "sae-doctor-*"), "")
-        self.assertIn("viewer rendered", out)
+        self.assertIn("✓ viewer files exist; repository known", out)
 
 
 if __name__ == "__main__":

@@ -27,15 +27,13 @@ from .common import (
     sae_prefix,
     stamp_time,
     table,
-    wrap,
-    wrap_parts,
 )
 from .config import cfg, load_config, settings_card
 from .gitutil import find_root, git
 from .control import (
     hold_notices,
     holds_data,
-    launch_card,
+    next_step_card,
     process_map,
     record_card,
 )
@@ -132,38 +130,36 @@ def cmd_status(args) -> int:
         with open_task(root, args.task, write=False) as task:  # [READ-ONLY-COMMANDS]
             data = task_status_data(task)
             notices = hold_notices(task)
-        lines = ["\n\n".join(data["map"]), "", data["title"], f"{data['task']}",
-                 wrap_parts([f"phase: {data['phase']}"] + ([f"branch: {data['branch']}"] if data["branch"] else [])
-                            + ([f"layout: {data['layout']}"] if data["layout"] else []), indent="")]
+        lines = ["\n".join(data["map"]), "", data["title"], f"{data['task']}",
+                 " · ".join([f"phase: {data['phase']}"] + ([f"branch: {data['branch']}"] if data["branch"] else [])
+                            + ([f"layout: {data['layout']}"] if data["layout"] else []))]
         if data["worktree"]:
             lines.append(f"Task worktree: {data['worktree']}")
-        lines += ["Settings:", wrap_parts(data["settings_card"].split(" · ")),
-                  f"Last change: {age_text(data['last_change'])}"]
+        lines += [data["settings_card"], f"Last change: {age_text(data['last_change'])}"]
         approvals = ", ".join(f"{k} by {v['by']}" for k, v in data["approvals"].items())
         if approvals:
-            lines.append(wrap(f"Approved: {approvals}"))
+            lines.append(f"Approved: {approvals}")
         if data["holds"]:
-            lines += ["", "Holds:"] + [wrap(f"after {h['job']}" + (" (active)" if h["active"] else "")
-                                            + (f" — {h['reason']}" if h["reason"] else ""), "  ")
-                                       for h in data["holds"]]
+            lines += ["", "Holds:"] + [f"  after {h['job']}" + (" (active)" if h["active"] else "")
+                                       + (f" — {h['reason']}" if h["reason"] else "") for h in data["holds"]]
         if data["jobs"]:
             lines += ["", "Jobs:"]
             for r in data["jobs"]:
                 status = r["status"] + (" ✓merged" if r["merged"] else "")
-                lines.append(wrap_parts([r["id"], r["kind"], status, age_text(r["last_change"])], hang="  "))
+                lines.append("  " + " · ".join([r["id"], r["kind"], status, age_text(r["last_change"])]))
                 if r["model"] != "-":
-                    lines.append(wrap(r["model"], "    "))
+                    lines.append(f"    {r['model']}")
         if data["parked"]:
-            lines += ["", "Parked:"] + [wrap(f"{p['id']} — {p['reason']}", "  ") for p in data["parked"]]
+            lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
         if data["integration"]:
             lines += ["", data["integration"]]
         if notices:
             lines += [""] + notices
         if data["ready"]:
-            lines += ["", wrap("Ready: " + ", ".join(data["ready"]))]
+            lines += ["", "Ready: " + ", ".join(data["ready"])]
         if data["warnings"]:
-            lines += ["", "Warnings:"] + [wrap(f"- {w}", "  ") for w in data["warnings"]]
-        lines += ["", wrap(f"Next: {data['next']}")]
+            lines += ["", "Warnings:"] + [f"  - {w}" for w in data["warnings"]]
+        lines += ["", f"Next: {data['next']}"]
         emit(args, "\n".join(lines), data)
         return EXIT_OK
     tasks = []
@@ -189,9 +185,9 @@ def cmd_status(args) -> int:
     if tasks:
         lines.append("Tasks:")
         for entry in tasks:
-            lines += [wrap(entry["id"], "  "), wrap(entry["title"], "    "),
-                      wrap_parts([entry["phase"], age_text(entry["last_change"]),
-                                  f"running: {entry['running']}", f"parked: {entry['parked']}"], indent="    ")]
+            lines += [f"  {entry['id']}", f"    {entry['title']}",
+                      "    " + " · ".join([entry["phase"], age_text(entry["last_change"]),
+                                           f"running: {entry['running']}", f"parked: {entry['parked']}"])]
             if Path(entry["location"]).resolve() != root.resolve():
                 lines += ["    Location:", f"      {entry['location']}"]
     else:
@@ -208,51 +204,49 @@ def cmd_status(args) -> int:
 
 
 def reminder_lines(task: Task) -> list[str]:
-    """The mode with the classes to ask on, then the hard stops, within 72 columns."""
-    return [wrap(mode_line(task.settings["interaction"])), wrap(HARD_STOPS_LINE)]
+    """The mode with the classes to ask on, then the hard stops."""
+    return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
 
 
 def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
-    """The `sae next` text. On a writable task (sae start) the start launch card it prints is
-    recorded; `sae next` itself is read-only and only prints it."""
+    """The `sae next` text. On a writable task (sae start) the start next-step card it prints
+    is recorded; `sae next` itself is read-only and only prints it."""
     data = data or next_data(task, config)
     if task.writable and data["card"] is not None and data["card"].get("start"):
         record_card(task, data["card"])
-    lines = ["\n\n".join(data["map"]), ""] + reminder_lines(task) + [""]
+    lines = ["\n".join(data["map"]), ""] + reminder_lines(task) + [""]
     notices = hold_notices(task)
     if data["integration"]:
         notices.append(data["integration"])
     if data["slots"]:
-        notices.append(wrap(data["slots"]))
+        notices.append(data["slots"])
     notices.append(f"Another session:\n  sae start {task.id} --harness claude|codex")  # [RESUME-HARNESS-HINT]
     lines += notices + [""]
     if data["card"] is not None:
         lines += [data["card"]["text"], ""]
     if data["running"]:
-        lines += ["Running:"] + [wrap(f"{r['id']} — last change {age_text(r['last_change'])}", "  ")
-                                 for r in data["running"]]
+        lines += ["Running:"] + [f"  {r['id']} — last change {age_text(r['last_change'])}" for r in data["running"]]
     if data["parked"]:
-        lines += ["Parked:"] + [wrap(f"{p['id']} — {p['reason']}", "  ") for p in data["parked"]]
+        lines += ["Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
     if data["ready"]:
         lines += ["Ready (dispatch each):", "  sae dispatch <task> <ID>"]
         for r in data["ready"]:
-            lines.append(wrap_parts([r["id"], r["kind"], r["difficulty"]]))
-            lines.append(wrap_parts([r["model"], r["workspace"]], indent="    "))
+            lines.append("  " + " · ".join([r["id"], r["kind"], r["difficulty"]]))
+            lines.append("    " + " · ".join([r["model"], r["workspace"]]))
             if r.get("blocked"):
-                lines.append(wrap(f"waits: {r['blocked']}", "    "))
+                lines.append(f"    waits: {r['blocked']}")
     if data["blocked"]:
-        lines += ["Blocked:"] + [wrap(f"{b['id']} — waits for {', '.join(b['waits_for'])}", "  ")
-                                 for b in data["blocked"]]
+        lines += ["Blocked:"] + [f"  {b['id']} — waits for {', '.join(b['waits_for'])}" for b in data["blocked"]]
     if data["failed"]:
-        lines += ["Failed:"] + [wrap(f"{f['id']} — {f['summary']}", "  ") for f in data["failed"]]
+        lines += ["Failed:"] + [f"  {f['id']} — {f['summary']}" for f in data["failed"]]
     if data["all_done"]:
         lines.append(f"All jobs done. Run: sae finish {task.id}")
     elif data["holds_active"]:
-        lines.append(wrap(f"Held: report to the owner. Release with: {release_command(task, data['holds_active'][0])}"))
+        lines.append(f"Held: report to the owner. Release with: {release_command(task, data['holds_active'][0])}")
     elif task.phase in ("shaping", "planning") and not (data["running"] or data["ready"]):
-        lines.append(wrap(f"Next: {next_command(task)}"))
+        lines.append(f"Next: {next_command(task)}")
     elif not (data["running"] or data["ready"] or data["parked"] or data["integration"]):
-        lines.append(wrap("Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open."))
+        lines.append("Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open.")
     return "\n".join(lines).rstrip()
 
 
@@ -264,14 +258,14 @@ def integration_notice(task: Task) -> str | None:
         return None
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
-        return "\n".join([wrap(f"The task is parked for the owner: {last} still requires changes after a "
-                                "fix round. Nothing is dispatched until the owner chooses:"),
+        return "\n".join([f"The task is parked for the owner: {last} still requires changes after a fix round. "
+                          "Nothing is dispatched until the owner chooses:",
                            "  - more fix jobs:", f"    {fix_job_command(task, last)}",
                            "  - or close anyway:", f"    {forward}"])
     if any(j.get("fix_of") == last for j in task.jobs.values()):
         return None
-    return "\n".join([wrap(f"{last} requires changes. Add fix jobs (sae adds the next round when they are "
-                            "merged):"), f"  {fix_job_command(task, last)}",
+    return "\n".join([f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):",
+                      f"  {fix_job_command(task, last)}",
                        "Or, on the owner's word:", f"  {forward}"])
 
 
@@ -309,7 +303,7 @@ def next_data(task: Task, config: dict | None) -> dict:
                       "workspace": f"{task_checkout_name(task)}, read-only"})
     open_statuses = {j["status"] for j in task.jobs.values()} & {"running", "pending", "parked"}
     notice = integration_notice(task)
-    card = launch_card(task, config, [r["id"] for r in ready])
+    card = next_step_card(task, config, [r["id"] for r in ready])
     return {"running": running, "parked": parked, "ready": ready, "blocked": blocked, "failed": failed,
             "integration": notice, "parked_task": integration_parked(task),
             "holds": holds_data(task), "holds_active": active_holds(task),
@@ -362,7 +356,7 @@ def cmd_dispatch(args) -> int:
         due = [] if args.resume else due_reviews(task)
         card = None
         if not args.resume and (job_id in due or (job_id in task.jobs and is_ready(task, job_id))):
-            card = launch_card(task, config, ready_ids(task))  # the card sae next shows now
+            card = next_step_card(task, config, ready_ids(task))  # the card sae next shows now
         if job_id not in task.jobs and job_id in due:
             add_due_review(task, job_id)  # a due spec or plan review is added by its dispatch
         job = task.job(job_id)
@@ -383,8 +377,8 @@ def cmd_dispatch(args) -> int:
                 fail(EXIT_GATE, integration_notice(task))
             held = active_holds(task)
             if held:
-                fail(EXIT_GATE, wrap(f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.")
-                     + "\n" + wrap(f"Release: {release_command(task, held[0])}", "  "))
+                fail(EXIT_GATE, f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.\n"
+                                f"  Release: {release_command(task, held[0])}")
             reasons = waits_for(task, job_id)
             if reasons:
                 fail(EXIT_USAGE, f"{job_id} is not ready: waits for {', '.join(reasons)}.")
@@ -428,18 +422,18 @@ def cmd_dispatch(args) -> int:
             prompt = "\n".join([f"RESUME {job_id} — reason: {args.reason}", *extra,
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
-        header = (wrap(f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}")
-                  + "\n" + wrap(f"ROUTING: {routing_text(model)}"))
+        header = (f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}\n"
+                  f"ROUTING: {routing_text(model)}")
         data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model}
         if external:
             command = external_review_command(task, job_id, model, prompt)
             fallback = (f"{sae_prefix()} dispatch {task.id} {job_id} --provider {task.info['orchestrator_harness']} "
                         f"--resume --reason \"provider failed: <exit code or empty result>\"")
             data.update({"command": command, "if_it_fails": fallback})
-            emit(args, f"{header}\nCOMMAND:\n{command}\nIF IT FAILS:\n{fallback}", data, verbatim=(command,))
+            emit(args, f"{header}\nCOMMAND:\n{command}\nIF IT FAILS:\n{fallback}", data)
         else:
             data["prompt"] = prompt
-            emit(args, f"{header}\nPROMPT:\n{prompt}", data, verbatim=(prompt,))
+            emit(args, f"{header}\nPROMPT:\n{prompt}", data)
     return EXIT_OK
 
 
@@ -454,9 +448,9 @@ def register_status(sub, command):
 
 def register_next(sub, command):
     """Add the `next` command to the parser."""
-    p = command(sub, "next", "Process map, reminder, notices, launch card, then running, ready and blocked jobs.",
+    p = command(sub, "next", "Process map, reminder, notices, next-step card, then running, ready and blocked jobs.",
                 "Read the reminder every time. Notices: an active hold and its release command, the parked task,\n"
-                "full writer slots, how to resume in another session. A launch card comes before research, the\n"
+                "full writer slots, how to resume in another session. A next-step card comes before research, the\n"
                 "planner, a spec, plan or integration review, and the start of execution; sae dispatch of a job\n"
                 "on it records it. Ready jobs show harness · model · effort (with the source when it is not\n"
                 "global, or override) and the workspace kind; a due spec or plan review is listed too.\n"

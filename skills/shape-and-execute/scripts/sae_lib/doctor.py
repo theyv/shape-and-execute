@@ -11,12 +11,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp, wrap_notice_lines
+from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
 from .config import config_path, detect_harness, load_config, validate_config, worktree_root
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .setup_mode import codex_cap_text, codex_subagent_cap
 from .tasks import locate_tasks, tasks_dir
-from .viewer import render_viewer_safely
+from .viewer import VIEWER_ASSETS, remember_repo_safely, repo_known
 from .workspaces import discard_worktree, leftover_reason, sae_worktrees, setup_worktree, sweep_merged_task_worktrees
 
 
@@ -56,9 +56,11 @@ def cmd_doctor(args) -> int:
     discarded = doctor_worktrees(config if config_ok else None, check, args.discard)
     if args.repo:
         doctor_repo(config if config_ok else None, check)
-    lines = discarded + [f"{mark} {text}" + (f"\n    fix: {fix}" if fix else "") for mark, text, fix in checks]
+    # A fix's continuation lines (a command) indent under its label.
+    lines = discarded + [f"{mark} {text}" + ("\n    fix: " + fix.replace("\n", "\n    ") if fix else "")
+                         for mark, text, fix in checks]
     failed = [c for c in checks if c[0] == "✗"]
-    emit(args, wrap_notice_lines("\n".join(lines)),
+    emit(args, "\n".join(lines),
          {"checks": [{"ok": m != "✗", "mark": m, "text": t, "fix": f} for m, t, f in checks]})
     if not config_ok:
         return EXIT_CONFIG
@@ -83,7 +85,7 @@ def doctor_worktrees(config: dict | None, check, discard: str | None) -> list[st
     for path, task_id, name in registered:
         reason, attention = leftover_reason(root, path, task_id, name, located)
         check(None if attention else True, f"worktree {path}\n    why it stays: {reason}",
-              f"Commit or move what you need, then:\n      sae doctor --discard {shlex.quote(str(path))}")
+              f"Commit or move what you need, then:\n  sae doctor --discard {shlex.quote(str(path))}")
     if config is not None:
         cache = worktree_root(config) / repo_cache_name(root)
         known = {p.resolve() for p, _, _ in registered}
@@ -133,9 +135,12 @@ def doctor_repo(config: dict | None, check) -> None:
             run(["git", "worktree", "prune"], root)
     elif is_git:
         check(None, "throwaway worktree skipped (no valid config or no commit yet)")
-    target = render_viewer_safely(root, None)
-    check(target is not None, f"viewer rendered: {target.resolve().as_uri() if target else 'failed'}",
-          "See the warning above.")
+    remember_repo_safely(root)
+    files = (VIEWER_ASSETS / "index.html").is_file()
+    known = repo_known(root)
+    fixes = ([] if files else [f"Reinstall the skill: {VIEWER_ASSETS / 'index.html'} is missing."]) \
+        + ([] if known else ["See the warning above: the repository is not on the viewer's known list."])
+    check(files and known, "viewer files exist; repository known", " ".join(fixes))
 
 
 def hooks_found(root: Path) -> str:

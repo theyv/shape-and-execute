@@ -29,10 +29,8 @@ from .common import (
     emit,
     fail,
     read_text,
-    OUTPUT_WIDTH,
     table,
     warn,
-    wrap,
 )
 from .config import (
     CONFIG_SCHEMA,
@@ -121,20 +119,18 @@ def codex_subagent_cap() -> dict:
 
 
 def codex_cap_text(cap: dict, indent: str = "") -> str:
-    """The cap in short lines within 72 columns, each after `indent` ([NARROW-OUTPUT]); the first
-    line alone is the summary that `sae doctor` prints."""
-    width = OUTPUT_WIDTH - len(indent)
+    """The cap, each line after `indent`; the first line alone is the summary that `sae doctor`
+    prints."""
     if cap["subagents"] is not None:
-        lines = [f"Codex subagent cap: {cap['subagents']} subagents", wrap(f"from {cap['source']}", "  ", width=width)]
+        lines = [f"Codex subagent cap: {cap['subagents']} subagents", f"  from {cap['source']}"]
     else:
         lines = ["Codex subagent cap: not set (Codex default)",
-                 wrap("The default is 3 subagents for multi-agent v2 models, 6 for v1.", "  ", width=width)]
+                 "  The default is 3 subagents for multi-agent v2 models, 6 for v1."]
     if not cap["ok"]:
-        lines += [wrap(f"Below {cap['minimum']}: parallel writers, reviews and research hit "
-                       "\"agent thread limit reached\".", width=width),
+        lines += [f"Below {cap['minimum']}: parallel writers, reviews and research hit \"agent thread limit reached\".",
                   "Recommended, in:", f"  {cap['config']}", "  [agents]", f"  max_threads = {cap['recommended']}",
-                  wrap("Setup mode can apply it after you agree (with a backup).", width=width)]
-    return "\n".join(indent + line for block in lines for line in block.splitlines())
+                  "Setup mode can apply it after you agree (with a backup)."]
+    return "\n".join(indent + line for line in lines)
 
 
 @functools.lru_cache(maxsize=1)
@@ -321,17 +317,15 @@ def config_text(config: dict) -> list[str]:
         for i, entry in enumerate(entries if isinstance(entries, list) else [], 1):
             kind = "family" if entry.get("family") else "exact"
             off = "" if entry.get("enabled", True) else " · off"
-            lines.append(wrap(f"{i}. {entry.get('model')} ({kind}{off}) · {', '.join(entry.get('efforts') or [])}",
-                              indent="  ", hang="   "))
+            lines.append(f"  {i}. {entry.get('model')} ({kind}{off}) · {', '.join(entry.get('efforts') or [])}")
         if harness in (config.get("routing") or {}):
             lines += [f"{harness} routing:"] + routing_tables_text(layers, harness)
     defaults = config.get("defaults") or {}
     review = defaults.get("review") or {}
     lines += ["", "Defaults for new tasks:",
               f"  interaction: {defaults.get('interaction')}",
-              wrap("levels: " + ", ".join(f"{k} {v}" for k, v in (defaults.get("levels") or {}).items()), indent="  "),
-              wrap(f"review: {', '.join(review.get('points') or []) or 'off'} · {provider_text(review.get('provider'))}",
-                   indent="  ")]
+              "  levels: " + ", ".join(f"{k} {v}" for k, v in (defaults.get("levels") or {}).items()),
+              f"  review: {', '.join(review.get('points') or []) or 'off'} · {provider_text(review.get('provider'))}"]
     for path, entry in (config.get("projects") or {}).items():
         lines.append(f"Project {path}:")
         lines += [f"  {k} = {json.dumps(v)}" for k, v in flatten_project(entry).items()]
@@ -353,15 +347,15 @@ def cmd_setup_show(args) -> int:
         lines.append("  Codex families (newest · older versions):")
         for name, info in facts["codex_families"].items():
             older = ", ".join(m["model"] for m in info["older"]) or "-"
-            lines += [f"    {name}: {info['newest']}", wrap(f"efforts: {', '.join(info['efforts'])}", indent="      "),
-                      wrap(f"older: {older}", indent="      ")]
+            lines += [f"    {name}: {info['newest']}", f"      efforts: {', '.join(info['efforts'])}",
+                      f"      older: {older}"]
     if facts.get("codex_subagent_cap"):
         lines.append(codex_cap_text(facts["codex_subagent_cap"], indent="  "))
     if config is not None and config.get("schema") == 1:
         proposal = convert_schema1(config, codex_catalog())
         lines += ["", f"Your config ({config_path()}) is schema 1 (rungs).",
-                  "Proposed conversion to schema 2 (each rung is a tier; fill every",
-                  "<choose> with an effort, then save it in setup mode). Save:",
+                  "Proposed conversion to schema 2 (each rung is a tier; fill every <choose> with an effort, "
+                  "then save it in setup mode). Save:",
                   "  sae setup save"]
         lines += config_text(proposal)
         lines += ["", "As JSON:", json.dumps(proposal, indent=2, ensure_ascii=False)]
@@ -377,8 +371,7 @@ def cmd_setup_show(args) -> int:
         lines += ["", f"No config at {config_path()}. Proposal skeleton (fill every <...>):",
                   json.dumps(skeleton, indent=2, ensure_ascii=False)]
         data = {"facts": facts, "config": None, "skeleton": skeleton}
-    proposal_json = json.dumps(data.get("proposal") or data.get("skeleton"), indent=2, ensure_ascii=False)
-    emit(args, "\n".join(lines), data, verbatim=(proposal_json,))
+    emit(args, "\n".join(lines), data)
     return EXIT_OK
 
 
@@ -523,26 +516,25 @@ max_threads = {CODEX_RECOMMENDED_SUBAGENTS}
     profile_file = codex_home() / "shape-and-execute.config.toml"
     lines = [
         "## Codex",
-        "Without a permission profile Codex keeps .git read-only and blocks the worktree root: every commit,",
+        "Without a permission profile Codex keeps .git read-only and blocks the worktree root: every commit, "
         "merge and worktree fails. Option A (recommended) limits it to task sessions: save this as",
         f"  {profile_file}",
-        "and start task sessions with `codex -p shape-and-execute`. Option B: put the same lines in",
-        f"  {codex_home() / 'config.toml'} (every session; never define [permissions.*] there without",
-        "  default_permissions).",
+        "and start task sessions with `codex -p shape-and-execute`. Option B: put the same lines in the "
+        "following file (every session; never define [permissions.*] there without default_permissions):",
+        f"  {codex_home() / 'config.toml'}",
         "",
         codex_profile.rstrip(),
         "",
         codex_cap_text(codex_subagent_cap()),
         "",
         "## Claude Code",
-        "The worktree root must be an additional directory. The allow rules are for users who do not run with",
+        "The worktree root must be an additional directory. The allow rules are for users who do not run with "
         "bypassed permissions. Merge into ~/.claude/settings.json:",
         "",
         json.dumps(claude, indent=2),
     ]
     emit(args, "\n".join(lines), {"codex_profile_file": str(profile_file), "codex_profile": codex_profile,
-                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude},
-         verbatim=(codex_profile.rstrip(), json.dumps(claude, indent=2)))
+                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude})
     return EXIT_OK
 
 

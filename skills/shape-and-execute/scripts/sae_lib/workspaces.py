@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .common import EXIT_GIT, TASK_ID_RE, WRITER_KINDS, fail, read_json, read_text, warn, wrap_notice_lines, write_atomic
+from .common import EXIT_GIT, TASK_ID_RE, WRITER_KINDS, fail, read_json, read_text, warn, write_atomic
 from .config import worktree_root
 from .gitutil import git, git_ok, main_worktree, repo_cache_name, run
 from .tasks import CLOSED_PHASES, Task, tasks_dir
@@ -380,7 +380,7 @@ def sweep_merged_task_worktrees(repo: Path, quiet: bool = False) -> tuple[list[s
                 + (f" and deleted {branch}." if deleted else f"; {branch} stays."))
         removed.append(line)
         if not quiet:
-            print(wrap_notice_lines(line), file=sys.stderr)
+            print(line, file=sys.stderr)
     return removed, kept
 
 

@@ -1,6 +1,6 @@
 """Model resolution (07-cli-spec §5): which harness, model and effort run a job, and why.
 
-`resolve_model` is the one function behind the dispatch header, `sae next`, the launch card,
+`resolve_model` is the one function behind the dispatch header, `sae next`, the next-step card,
 the viewer and the review-mark tooltips. It returns a dict:
 
   harness, model (exact: a Codex family resolved to its newest version), model_entry (the model

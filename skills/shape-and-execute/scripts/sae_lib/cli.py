@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .common import EXIT_CODES_HELP, EXIT_USAGE, Parser, SaeError, wrap_notice_lines
+from .common import EXIT_CODES_HELP, EXIT_USAGE, Parser, SaeError
 from .control import register_hold
 from .doctor import register_doctor
 from .findings import register_decision, register_finding, register_log
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except SaeError as exc:
-        print(wrap_notice_lines(str(exc)), file=sys.stderr)
+        print(str(exc), file=sys.stderr)
         return exc.code
     except KeyboardInterrupt:
         return 130

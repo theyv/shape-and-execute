@@ -691,18 +691,21 @@ def provider_text(provider: str, harness: str | None = None) -> str:
     return "cross-harness (the other harness reviews)"
 
 
-def settings_card(s: dict, harness: str | None = None) -> str:
+def settings_card(s: dict, harness: str | None = None, title: str = "Settings") -> str:
+    """The settings card ([OUT-SETTINGS-CARD]): `title`, then one setting per line, its value in
+    a fixed column."""
     levels = s["levels"]
     points = s["review"]["points"]
-    review = (f"review: {', '.join(points)} · {levels['review']} · {provider_text(s['review']['provider'], harness)}"
-              if points else "review: off")
-    card = (f"interaction: {s['interaction']} · research: {levels['research']} · "
-            f"planning: {levels['planning']} · execution: {levels['execution']} · {review}")
-    if task_difficulty(s) != "normal":
-        card += f" · task difficulty: {task_difficulty(s)}"
+    rows = [("interaction", s["interaction"]), ("research", levels["research"]),
+            ("planning", levels["planning"]), ("execution", levels["execution"]),
+            ("review points", ", ".join(points) or "off")]
+    if points:
+        rows.append(("review", f"{levels['review']} · {provider_text(s['review']['provider'], harness)}"))
+    rows.append(("task difficulty", task_difficulty(s)))
     if s.get("routing"):
-        card += f" · routing: {len(flatten_routing(s['routing']))} task value(s)"
-    return card
+        count = len(flatten_routing(s["routing"]))
+        rows.append(("routing", f"{count} task value" + ("" if count == 1 else "s")))
+    return "\n".join([title] + [f"  {label:<17}{value}" for label, value in rows])
 
 
 # ---------------------------------------------------------------- harness

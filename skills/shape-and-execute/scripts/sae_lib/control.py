@@ -1,8 +1,8 @@
-"""Owner control: the launch card, the process map and holds ([LAUNCH-CARD], [PROCESS-MAP],
-[HOLD-AFTER-JOB]; 07-cli-spec §8 "Launch card" and "Process map", `sae hold`).
+"""Owner control: the next-step card, the process map and holds ([OUT-NEXT-STEP-CARD],
+[OUT-MAP-LAYOUT], [HOLD-AFTER-JOB], `sae hold`).
 
 `sae next` and `sae status` only compute and print the card and the map. The writing command
-that starts the launch records the card: `sae dispatch` of a job on it, `sae start` for the
+that starts the step records the card: `sae dispatch` of a job on it, `sae start` for the
 start card (through `next_text` on a writable task)."""
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ from .common import (
     fail,
     iso,
     read_text,
-    wrap,
 )
 from .config import PHASE_DIFFICULTIES, effective_routing, flatten_settings, routing_layers
 from .gitutil import find_root
@@ -29,9 +28,9 @@ from .markdown import has_content, md_section, split_frontmatter, strip_html_com
 from .routing import TASK_TARGETS, resolve_model, route, short_text
 from .tasks import Task, is_generated, job_file, open_task
 
-# ---------------------------------------------------------------- launch card
+# ---------------------------------------------------------------- next-step card
 
-LAUNCH_LABELS = {"research": "research", "planning": "planner", "spec": "spec review", "plan": "plan review",
+NEXT_STEP_LABELS = {"research": "research", "planning": "planner", "spec": "spec review", "plan": "plan review",
                  "integration": "integration review"}
 REVIEW_PURPOSE = {"spec": "Review the spec before spec approval.",
                   "plan": "Review the job graph before plan approval.",
@@ -47,13 +46,13 @@ def job_view(task: Task, job_id: str) -> dict:
     return {"kind": "review", "target": job_id[len("REVIEW-"):].lower()}
 
 
-def launch_label(task: Task, job_id: str) -> str | None:
-    """The launch a ready job belongs to, or None: job reviews and ordinary writers get no card."""
+def next_step_label(task: Task, job_id: str) -> str | None:
+    """The step a ready job belongs to, or None: job reviews and ordinary writers get no card."""
     view = job_view(task, job_id)
     if view["kind"] in ("research", "planning"):
-        return LAUNCH_LABELS[view["kind"]]
+        return NEXT_STEP_LABELS[view["kind"]]
     if view["kind"] == "review" and view["target"] in TASK_TARGETS:
-        return LAUNCH_LABELS[view["target"]]
+        return NEXT_STEP_LABELS[view["target"]]
     return None
 
 
@@ -77,13 +76,12 @@ def purpose(task: Task, job_id: str) -> str:
         return REVIEW_PURPOSE.get(target, f"Review {target} before it merges.")
     _, body = split_frontmatter(read_text(job_file(task, job_id), "") or "")
     objective = " ".join(strip_html_comments(md_section(body, "Objective") or "").split())
-    first = re.split(r"(?<=[.!?])\s", objective, maxsplit=1)[0] if objective else "(no objective yet)"
-    return first if len(first) <= 68 else first[:67].rstrip() + "…"
+    return re.split(r"(?<=[.!?])\s", objective, maxsplit=1)[0] if objective else "(no objective yet)"
 
 
 def settings_snapshot(task: Task, config: dict | None) -> dict:
     """Effective task settings, the resolved routing of every cell the task can use, overrides
-    and holds, as flat `{label: text}` (07-cli-spec §8 "Launch card")."""
+    and holds, as flat `{label: text}` ([OUT-NEXT-STEP-CARD])."""
     snap = {k: v for k, v in flatten_settings(task.settings).items() if not k.startswith("routing.")}
     if config is not None:
         layers = routing_layers(config, task.root, task.settings)
@@ -140,17 +138,17 @@ def unreviewed_flagged(task: Task) -> list[str]:
             and not (review_mark(task, i) or {"reviewed": True})["reviewed"]]
 
 
-def launch_card(task: Task, config: dict | None, ready: list[str]) -> dict | None:
+def next_step_card(task: Task, config: dict | None, ready: list[str]) -> dict | None:
     """The card due for these ready jobs (IDs; due reviews included), or None.
 
     `{"jobs", "title", "changes", "first", "unreviewed", "snapshot", "unchanged", "text"}`;
     `unchanged` means every job was on the last recorded card and nothing changed, and `text` is
     then the one-line replacement."""
     start = start_card_due(task)
-    jobs = list(ready) if start else [i for i in ready if launch_label(task, i)]
+    jobs = list(ready) if start else [i for i in ready if next_step_label(task, i)]
     if not jobs:
         return None
-    labels = ["start of execution"] if start else list(dict.fromkeys(launch_label(task, i) for i in jobs))
+    labels = ["start of execution"] if start else list(dict.fromkeys(next_step_label(task, i) for i in jobs))
     last = task.info.get("last_card")
     snapshot = settings_snapshot(task, config)
     changes = change_lines(last["settings"], snapshot) if last else []
@@ -164,23 +162,23 @@ def launch_card(task: Task, config: dict | None, ready: list[str]) -> dict | Non
         blocks.append({"id": job_id, "model": model, "purpose": purpose(task, job_id)})
     unreviewed = unreviewed_flagged(task) if (start or task.phase == "planning") else []
     count = f"{len(jobs)} job" + ("" if len(jobs) == 1 else "s")
-    title = f"LAUNCH · {', '.join(labels)} · {count}"
+    title = f"NEXT STEP · {', '.join(labels)} · {count}"
     card = {"title": title, "jobs": blocks, "changes": changes, "first": last is None, "unreviewed": unreviewed,
             "snapshot": snapshot, "unchanged": unchanged, "start": start}
     if unchanged:
-        card["text"] = f"Launch card shown at {last['at'][11:16]}; no change."
+        card["text"] = f"Next-step card shown at {last['at'][11:16]}; no change."
         return card
     lines = [title, ""]
     for block in blocks:
-        lines += [f"  {block['id']}", wrap(block["model"], "  "), wrap(block["purpose"], "  "), ""]
+        lines += [f"  {block['id']}", f"  {block['model']}", f"  {block['purpose']}", ""]
     if last is None:
-        lines.append("First launch card of this task.")
+        lines.append("First next-step card of this task.")
     elif changes:
-        lines += ["Changed since the last card:"] + [wrap(c, "  ") for c in changes]
+        lines += ["Changed since the last card:"] + [f"  {c}" for c in changes]
     else:
         lines.append("No settings change since the last card.")
     if unreviewed:
-        lines.append(wrap("Flagged, but no job review will run: " + ", ".join(unreviewed)))
+        lines.append("Flagged, but no job review will run: " + ", ".join(unreviewed))
     card["text"] = "\n".join(lines)
     return card
 
@@ -197,7 +195,12 @@ def record_card(task: Task, card: dict) -> None:
 
 # ---------------------------------------------------------------- process map
 
-MAP_PHASES = (("💡 SHAPE   ", "shape"), ("📐 PLAN    ", "plan"), ("🔨 EXECUTE ", "execute"))
+# [OUT-MAP-LAYOUT]: each phase name on its own line, its steps on fixed lines (step keys), and an
+# arrow line between phases. A template: nothing counts columns.
+MAP_LAYOUT = (("💡 SHAPE", (("intake", "research", "spec"), ("spec-review", "spec approval"))),
+              ("📐 PLAN", (("planner", "plan-review", "plan approval"),)),
+              ("🔨 EXECUTE", (("jobs", "job-reviews"), ("integration-review", "final-validation"), ("finish",))))
+MAP_ARROW = "        ↓"
 
 
 def shaping_research(task: Task) -> list[str]:
@@ -217,15 +220,16 @@ def review_done(task: Task, target: str) -> bool:
 
 
 def map_steps(task: Task) -> list[dict]:
-    """Every step of the task with `phase`, `name`, `state` (done | off | none | pending), `gate`
-    and `note` (07-cli-spec §8 "Process map")."""
+    """Every step of the task with `phase`, `key`, `name`, `state` (done | off | none | pending
+    | current), `gate` and `note` ([OUT-MAP-LAYOUT])."""
     jobs, info = task.jobs, task.info
     points = task.settings["review"]["points"]
     approvals = info.get("approvals") or {}
     steps: list[dict] = []
 
-    def step(phase: str, name: str, state: str, gate: bool = False, note: str = "") -> None:
-        steps.append({"phase": phase, "name": name, "state": state, "gate": gate, "note": note})
+    def step(phase: str, name: str, state: str, gate: bool = False, note: str = "", key: str = "") -> None:
+        steps.append({"phase": phase, "key": key or name, "name": name, "state": state, "gate": gate,
+                      "note": note})
 
     has_spec = (task.dir / "specs.md").exists() or has_content(md_section(read_text(task.dir / "intent.md", "")
                                                                            or "", "Acceptance"))
@@ -258,7 +262,7 @@ def map_steps(task: Task) -> list[dict]:
     work = [i for i in planned if not jobs[i]["final"]]
     done = sum(1 for i in work if jobs[i]["status"] == "done")
     started = task.phase in ("executing", "done")
-    step("execute", f"jobs {done}/{len(work)}", "done" if started and done == len(work) else "pending")
+    step("execute", f"jobs {done}/{len(work)}", "done" if started and done == len(work) else "pending", key="jobs")
     from .reviews import planned_reviews, review_due  # late import: reviews imports this module's deps
     if not ({"selected-jobs", "all-jobs"} & set(points)):
         step("execute", "job-reviews", "off")
@@ -303,7 +307,7 @@ def step_text(step: dict) -> str:
     elif state in ("off", "none"):
         mark = "–"
     else:
-        mark = "⬥" if step["gate"] else "□"
+        mark = "□"
     text = f"{mark} {step['name']}"
     if state in ("off", "none"):
         text += f" ({state})"
@@ -313,11 +317,14 @@ def step_text(step: dict) -> str:
 
 
 def process_map(task: Task) -> dict:
-    steps = map_steps(task)
+    steps = {s["key"]: s for s in map_steps(task)}
     lines = []
-    for label, phase in MAP_PHASES:
-        lines.append(f"{label} " + " | ".join(step_text(s) for s in steps if s["phase"] == phase))
-    return {"steps": steps, "lines": lines, "text": "\n\n".join(lines)}
+    for label, rows in MAP_LAYOUT:
+        if lines:
+            lines.append(MAP_ARROW)
+        lines.append(label)
+        lines += [" | ".join(step_text(steps[key]) for key in row) for row in rows]
+    return {"steps": list(steps.values()), "lines": lines, "text": "\n".join(lines)}
 
 
 # ---------------------------------------------------------------- holds
@@ -326,8 +333,8 @@ def hold_notices(task: Task) -> list[str]:
     """The active holds with their release command ([HOLD-AFTER-JOB])."""
     out = []
     for job_id in active_holds(task):
-        out.append(wrap(f"Hold after {job_id}: {job_id} is done. Nothing new is dispatched. "
-                        "Report to the owner.") + "\n" + wrap(f"Release: {release_command(task, job_id)}", "  "))
+        out.append(f"Hold after {job_id}: {job_id} is done. Nothing new is dispatched. Report to the owner.\n"
+                   f"  Release: {release_command(task, job_id)}")
     return out
 
 
@@ -360,8 +367,8 @@ def cmd_hold(args) -> int:
         else:
             merged = " and merged" if task.jobs[job_id]["kind"] in WRITER_KINDS and task.uses_worktrees else ""
             when = f"Once {job_id} is done{merged}, nothing new is dispatched."
-        text = "\n".join([f"Hold after {job_id}.", wrap(when + " Running jobs finish and are collected."),
-                          wrap(f"Release: {release_command(task, job_id)}")])
+        text = "\n".join([f"Hold after {job_id}.", when + " Running jobs finish and are collected.",
+                          f"Release: {release_command(task, job_id)}"])
         emit(args, text, {"job": job_id, "hold": holds[job_id], "active": hold_active(task, job_id)})
     return EXIT_OK
 

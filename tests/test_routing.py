@@ -157,7 +157,7 @@ class ResolutionTests(RoutingTestCase):
         self.assertEqual(hard["difficulty"], "hard")
 
     def test_task_level_reviews_of_a_hard_task_dispatch_as_planned(self):
-        """INTEGRATION-REVIEW finding 3: next (and its launch card) and dispatch resolve the
+        """INTEGRATION-REVIEW finding 3: next (and its next-step card) and dispatch resolve the
         same column for the spec, plan and integration reviews of a hard task."""
         sb = self.sandbox(points=["spec", "plan", "integration"])
         task = sb.new_task("Hard", "hard")

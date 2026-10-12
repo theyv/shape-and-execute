@@ -20,14 +20,14 @@ small: read a result body only when a job is parked or failed, or lists disputed
 5. `sae start <task>` (add `--harness claude|codex` when this session runs in the other
    harness). It creates the task branch and the task worktree, prints its path and resumes a
    task that already executes. The home checkout keeps its branch; its uncommitted changes
-   only warn: they are not part of the task, so tell the user. Show the start launch card
+   only warn: they are not part of the task, so tell the user. Show the start next-step card
    it prints and wait (skip means not starting now).
 
 ## Loop
 
 Repeat until `sae next` reports that all jobs are done.
 
-1. `sae next <task>`. Read its reminder block every time. A launch card during execution (an
+1. `sae next <task>`. Read its reminder block every time. A next-step card during execution (an
    integration review, research): show it and continue, without waiting.
 2. For every ready job, up to the parallelism it offers: `sae dispatch <task> <ID>`, then spawn
    a subagent with the printed PROMPT, MODEL and EFFORT. When the output is a COMMAND (a review

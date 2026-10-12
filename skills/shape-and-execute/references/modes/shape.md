@@ -43,7 +43,7 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
    orchestration rather than in knowledge.
    `sae job add <task> <TOPIC-ID> --kind research --difficulty normal|hard`
 2. Fill `jobs/<TOPIC-ID>.md`: the questions, what is already known, the limits.
-3. `sae next <task>` prints the launch card for the batch. Show it and wait (ok, change,
+3. `sae next <task>` prints the next-step card for the batch. Show it and wait (ok, change,
    refine first, skip).
 4. For each job: `sae dispatch <task> <TOPIC-ID>`, then spawn a subagent with the printed
    prompt, model and effort. Run them in parallel.
@@ -104,15 +104,15 @@ goes there without one.
 Before approval, list your riskiest `[agent]` assumptions: the ones you made instead of the
 user.
 
-**Task difficulty.** Before the first review or planner launch, set the task's size and risk:
+**Task difficulty.** Before the first review or planner dispatch, set the task's size and risk:
 `sae set <task> task-difficulty=hard` for a large or risky task (default `normal`). The spec,
-plan and integration reviews and the planner run on it; the launch card shows it, and the
+plan and integration reviews and the planner run on it; the next-step card shows it, and the
 user may change it there.
 
 ## 6. Spec review (when `spec` is a review point and `specs.md` exists)
 
 When grilling is done: `sae check <task>`. A clean check makes `REVIEW-SPEC` due.
-`sae next <task>` prints its launch card: show it and wait (ok, change, refine first, skip;
+`sae next <task>` prints its next-step card: show it and wait (ok, change, refine first, skip;
 skip turns the `spec` review point off with `sae set`). Then `sae dispatch <task> REVIEW-SPEC`
 and spawn a subagent with the printed prompt, model and effort. When the printed output is a
 COMMAND (review in the other harness), run it in the background; when it fails, run the
