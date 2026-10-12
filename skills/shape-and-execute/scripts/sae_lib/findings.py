@@ -526,22 +526,71 @@ def adr_target_folder(root: Path, applies_to=()) -> Path:
     return root / (existing or ADR_DEFAULT_FOLDER)
 
 
+ADR_INDEX = "index.md"
+_ADR_INDEX_INTRO = ("Read this index first, then open only the records you need. One line per file: a link and its\n"
+                    "decision in one sentence. Whoever writes a record adds its line here.\n")
+
+
+def adr_index_summary(text: str) -> str:
+    """The first sentence of a record's Decision section, without provenance tags ([AMEND-ADR-INDEX])."""
+    match = re.search(r"(?ms)^## Decision[ \t]*\n(.*?)(?=^## |\Z)", text)
+    body = re.sub(r"(?s)<!--.*?-->", " ", match.group(1)) if match else ""
+    body = " ".join(body.split()).lstrip("- ")
+    # a leading provenance clause: "[joint] ", "Idea [human], design [joint]: ", "[agent], refined [human]: "
+    body = re.sub(r"^(?:[\w ]*\[(?:human|joint|agent)\][,:]?\s*)+", "", body)
+    body = body.split(" - ")[0].strip()  # stop before an inline bullet list
+    sentence = re.match(r"(.+?[.!?])(?=\s|$)", body)
+    summary = sentence.group(1) if sentence else body
+    return summary[:1].upper() + summary[1:]
+
+
+def adr_index_line(name: str, text: str) -> str:
+    """One index line: `- [<title>](<file>) — <decision in one sentence>`."""
+    title = split_frontmatter(text)[0].get("title") or first_heading(text) or Path(name).stem
+    summary = adr_index_summary(text)
+    return f"- [{title}]({name})" + (f" — {summary}" if summary else "")
+
+
+def add_to_adr_index(folder: Path, name: str, text: str) -> Path:
+    """Add a record's line to the folder's index.md, after the last record line; create the index
+    (heading, `_intent.md` line when that file exists) when the folder has none."""
+    index = folder / ADR_INDEX
+    if index.exists():
+        lines = read_text(index).splitlines()
+    else:
+        lines = [f"# Index: {folder.name}", "", *_ADR_INDEX_INTRO.splitlines(), ""]
+        intent = folder / "_intent.md"
+        if intent.exists():
+            lines.append(f"- [{first_heading(read_text(intent)) or 'Intent'}](_intent.md)"
+                         " — Why the code exists and what it must do; read it first.")
+    if any(f"]({name})" in line for line in lines):
+        return index
+    links = [i for i, line in enumerate(lines) if re.match(r"- \[.*\]\([^/)]+\.md\)", line)]
+    at = links[-1] + 1 if links else len(lines)
+    lines.insert(at, adr_index_line(name, text))
+    write_atomic(index, "\n".join(lines).rstrip("\n") + "\n")
+    return index
+
+
 def cmd_adr_accept(args) -> int:
     root, _ = find_root()
     draft = find_draft(root, args.draft)
     target_dir = adr_target_folder(root, split_frontmatter(read_text(draft))[0].get("applies-to"))
-    first = not (target_dir.is_dir() and any(p.suffix == ".md" for p in target_dir.iterdir()))
+    first = not (target_dir.is_dir() and any(p.suffix == ".md" and p.name != ADR_INDEX
+                                             for p in target_dir.iterdir()))
     target = target_dir / draft.name
-    if target.exists():
+    if target.exists() or draft.name == ADR_INDEX:
         fail(EXIT_USAGE, f"{rel(target, root)} already exists; rename the draft first.")
     target_dir.mkdir(parents=True, exist_ok=True)
-    write_atomic(target, _replace_front(read_text(draft), "status", "accepted"))
+    text = _replace_front(read_text(draft), "status", "accepted")
+    write_atomic(target, text)
+    index = add_to_adr_index(target_dir, target.name, text)
     os.remove(draft)
     remember_repo_safely(root)
     note = ("\nFirst record in this folder: propose one line for the agent instructions "
             "that points to it.") if first else ""
-    emit(args, f"Accepted: {rel(target, root)} (uncommitted){note}",
-         {"file": str(target), "first": first})
+    emit(args, f"Accepted: {rel(target, root)} (uncommitted)\nIndex line added: {rel(index, root)}{note}",
+         {"file": str(target), "index": str(index), "first": first})
     return EXIT_OK
 
 
@@ -590,7 +639,8 @@ def register_adr(sub, command):
                 "Folder: the ADR rule (adr_rules in .tasks/repo/profile.md) with the longest path prefix\n"
                 "that matches the draft's applies-to paths; refused when the paths match rules of different\n"
                 "folders. Without a matching rule: adr_folder in the profile, else an existing ADR folder,\n"
-                "else docs/decisions/. Leaves the change uncommitted for the owner.",
+                "else docs/decisions/. Adds the record's line to index.md of that folder and creates the\n"
+                "index when missing. Leaves the change uncommitted for the owner.",
                 ["adr accept .tasks/adr/2026-10-10-status-is-cached-for-60-s.md"], [0, 1], cmd_adr_accept)
     p.add_argument("draft", help="path or file name of the draft")
     p = command(adr_sub, "reject", "Reject a draft: delete it, log a line in adr/closed.md.",

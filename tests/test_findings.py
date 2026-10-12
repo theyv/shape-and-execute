@@ -80,6 +80,7 @@ class DecisionDraftTests(SaeTestCase):
         self.assertIn("docs/", sb.git("status", "--porcelain"))  # uncommitted
         # an existing ADR folder wins over the default
         (sb.repo / "docs" / "decisions" / path.name).unlink()
+        (sb.repo / "docs" / "decisions" / "index.md").unlink()
         (sb.repo / "docs" / "decisions").rmdir()
         (sb.repo / "doc" / "adr").mkdir(parents=True)
         second = Path(sb.json("adr", "new", "drafts", "Second", "--type", "architecture")["file"])
