@@ -54,8 +54,17 @@ def cmd_set(args) -> int:
         routing_changed = False
         for pair in args.pairs:
             if "=" not in pair:
-                fail(EXIT_USAGE, f"Expected key=value, got {pair!r}. Keys: {', '.join(SET_KEYS)}, {ROUTING_KEYS_HELP}.")
+                fail(EXIT_USAGE, f"Expected key=value, got {pair!r}. Keys: {', '.join(SET_KEYS)}, ask-signal, "
+                                 f"{ROUTING_KEYS_HELP}.")
             key, value = pair.split("=", 1)
+            if key == "ask-signal":  # a task-only key ([ASK-SETTING]); unset follows the interaction mode
+                if value not in ("on", "off", "unset"):
+                    fail(EXIT_USAGE, "ask-signal is on, off or unset.")
+                if value == "unset":
+                    new.pop("ask_signal", None)
+                else:
+                    new["ask_signal"] = value
+                continue
             if is_routing_key(key):
                 routing = new.setdefault("routing", {})
                 apply_routing_key(routing, key, value)
@@ -64,7 +73,7 @@ def cmd_set(args) -> int:
                 routing_changed = True
                 continue
             if key not in SET_KEYS:
-                fail(EXIT_USAGE, f"Unknown key {key!r}. Keys: {', '.join(SET_KEYS)}, {ROUTING_KEYS_HELP}.")
+                fail(EXIT_USAGE, f"Unknown key {key!r}. Keys: {', '.join(SET_KEYS)}, ask-signal, {ROUTING_KEYS_HELP}.")
             path = SET_KEYS[key]
             node = new
             for part in path[:-1]:
@@ -353,7 +362,9 @@ def register_set(sub, command):
                 f"({'|'.join(LEVELS)}); review (comma list of {', '.join(REVIEW_POINTS)}; or off);\n"
                 f"reviewer ({'|'.join(REVIEW_PROVIDERS)}; cross-harness: the harness that does not orchestrate);\n"
                 "max-verify-failures (1-10; change it only when the user asks); task-difficulty (normal|hard: the\n"
-                "planner and the spec, plan and integration reviews).\n"
+                "planner and the spec, plan and integration reviews); ask-signal (on|off|unset: whether sae next\n"
+                "reminds the orchestrator to record its questions to the owner; unset is on in full-auto, auto and\n"
+                "critical-only, off in collaborative and interactive).\n"
                 f"Routing keys (task level; inherit removes the task value): {ROUTING_KEYS_HELP}.\n"
                 "Run it only on the user's word. The next dispatch uses the new values. Prints the settings card.",
                 ["set claims-status execution=economy", "set claims-status review=spec,plan,selected-jobs,integration reviewer=cross-harness",
