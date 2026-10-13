@@ -110,6 +110,25 @@ class GitLinesTests(unittest.TestCase):
         git(self.repo, "merge", "-q", "--no-edit", "task/x")
         self.assertEqual(git_lines(self.repo, self.info), expected, "not +0 −0 once the base holds the tip")
 
+    def test_merged_after_taking_newer_base_commits_counts_only_the_task_change(self):
+        # the task takes the base's newer commit, then merges: c.txt is not the task's change
+        own = shortstat(self.repo, "main", "task/x")
+        git(self.repo, "checkout", "-q", "task/x")
+        git(self.repo, "merge", "-q", "--no-edit", "main")
+        git(self.repo, "checkout", "-q", "main")
+        (self.repo / "d.txt").write_text("d\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-qm", "more elsewhere")
+        git(self.repo, "merge", "-q", "--no-edit", "task/x")
+        self.assertEqual(git_lines(self.repo, self.info), own)
+
+    def test_fast_forward_merge_is_missing_not_wrong(self):
+        git(self.repo, "checkout", "-q", "task/x")
+        git(self.repo, "merge", "-q", "--no-edit", "main")
+        git(self.repo, "checkout", "-q", "main")
+        git(self.repo, "merge", "-q", "--ff-only", "task/x")
+        self.assertIsNone(git_lines(self.repo, self.info), "the history no longer separates the task's commits")
+
     def test_deleted_base_branch_uses_the_start_commit(self):
         git(self.repo, "checkout", "-q", "task/x")
         git(self.repo, "branch", "-qD", "main")
