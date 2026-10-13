@@ -5,8 +5,10 @@ Used by every test_<area>.py in this folder. Standard library only.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -100,13 +102,83 @@ def write_codex_catalog(codex_home: Path, catalog=None) -> None:
     (codex_home / "models_cache.json").write_text(json.dumps({"models": models}))
 
 
+GIT_IDENTITY = {"GIT_AUTHOR_NAME": "Tester", "GIT_AUTHOR_EMAIL": "t@example.com",
+                "GIT_COMMITTER_NAME": "Tester", "GIT_COMMITTER_EMAIL": "t@example.com",
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"}
+
+
+def clean_env() -> dict:
+    """os.environ without the owner's git, harness and sae variables, plus the test git identity."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("CODEX_", "CLAUDE", "SAE_", "GIT_"))}
+    env.update(GIT_IDENTITY)
+    return env
+
+
+_base_repo: Path | None = None
+
+
+def base_repo() -> Path:
+    """The throwaway repository every git Sandbox starts from: built once per process, copied per test.
+
+    One commit (README.md, app.txt) on `main`, test identity in the repository config. Its
+    core.hooksPath points to an empty folder of the base; each Sandbox repoints it to its own.
+    """
+    global _base_repo
+    if _base_repo is None:
+        root = Path(tempfile.mkdtemp(prefix="sae-base-")).resolve()
+        atexit.register(shutil.rmtree, root, True)
+        repo, hooks, env = root / "repo", root / "hooks", clean_env()
+        repo.mkdir()
+        hooks.mkdir()
+
+        def git(*args):
+            proc = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, env=env)
+            if proc.returncode != 0:
+                raise AssertionError(f"git {args} failed: {proc.stderr}")
+
+        git("init", "-q", "-b", "main")
+        git("config", "user.name", "Tester")
+        git("config", "user.email", "t@example.com")
+        git("config", "core.hooksPath", str(hooks))
+        (repo / "README.md").write_text("# demo\n")
+        (repo / "app.txt").write_text("line one\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "init")
+        _base_repo = repo
+    return _base_repo
+
+
+_pycache: Path | None = None
+
+
+def sae_pycache() -> Path:
+    """A bytecode cache of sae for PYTHONPYCACHEPREFIX: built once per process, outside the skill.
+
+    sae never writes bytecode, so every call compiled all of sae_lib again; reading it from
+    here makes each sae call about a third faster. sae still runs as a subprocess.
+    """
+    global _pycache
+    if _pycache is None:
+        root = Path(tempfile.mkdtemp(prefix="sae-pycache-")).resolve()
+        atexit.register(shutil.rmtree, root, True)
+        warm = ("import importlib, pkgutil, sys; sys.path.insert(0, sys.argv[1]); import sae_lib; "
+                "[importlib.import_module('sae_lib.' + m.name) for m in pkgutil.iter_modules(sae_lib.__path__)]")
+        subprocess.run([sys.executable, "-c", warm, str(SCRIPTS)], check=True,
+                       env={**clean_env(), "PYTHONPYCACHEPREFIX": str(root)})
+        _pycache = root
+    return _pycache
+
+
 class Sandbox:
     """A repository, a user config and a worktree root in one temporary folder."""
 
     def __init__(self, tmp: Path, git: bool = True, points=None, provider="claude", write_config=True):
         self.tmp = tmp
         self.repo = tmp / "repo"
-        self.repo.mkdir()
+        if git:
+            shutil.copytree(base_repo(), self.repo, symlinks=True)
+        else:
+            self.repo.mkdir()
         self.worktrees = tmp / "worktrees"
         self.worktrees.mkdir()
         self.config = tmp / "config.json"
@@ -117,23 +189,13 @@ class Sandbox:
         self.hooks.mkdir()
         if write_config:
             self.config.write_text(json.dumps(config_for(self.worktrees, points, provider)))
-        self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(("CODEX_", "CLAUDE", "SAE_", "GIT_"))}
+        self.env = clean_env()
         self.viewer_state = tmp / "viewer-state"  # the viewer server's state folder, never the owner's
         self.env.update({"SAE_CONFIG": str(self.config), "SAE_HARNESS": "claude", "CODEX_HOME": str(self.codex_home),
                          "SAE_STATE_DIR": str(self.viewer_state), "SAE_VIEWER": "off",
-                         "GIT_AUTHOR_NAME": "Tester", "GIT_AUTHOR_EMAIL": "t@example.com",
-                         "GIT_COMMITTER_NAME": "Tester", "GIT_COMMITTER_EMAIL": "t@example.com",
-                         "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"})
+                         "PYTHONPYCACHEPREFIX": str(sae_pycache())})
         if git:
-            self.git("init", "-q", "-b", "main")
-            self.git("config", "user.name", "Tester")
-            self.git("config", "user.email", "t@example.com")
             self.git("config", "core.hooksPath", str(self.hooks))
-            (self.repo / "README.md").write_text("# demo\n")
-            (self.repo / "app.txt").write_text("line one\n")
-            self.git("add", ".")
-            self.git("commit", "-q", "-m", "init")
 
     def git(self, *args, cwd: Path | None = None) -> str:
         proc = subprocess.run(["git", *args], cwd=cwd or self.repo, capture_output=True, text=True, env=self.env)
