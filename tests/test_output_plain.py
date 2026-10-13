@@ -80,7 +80,7 @@ class MapLayoutTests(SaeTestCase):
     def test_status_and_next_print_the_map_template_in_planning_and_executing(self):
         sb = self.sandbox(points=["plan"])
         task = sb.new_task("Map", "mapplan")
-        sb.sae("approve", "mapplan", "spec")
+        sb.approve_spec("mapplan")
         sb.sae("job", "add", "mapplan", "ONE", "--kind", "implementation")
         sb.job_file(task, "ONE")
         for command in ("status", "next"):
@@ -125,7 +125,7 @@ class NextStepCardTests(SaeTestCase):
     def test_header_reads_next_step_and_a_long_purpose_prints_whole(self):
         sb = self.sandbox(points=[])
         task = sb.new_task("Card", "nextstep")
-        sb.sae("approve", "nextstep", "spec")
+        sb.approve_spec("nextstep")
         sb.sae("job", "add", "nextstep", "PLAN", "--kind", "planning")
         purpose = ("Plan the jobs of the status page so that every claim shows its current state and the "
                    "next step the customer has to take, in plain words.")
@@ -149,7 +149,7 @@ class PlainProseTests(SaeTestCase):
     def test_start_keeps_the_git_command_for_an_existing_branch_in_one_piece(self):
         sb = self.sandbox()
         task = sb.new_task("Branch exists already for this long task name", "branch-exists-already-long")
-        sb.sae("approve", "branch-exists-already-long", "spec")
+        sb.approve_spec("branch-exists-already-long")
         sb.sae("job", "add", "branch-exists-already-long", "ONE", "--kind", "implementation")
         sb.job_file(task, "ONE")
         sb.sae("approve", "branch-exists-already-long", "plan")
