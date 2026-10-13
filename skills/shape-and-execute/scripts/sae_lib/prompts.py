@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from pathlib import Path
@@ -204,18 +205,70 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
     return "\n".join(line for line in lines if line)
 
 
+# [REVIEW-TOKENS]: the COMMAND keeps the harness's machine-readable output here, next to the result file.
+REVIEW_OUTPUT_SUFFIX = {"codex": ".codex.jsonl", "claude": ".claude.json"}
+# The Claude COMMAND writes the review text (`result` of the JSON output) to the result file.
+CLAUDE_RESULT_TEXT = ("import json, sys; text = json.load(open(sys.argv[1]))['result']; "
+                      "sys.stdout.write(text if text.endswith('\\n') else text + '\\n')")
+
+
+def review_output_file(task: Task, job_id: str, harness: str) -> Path:
+    """Where the external review COMMAND for `harness` keeps the harness's JSON output."""
+    result = result_file(task, job_id)
+    return result.with_name(result.stem + REVIEW_OUTPUT_SUFFIX[harness])
+
+
+def review_output_tokens(path: Path, harness: str) -> int | None:
+    """[REVIEW-TOKENS] Every input token (cached included) plus output tokens, summed over turns;
+    None when the output is missing, unreadable or has no usage."""
+    text = read_text(path)
+    if not text:
+        return None
+    if harness == "codex":
+        usages = []
+        for line in text.splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(event, dict) and event.get("type") == "turn.completed":
+                usages.append((event.get("usage"), ("input_tokens", "output_tokens")))
+    else:
+        try:
+            output = json.loads(text)
+        except ValueError:
+            return None
+        if not isinstance(output, dict):
+            return None
+        usages = [(output.get("usage"), ("input_tokens", "cache_creation_input_tokens",
+                                         "cache_read_input_tokens", "output_tokens"))]
+    total, found = 0, False
+    for usage, keys in usages:
+        if not isinstance(usage, dict):
+            continue
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                total, found = total + value, True
+    return total if found else None
+
+
 def external_review_command(task: Task, job_id: str, model: dict, prompt: str) -> str:
     """Print one shell line; printf restores the literal newlines in the review prompt."""
     result = result_file(task, job_id)
     result.parent.mkdir(parents=True, exist_ok=True)
+    output = review_output_file(task, job_id, model["harness"])
     q = shlex.quote
     escaped_prompt = prompt.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
     prompt_arg = '"$(printf %b ' + q(escaped_prompt) + ')"'
+    clean = f"rm -f {q(str(result))} {q(str(output))}"
     if model["harness"] == "codex":
-        return (f"rm -f {q(str(result))} && codex exec -m {q(model['model'])} "
+        return (f"{clean} && codex exec -m {q(model['model'])} "
                 f"-c model_reasoning_effort={q(model['effort'])} -s read-only "
-                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral {prompt_arg} < /dev/null")
-    return (f"cd {q(str(task.root))} && claude -p {prompt_arg} --model {q(model['model'])} "
+                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral --json {prompt_arg} "
+                f"< /dev/null > {q(str(output))}")
+    return (f"cd {q(str(task.root))} && {clean} && claude -p {prompt_arg} --output-format json "
+            f"--model {q(model['model'])} "
             f"--effort {q(model['effort'])} --permission-mode dontAsk "
             f"--allowedTools {q('Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)')} "
-            f"> {q(str(result))}")
+            f"> {q(str(output))} && python3 -c {q(CLAUDE_RESULT_TEXT)} {q(str(output))} > {q(str(result))}")

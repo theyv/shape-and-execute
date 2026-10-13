@@ -31,7 +31,7 @@ send the printed message), then check again.
 A clean `sae check` makes `REVIEW-PLAN` due. `sae next <task>` prints its next-step card: show it
 and wait (skip turns the `plan` review point off with `sae set`). Dispatch it. When the printed
 output is a COMMAND (review in the other harness), run it in the background; when it fails,
-run the IF IT FAILS line printed with it. Collect it.
+run the IF IT FAILS line printed with it. Collect it; `sae` reads the COMMAND's tokens itself.
 
 For `changes-required`, resume the done planner:
 `sae dispatch <task> PLAN --resume --reason "plan review: changes required"`, send the printed
