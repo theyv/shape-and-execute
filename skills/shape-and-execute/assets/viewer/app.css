@@ -3,7 +3,7 @@
 --acc:#3ecf8e;--acc-bg:#006239;--acc-bd:rgba(62,207,142,.45);--acc-ink:#fafafa;--scrim:rgba(0,0,0,.6);
 --run:#72adff;--run-b:rgba(72,140,255,.15);--done:#b4a8ff;--done-b:rgba(140,122,255,.15);--park:#f0b35a;--park-b:rgba(240,168,70,.15);
 --fail:#ff8a7e;--fail-b:rgba(255,92,80,.15);--pend:#8e8e8e;--pend-b:rgba(255,255,255,.06);--ready:#ededed;--ready-b:rgba(255,255,255,.07);--ready-l:rgba(255,255,255,.28);
---pass:#3ecf8e;--pass-b:rgba(62,207,142,.14);--edge-hi:#72adff;--frame-wait:color-mix(in srgb,var(--fail) 60%,var(--bg));--added-hatch:rgba(255,255,255,.06);
+--pass:#3ecf8e;--pass-b:rgba(62,207,142,.14);--edge-hi:#72adff;--frame-wait:color-mix(in srgb,var(--fail) 60%,var(--bg));--frame-ask:color-mix(in srgb,var(--park) 70%,var(--bg));--added-hatch:rgba(255,255,255,.06);
 --ph-s:#d99cc4;--ph-p:#6dc0cc;--ph-e:var(--run);--ink-md:#d4d4d4;
 --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:dark;
 /* fixed palette: model and tier by place (blue, yellow, orange, red, purple, brown), effort by word, job kind borders */
@@ -14,7 +14,7 @@
 --acc:#1a9a62;--acc-bg:#1f9d66;--acc-bd:#178a58;--acc-ink:#fff;--scrim:rgba(0,0,0,.3);
 --run:#1f64c4;--run-b:rgba(31,100,196,.1);--done:#5b45c9;--done-b:rgba(91,69,201,.1);--park:#955a00;--park-b:rgba(214,140,20,.14);
 --fail:#c0322a;--fail-b:rgba(210,55,45,.1);--pend:#6b6b6b;--pend-b:rgba(0,0,0,.05);--ready:#171717;--ready-b:rgba(0,0,0,.03);--ready-l:rgba(0,0,0,.3);
---pass:#1a8a58;--pass-b:rgba(26,154,98,.1);--edge-hi:#1f64c4;--frame-wait:color-mix(in srgb,var(--fail) 65%,var(--bg));--added-hatch:rgba(0,0,0,.055);
+--pass:#1a8a58;--pass-b:rgba(26,154,98,.1);--edge-hi:#1f64c4;--frame-wait:color-mix(in srgb,var(--fail) 65%,var(--bg));--frame-ask:color-mix(in srgb,var(--park) 70%,var(--bg));--added-hatch:rgba(0,0,0,.055);
 --ph-s:#a3437c;--ph-p:#127c8a;--ink-md:#2e2e2e;color-scheme:light;
 --c0:#2563c9;--c1:#a88300;--c2:#c8640f;--c3:#c73a2e;--c4:#7a46d6;--c5:#8a5a2b;--cx:#9a9a9a;--tint:13%;
 --e-low:#66707b;--e-medium:#16877e;--e-high:#3f8a1c;--e-xhigh:#c23d8c;--e-max:#8a2fb0;

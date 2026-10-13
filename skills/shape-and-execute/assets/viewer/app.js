@@ -215,7 +215,7 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   if(t)h+=slimHead(t)+headerCard(t); // task-views.js: the step bar and key stats ([HEADER-SLIM]); settings.js: the settings card, editable in place
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0],n=cnt[x[0]];return'<button role="tab" id="tab-'+x[0]+'"'+(n===0?' class="zero"':"")+' aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(n!=null?"<i>"+n+"</i>":"")+"</button>"}).join("")+"</div>";
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
-  m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
+  m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
   if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth;
   // the Plan graph canvas applies its stored pan and zoom to the new elements ([AMEND-4])
@@ -229,9 +229,14 @@ function renderPanel(){var p=$("#panel"),t=T(),h="",x='<button class="btn ic" da
   p.hidden=!h;p.innerHTML=h}
 var fkey=x=>x&&x.dataset?(x.dataset.act||"")+"|"+(x.dataset.id||x.dataset.tab||x.dataset.f||x.dataset.d||x.dataset.m||x.dataset.k||"")+"|"+(x.dataset.v||""):"",
  refocus=(root,k)=>{if(k&&k!=="||"){var e=[...root.querySelectorAll("[data-act]")].find(x=>fkey(x)===k);if(e)try{e.focus({preventScroll:true})}catch(_){}}};
+// [WAIT-TAB-TITLE]: while the task in view waits for the owner (the server's `waiting`, asks.owner_wait),
+// the title starts with "● Needs you" and the favicon has a dot
+var needsYou=t=>!!(t&&t.waiting&&t.waiting.length),
+ signal=()=>{var it=IDX&&IT(S.task),w=needsYou(it&&T()),ic=$("#icon"),href=w?"favicon-wait.svg":"favicon.svg";
+  D.title=(w?"● Needs you · ":"")+(it?it.title+" · "+IDX.repo:"sae");if(ic&&ic.getAttribute("href")!==href)ic.setAttribute("href",href)};
 function render(){var k=fkey(D.activeElement),ps=$("#panel").scrollTop;
   try{renderTop();renderSide();renderMain();renderPanel()}catch(e){$("#main").innerHTML='<div class="wrap"><p class="mut">This view could not be drawn: '+esc(e&&e.message||e)+". The page keeps reading new data.</p></div>"}
-  $("#panel").scrollTop=ps;refocus(D,k)}
+  signal();$("#panel").scrollTop=ps;refocus(D,k)}
 
 /* ---------- state, hash, polling ---------- */
 function readHash(){var q={},dec=v=>{try{return decodeURIComponent(v)}catch(e){return""}};
@@ -252,13 +257,15 @@ var enc=encodeURIComponent,
 function loadTask(cb){var id=S.task,rk=S.repo;if(!id||!rk)return cb&&cb();
   api("/api/task?repo="+enc(rk)+"&task="+enc(id),(t,err)=>{try{if(S.task!==id||S.repo!==rk)return;
     var ch=(t?t.version:"")!==(tsig[id]||"")||err!==(MISS[id]||"");if(t){TASKS[id]=t;tsig[id]=t.version}MISS[id]=err;if(ch)render()}finally{cb&&cb()}})}
-var fastPoll=()=>!!(IDX&&IDX.tasks.some(t=>t.phase==="executing"));
+var fastPoll=()=>!!(IDX&&IDX.tasks.some(t=>t.phase==="executing")),
+ // a hidden tab keeps polling, slower, so the title and favicon change while the owner looks at another tab ([WAIT-TAB-TITLE])
+ pollDelay=()=>D.hidden?(fastPoll()?15000:60000):fastPoll()?3000:30000;
 // a newer poll (a project switch starts one) supersedes the older: its answers are dropped, never drawn
-function poll(){clearTimeout(timer);if(D.hidden)return;var seq=++PSEQ;
+function poll(){clearTimeout(timer);var seq=++PSEQ;
   api("/api/projects",(p,err)=>{if(seq!==PSEQ)return;var rk=S.repo;if(p){if(p.version!==psig){psig=p.version;PROJ=p.projects}if(!PROJ.some(x=>x.key===S.repo))S.repo=(PROJ[0]||{}).key||null}
     if(!S.repo){IDX=null;ERR=err;render();return sched()}if(S.repo!==rk){IDX=null;isig=""}var asked=S.repo;
     api("/api/repo?repo="+enc(asked),(d,err2)=>{if(seq!==PSEQ||S.repo!==asked)return;try{ERR=err2;if(d&&d.version!==isig){isig=d.version;IDX=d;pickTask();writeHash()}if(d||err2)render()}finally{loadTask(sched)}})})}
-function sched(){clearTimeout(timer);if(!D.hidden)timer=setTimeout(poll,fastPoll()?3000:30000)}
+function sched(){clearTimeout(timer);timer=setTimeout(poll,pollDelay())}
 function go(patch){var tk=S.task,rk=S.repo;Object.assign(S,patch);writeHash();if(S.repo!==rk){IDX=null;isig="";render();return poll()}render();if(S.task!==tk)loadTask()}
 function copy(text,btn){var o=btn.innerHTML,done=()=>{btn.innerHTML=btn.className==="cpi"?"✓":"Copied";setTimeout(()=>{btn.innerHTML=o},1200)},
   fb=()=>{var a=D.createElement("textarea"),ok=false;a.value=text;a.style.cssText="position:fixed;opacity:0";(btn.closest("dialog")||D.body).appendChild(a);a.select();try{ok=D.execCommand("copy")}catch(e){}a.remove();ok?done():W.prompt("Copy this command:",text)};
@@ -310,7 +317,7 @@ D.addEventListener("focusout",()=>{var tp=$("#tip");if(tp._kb){tp.hidden=true;tp
 D.addEventListener("mouseleave",()=>{$("#tip").hidden=true});
 W.addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(()=>{if(S.tab==="timeline")renderMain()},150)});
 W.addEventListener("hashchange",()=>{var tk=S.task,rk=S.repo;readHash();if(S.repo!==rk){IDX=null;isig="";render();return poll()}pickTask();render();if(S.task!==tk)loadTask()});
-D.addEventListener("visibilitychange",()=>{if(D.hidden)clearTimeout(timer);else poll()});
+D.addEventListener("visibilitychange",()=>{if(D.hidden)sched();else poll()});
 setInterval(()=>D.querySelectorAll("[data-ago]").forEach(e=>{e.textContent=ago(e.dataset.ago)}),30000);
 
 // classic scripts: task-views.js and settings.js are loaded when the document is parsed
