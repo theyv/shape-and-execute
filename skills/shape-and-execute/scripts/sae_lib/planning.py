@@ -42,7 +42,7 @@ from .config import (
 )
 from .gitutil import find_root, git_user
 from .graph import last_round, requires_changes, run_check
-from .routing import TASK_TARGETS, override_key, planned_review_target, resolve_model
+from .routing import PLANNER_ID, TASK_TARGETS, override_key, planned_planner, planned_review_target, resolve_model
 from .session_tokens import record_session_snapshot
 from .tasks import Task, is_generated, job_file, new_job, open_task, template
 
@@ -305,11 +305,12 @@ def cmd_job_override(args) -> int:
             key = f"REVIEW-{args.id}"
         elif args.id in task.jobs:
             key = override_key(task, args.id)
-        elif planned_review_target(task, args.id) in TASK_TARGETS:
-            key = args.id
+        elif planned_review_target(task, args.id) in TASK_TARGETS or (args.id == PLANNER_ID and planned_planner(task)):
+            key = args.id  # a planned review, or the planned planner: it applies once the job is added
         else:
             fail(EXIT_USAGE, f"No job {args.id} in task {task.id}. A planned review is REVIEW-SPEC, REVIEW-PLAN or "
-                             f"REVIEW-INTEGRATION; the review of a job is <ID> --review.")
+                             f"REVIEW-INTEGRATION; the review of a job is <ID> --review; the planned planner is "
+                             f"{PLANNER_ID}.")
         covered = [i for i, j in task.jobs.items() if override_key(task, i) == key]
         busy = [i for i in covered if task.jobs[i]["status"] == "running"
                 or (task.jobs[i]["kind"] != "review" and task.jobs[i]["status"] != "pending")]
@@ -441,8 +442,8 @@ def register_job(sub, command):
     p.add_argument("id")
     p.add_argument("--reason", required=True)
     p = command(job_sub, "override", "Run one job, or its review, on another harness, model or effort.",
-                "Only on the user's word. <ID> is a job or a planned review (REVIEW-SPEC, REVIEW-PLAN,\n"
-                "REVIEW-INTEGRATION); --review means the review of job <ID> (all its rounds). Any subset of --harness,\n"
+                "Only on the user's word. <ID> is a job, a planned review (REVIEW-SPEC, REVIEW-PLAN,\n"
+                "REVIEW-INTEGRATION) or the planned planner PLAN (before it is added); --review means the review of job <ID> (all its rounds). Any subset of --harness,\n"
                 "--model and --effort; the rest comes from routing for the override's harness. The model must be in\n"
                 "the harness's model list and accept the effort. Refused for a running or finished job. sae dispatch\n"
                 "uses it and prints it as an override; --clear returns the job to routing.",
