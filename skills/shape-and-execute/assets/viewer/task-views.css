@@ -42,7 +42,7 @@
 /* rows: a review round or a fix job below the separator; the glyph's tone says its state, the label and tooltip say it in words */
 .rw{cursor:pointer}.rw:focus{outline:none}.rw.planned{cursor:default;opacity:var(--g-fade)}
 .rw .hitr{fill:transparent}.rw[role=button]:hover .hitr{fill:var(--hl)}.rw.sel .hitr{fill:var(--s3)}.rw:focus-visible .hitr{stroke:var(--acc);stroke-width:1.5}
-.nd .rw .rl{font-family:var(--mono);fill:var(--ink2)}.nd .rw .rg{fill:var(--c,var(--ink3))}.lgr{cursor:help}.lgr i{font-style:normal;color:var(--c)}
+.nd .rw .rl{font-family:var(--mono);fill:var(--ink2)}.nd .rw .rg{fill:var(--c,var(--ink3));font-size:13px}.lgr{cursor:help}.lgr i{font-style:normal;color:var(--c)}
 .t-planned{--c:var(--ink2)}.t-pending{--c:var(--pend)}.t-ready{--c:var(--ready)}.t-running{--c:var(--run)}.t-done{--c:var(--done)}.t-parked,.t-park{--c:var(--park)}.t-failed,.t-fail{--c:var(--fail)}.t-pass{--c:var(--pass)}.t-mut{--c:var(--ink3)}
 .rw .rg.pulse{animation:rpulse var(--g-pulse) ease-in-out infinite}@keyframes rpulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.nd.k-running>.nb,.nd.k-fixing>.nb,.rw .rg.pulse{animation:none}}
