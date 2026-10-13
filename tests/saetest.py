@@ -35,8 +35,19 @@ CODEX_CATALOG = [                                      # $CODEX_HOME/models_cach
 # The tiers of the old rungs (L1-L3) plus L4, and the old level maps as tier cells.
 LEVEL_TIERS = {"economy": {"mechanical": "L1", "normal": "L1", "hard": "L2"},
                "balanced": {"mechanical": "L1", "normal": "L2", "hard": "L3"},
-               "max": {"mechanical": "L2", "normal": "L3", "hard": "L3"}}
-REVIEW_TIERS = {"economy": "L2", "balanced": "L2", "max": "L3"}
+               "premium": {"mechanical": "L2", "normal": "L3", "hard": "L3"}}
+REVIEW_TIERS = {"economy": "L2", "balanced": "L2", "premium": "L3"}
+
+
+def old_level_names(data):
+    """`data` as an older sae wrote it: the level premium was called max ([DECISION-LEVEL-PREMIUM])."""
+    if isinstance(data, dict):
+        return {("max" if k == "premium" else k): old_level_names(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [old_level_names(v) for v in data]
+    return "max" if data == "premium" else data
+
+
 # The spec that Sandbox.approve_spec writes when a test task has none; job files cover its requirement.
 TEST_REQ = "TEST-REQ"
 MIN_SPEC = f"# Spec\n\n## Requirements\n\n### [{TEST_REQ}] The test task works\nAcceptance:\n- [ ] it works\n"
@@ -52,7 +63,7 @@ def routing_block(tiers: dict) -> dict:
 
 
 def config_for(worktrees: Path, points=None, provider="claude", codex=True) -> dict:
-    """A schema-2 user config with fake models; review max → L3, execution balanced + hard → L3."""
+    """A schema-2 user config with fake models; review premium → L3, execution balanced + hard → L3."""
     models = {"claude": [{"model": m, "family": True, "enabled": True, "efforts": list(EFFORTS)}
                          for m in CLAUDE_MODELS]}
     routing = {"claude": routing_block({"L1": {"model": "c-small", "effort": "medium"},
@@ -70,7 +81,8 @@ def config_for(worktrees: Path, points=None, provider="claude", codex=True) -> d
     return {
         "schema": 2, "models": models, "routing": routing,
         "defaults": {"interaction": "critical-only",
-                     "levels": {"research": "balanced", "planning": "max", "execution": "balanced", "review": "max"},
+                     "levels": {"research": "balanced", "planning": "premium", "execution": "balanced",
+                                "review": "premium"},
                      "review": {"points": points if points is not None else [], "provider": provider}},
         "projects": {},
         "language": {"conversation": "pl", "artifacts": "en"},
@@ -87,7 +99,7 @@ def schema1_config(worktrees: Path) -> dict:
         "rungs": {"claude": {"L1": {"model": "c-mid"}, "L2": {"model": "c-big"}, "L3": {"model": "c-big"}},
                   "codex": {"L1": {"model": "cx-2-lite", "effort": "xhigh"}, "L2": {"model": "cx-2-core", "effort": "medium"},
                             "L3": {"model": "cx-2-core", "effort": "high"}}},
-        "level_map": LEVEL_TIERS, "review_level_map": REVIEW_TIERS,
+        "level_map": old_level_names(LEVEL_TIERS), "review_level_map": old_level_names(REVIEW_TIERS),
         "defaults": {"interaction": "critical-only",
                      "levels": {"research": "balanced", "planning": "max", "execution": "balanced", "review": "max"},
                      "review": {"points": ["spec"], "provider": "codex"}},

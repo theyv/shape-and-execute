@@ -38,7 +38,9 @@ JOB_KINDS = ("research", "planning", "implementation", "integration", "validatio
 WRITER_KINDS = ("implementation", "integration")
 JOB_STATUSES = ("pending", "running", "done", "failed", "parked")
 DIFFICULTIES = ("mechanical", "normal", "hard")
-LEVELS = ("economy", "balanced", "max")
+LEVELS = ("economy", "balanced", "premium")
+# Old level names, read as the new one; `sae` writes only LEVELS ([DECISION-LEVEL-PREMIUM]).
+OLD_LEVEL_NAMES = {"max": "premium"}
 LEVEL_PHASES = ("research", "planning", "execution", "review")
 INTERACTION_MODES = ("full-auto", "auto", "critical-only", "collaborative", "interactive")
 REVIEW_POINTS = ("spec", "plan", "selected-jobs", "all-jobs", "integration")

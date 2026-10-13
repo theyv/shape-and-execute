@@ -308,9 +308,9 @@ class ViewerServerTests(ViewerServerCase):
         self.assertEqual(settings["sources"]["levels.execution"], "task")
         self.assertEqual(settings["sources"]["interaction"], "global")
         self.assertEqual(settings["routing"]["claude"]["tiers"]["L2"]["source"], "global")
-        status, answer, _ = self.post(port, "project-set", {"repo": key, "pairs": ["execution=max"]}, token)
+        status, answer, _ = self.post(port, "project-set", {"repo": key, "pairs": ["execution=premium"]}, token)
         self.assertEqual((status, answer["ok"]), (200, True), answer)
-        self.assertEqual(sb.json("project", "show")["values"], {"execution": "max"})
+        self.assertEqual(sb.json("project", "show")["values"], {"execution": "premium"})
 
     def test_a_hold_set_in_the_viewer_stops_the_next_dispatch(self):
         """[VIEWER-NEXT-UP], [HOLD-AFTER-JOB]: the hold route runs `sae hold`; dispatch refuses."""

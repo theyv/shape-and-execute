@@ -47,6 +47,7 @@ from .common import (
     sae_prefix,
     stamp_time,
 )
+from .config import upgrade_level_names
 from .viewer import (
     VIEWER_ASSETS,
     code_version,
@@ -279,7 +280,7 @@ def task_data(key: str, task_id: str | None) -> dict:
                 events.append(json.loads(line))
     settings = None
     with contextlib.suppress(OSError, ValueError):
-        settings = read_json(folder / "settings.json")
+        settings = upgrade_level_names(read_json(folder / "settings.json"))
     state = read_json(folder / "state.json")
     location, where = task_location(copy, state["task"])
     data = {"state": state, "settings": settings, "settings_default_max_verify_failures": DEFAULT_MAX_VERIFY_FAILURES,
@@ -341,7 +342,7 @@ def settings_data(key: str, task_id: str | None) -> dict:
         if copy is None:
             raise RequestError(404, f"No task {task_id!r} in {root}.")
         with contextlib.suppress(OSError, ValueError):
-            task_settings = read_json(copy.folder / "settings.json")
+            task_settings = upgrade_level_names(read_json(copy.folder / "settings.json"))
     routing = {}
     if config:
         layers = routing_layers(config, root, task_settings, project=project)

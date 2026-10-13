@@ -5,7 +5,7 @@ var D=document,W=window,$=s=>D.querySelector(s);
 var TABS=[["plan","Plan"],["overview","Overview"],["jobs","Jobs"],["timeline","Timeline"],["reviews","Reviews"],["decisions","Decisions"],["spec","Intent & Spec"],["findings","Findings"]],
  PHASES=[["executing","Executing"],["planning","Planning"],["shaping","Shaping"],["done","Done"],["abandoned","Abandoned"]],
  WR={implementation:1,integration:1},
- MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","max"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
+ MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","premium"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
  GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
  FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"],["holds","Holds"]],
  FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/,holds:/^hold\./},

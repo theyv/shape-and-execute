@@ -355,7 +355,7 @@ def register_set(sub, command):
                 f"Routing keys (task level; inherit removes the task value): {ROUTING_KEYS_HELP}.\n"
                 "Run it only on the user's word. The next dispatch uses the new values. Prints the settings card.",
                 ["set claims-status execution=economy", "set claims-status review=spec,plan,selected-jobs,integration reviewer=cross-harness",
-                 "set claims-status routing.codex.execution.max.hard=L4 tier.claude.L3=<model>:high"],
+                 "set claims-status routing.codex.execution.premium.hard=L4 tier.claude.L3=<model>:high"],
                 [0, 1], cmd_set)
     p.add_argument("task")
     p.add_argument("pairs", nargs="+", metavar="key=value")
