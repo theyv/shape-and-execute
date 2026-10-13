@@ -144,6 +144,23 @@ class SessionFileReaderTests(unittest.TestCase):
         self.assertIsNone(session_tokens.claude_total(write_jsonl(self.tmp / "b.jsonl", [no_id])))
         self.assertIsNone(session_tokens.claude_total(write_jsonl(self.tmp / "c.jsonl", CLAUDE_SAMPLE[:1])))
 
+    def test_claude_missing_usage_or_bad_line_gives_no_partial_total(self):
+        valid = claude_entry("msg_1", 10, 5)  # 15 tokens
+        no_usage = claude_entry("msg_2", 1, 1)
+        del no_usage["message"]["usage"]
+        not_a_message = {"type": "assistant", "message": "text"}
+        for name, entries, tail in (("no-usage", [valid, no_usage], ""), ("no-message", [valid, not_a_message], ""),
+                                    ("bad-last-line-complete", [valid], '{"type": "assist\n')):
+            path = write_jsonl(self.tmp / f"{name}.jsonl", entries, tail=tail)
+            self.assertIsNone(session_tokens.claude_total(path), name)
+        bad_interior = self.tmp / "bad-interior.jsonl"
+        bad_interior.write_text(json.dumps(valid) + "\n" + '{"type": "assist' + "\n" + json.dumps(claude_entry("msg_3", 1, 1)) + "\n")
+        self.assertIsNone(session_tokens.claude_total(bad_interior))
+        # a sidechain entry without usage is not the main session's; a half-written last line is tolerated
+        side = dict(no_usage, isSidechain=True)
+        path = write_jsonl(self.tmp / "ok.jsonl", [valid, side], tail='{"type": "assistant", "mess')
+        self.assertEqual(session_tokens.claude_total(path), 15)
+
     def test_codex_rollout_last_token_count(self):
         path = write_jsonl(self.tmp / "r.jsonl", CODEX_SAMPLE)
         self.assertEqual(session_tokens.codex_total(path), CODEX_SAMPLE_TOTAL)
@@ -303,6 +320,42 @@ class PhaseStatsTests(unittest.TestCase):
         self.assertEqual([(r["phase"], r["wall_s"], r["running"]) for r in rows],
                          [("shape", 300, True), ("plan", None, False), ("execution", None, False)])
         self.assertEqual(rows[1]["main_note"], session_tokens.NOTE_NOT_STARTED)
+
+    def test_old_task_without_execution_started_attributes_by_kind_or_not_at_all(self):
+        state = {"task": {"phase": "done"}, "jobs": {
+            "SPEC-REVIEW": {"kind": "review", "target": "spec", "attempts": [{"started": self.at(5), "tokens": 700}]},
+            "PLAN-REVIEW": {"kind": "review", "target": "plan", "attempts": [{"started": self.at(40), "tokens": 300}]},
+            "ONE": {"kind": "implementation", "attempts": [{"started": self.at(70), "tokens": 900, "duration_s": 60}]},
+            "LOOK": {"kind": "research", "attempts": [{"started": self.at(75), "tokens": 50}]},
+            "REVIEW-ONE": {"kind": "review", "target": "ONE", "attempts": [{"started": self.at(80), "tokens": 20}]}}}
+        events = [{"at": self.at(0), "type": "task.created"}, {"at": self.at(30), "type": "spec.approved"},
+                  {"at": self.at(50), "type": "plan.approved"}, {"at": self.at(120), "type": "task.finished"}]
+        rows = {r["phase"]: r for r in session_tokens.phase_stats(state, events)}
+        self.assertEqual((rows["shape"]["subagent_tokens"], rows["shape"]["subagent_note"]), (700, None))
+        # before plan approval nothing runs in execution; implementation and job reviews run only there
+        self.assertEqual(rows["plan"]["subagent_tokens"], 300)
+        self.assertEqual((rows["execution"]["subagent_tokens"], rows["execution"]["jobs"]), (920, 2))
+        # research after plan approval may be in Plan or Execution: counted in neither
+        note = session_tokens.NOTE_UNATTRIBUTED.format(n=1)
+        self.assertEqual((rows["plan"]["subagent_note"], rows["execution"]["subagent_note"]), (note, note))
+
+    def test_same_second_phase_change_resolves_by_event_order(self):
+        same = self.at(30)
+        state = {"task": {"phase": "planning"}, "jobs": {
+            "REVIEW-SPEC": {"kind": "review", "target": "spec", "attempts": [{"n": 1, "started": same, "tokens": 700}]},
+            "LOOK": {"kind": "research", "attempts": [{"n": 1, "started": same, "tokens": 40}]}}}
+        events = [{"at": self.at(0), "type": "task.created"},
+                  {"at": same, "type": "job.dispatched", "job": "REVIEW-SPEC", "attempt": 1},
+                  {"at": same, "type": "job.collected", "job": "REVIEW-SPEC", "attempt": 1},
+                  {"at": same, "type": "spec.approved"},
+                  {"at": same, "type": "job.dispatched", "job": "LOOK", "attempt": 1}]
+        rows = {r["phase"]: r for r in session_tokens.phase_stats(state, events, now=self.T0 + dt.timedelta(minutes=40))}
+        self.assertEqual((rows["shape"]["subagent_tokens"], rows["plan"]["subagent_tokens"]), (700, 40))
+        # without the dispatch event an equal time is not a guess: research may be in either phase
+        events = [e for e in events if e.get("job") != "LOOK"]
+        rows = {r["phase"]: r for r in session_tokens.phase_stats(state, events, now=self.T0 + dt.timedelta(minutes=40))}
+        self.assertEqual((rows["shape"]["subagent_tokens"], rows["plan"]["subagent_tokens"]), (700, 0))
+        self.assertEqual(rows["plan"]["subagent_note"], session_tokens.NOTE_UNATTRIBUTED.format(n=1))
 
 
 if __name__ == "__main__":

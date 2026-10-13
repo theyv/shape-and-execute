@@ -19,7 +19,7 @@ import os
 import re
 from pathlib import Path
 
-from .common import HARNESSES, iso
+from .common import HARNESSES, KINDS_BY_PHASE, REVIEW_TARGET_BY_PHASE, iso
 
 SNAPSHOT_EVENT = "session.snapshot"
 SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")  # also keeps glob characters out
@@ -28,10 +28,12 @@ CLAUDE_REQUIRED_FIELDS = ("input_tokens", "output_tokens")  # the API omits a ca
 TAIL_BLOCK = 1 << 20  # a Codex rollout can hold hundreds of MB: read it from the end
 # (row name, task phase) of the phase-stats table.
 PHASE_ROWS = (("shape", "shaping"), ("plan", "planning"), ("execution", "executing"))
+PHASE_ORDER = tuple(phase for _, phase in PHASE_ROWS)
 NOTE_NO_SNAPSHOT = "no session snapshot: session file not readable, or an older sae"
 NOTE_ONE_SNAPSHOT = "one snapshot per session: no difference to count yet"
 NOTE_OTHER_SESSION = "the phase changed in another session"
 NOTE_NOT_STARTED = "phase not started"
+NOTE_UNATTRIBUTED = "{n} attempt(s) not counted: their phase is unknown (a phase-change event is missing)"
 
 
 # ---------------------------------------------------------------- snapshot
@@ -78,24 +80,32 @@ def is_count(value) -> bool:
 def claude_total(path: Path) -> int | None:
     """Input + cache creation + cache read + output tokens of the main session's assistant
     entries. One API response is written as several entries with the same `message.id`: each
-    id counts once. Sidechain (subagent) entries do not count; `sae collect` records those."""
+    id counts once. Sidechain (subagent) entries do not count; `sae collect` records those.
+    A main-session assistant entry without usable usage, or a line that is not JSON, gives
+    None (a partial sum is a guess); only the last line, still being written (no newline), may
+    be incomplete."""
     usage_by_id: dict[str, int] = {}
+    pending_bad = False  # an unparsable line: fine only if nothing follows it
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
-            if '"usage"' not in line:
+            if pending_bad:
+                return None
+            if not line.strip():
                 continue
             try:
                 entry = json.loads(line)
             except ValueError:
-                continue  # a line the harness is still writing
+                if line.endswith("\n"):
+                    return None  # a completed record that is not JSON
+                pending_bad = True
+                continue
             if not isinstance(entry, dict) or entry.get("type") != "assistant" or entry.get("isSidechain"):
                 continue
             message = entry.get("message")
-            if not isinstance(message, dict) or "usage" not in message:
-                continue
-            usage, message_id = message["usage"], message.get("id")
+            usage = message.get("usage") if isinstance(message, dict) else None
+            message_id = message.get("id") if isinstance(message, dict) else None
             if not isinstance(usage, dict) or not isinstance(message_id, str) or not message_id:
-                return None  # unknown shape
+                return None  # missing usage or an unknown shape
             if not all(is_count(usage.get(k)) for k in CLAUDE_REQUIRED_FIELDS) or \
                     not all(is_count(usage.get(k, 0)) for k in CLAUDE_USAGE_FIELDS):
                 return None
@@ -195,42 +205,91 @@ def parse_time(value) -> dt.datetime | None:
     return moment if moment.tzinfo else moment.astimezone()
 
 
-def phase_bounds(info: dict, events: list[dict]) -> dict:
-    """{task phase: [start, end]} from the phase-change events: task.created, spec.approved, the
-    first execution.started, task.finished; task.abandoned ends the phase it stopped."""
+def phase_bounds(info: dict, events: list[dict]) -> tuple[dict, dict]:
+    """({task phase: [start, end]}, {task phase: (time, index) of the event that bounds it}) from
+    the phase-change events: task.created, spec.approved, the first execution.started,
+    task.finished; task.abandoned ends the phase it stopped. The second dict holds each phase's
+    start event (index None when the time comes from state.json) and, as "plan.approved", the
+    first plan approval: nothing before it ran in execution, even when execution.started is missing."""
     def first(type_: str, **match):
-        for event in events:
+        for index, event in enumerate(events):
             if event.get("type") == type_ and all(event.get(k) == v for k, v in match.items()):
-                return parse_time(event.get("at"))
-        return None
+                return parse_time(event.get("at")), index
+        return None, None
 
     approvals = info.get("approvals") or {}
-    created = first("task.created") or parse_time(info.get("created"))
-    spec = first("spec.approved") or parse_time((approvals.get("spec") or {}).get("at"))
-    started = first("execution.started", resumed=False) or first("execution.started")
+    created, created_i = first("task.created")
+    created = created or parse_time(info.get("created"))
+    spec, spec_i = first("spec.approved")
+    if spec is None:
+        spec, spec_i = parse_time((approvals.get("spec") or {}).get("at")), None
+    started, started_i = first("execution.started", resumed=False)
+    if started is None:
+        started, started_i = first("execution.started")
     bounds = {"shaping": [created, spec], "planning": [spec, started],
-              "executing": [started, first("task.finished")]}
-    abandoned = first("task.abandoned")
+              "executing": [started, first("task.finished")[0]]}
+    abandoned = first("task.abandoned")[0]
     if abandoned:
         for phase in ("executing", "planning", "shaping"):
             if bounds[phase][0] and not bounds[phase][1]:
                 bounds[phase][1] = abandoned
                 break
-    return bounds
+    marks = {"shaping": (created, created_i), "planning": (spec, spec_i), "executing": (started, started_i),
+             "plan.approved": first("plan.approved")}
+    return bounds, marks
 
 
-def attempt_phase(job: dict, attempt: dict, bounds: dict) -> str:
-    """The phase the attempt was dispatched in; by its job's kind when its start time is unknown."""
+def kind_phases(job: dict) -> set:
+    """The phases a job of this kind (and review target) may be dispatched in (KINDS_BY_PHASE)."""
+    kind = job.get("kind")
+    return {phase for phase, kinds in KINDS_BY_PHASE.items() if kind in kinds and
+            (kind != "review" or REVIEW_TARGET_BY_PHASE.get(phase, job.get("target")) == job.get("target"))}
+
+
+def dispatch_indexes(events: list[dict]) -> dict:
+    """{(job ID, attempt number): index of its `job.dispatched` event}."""
+    return {(e.get("job"), e.get("attempt")): i for i, e in enumerate(events) if e.get("type") == "job.dispatched"}
+
+
+def reached_rank(info: dict, bounds: dict) -> int | None:
+    """Index in PHASE_ORDER of the last phase the task has reached (a later phase has no
+    attempts), or None when that is unknown: an abandoned task may lack the event of its last phase."""
+    phase = info.get("phase")
+    if phase == "done":
+        return len(PHASE_ORDER) - 1
+    if phase not in PHASE_ORDER:
+        return None
+    return max([PHASE_ORDER.index(phase)] + [r for r, p in enumerate(PHASE_ORDER) if bounds[p][0] is not None])
+
+
+def attempt_phase(job_id: str, job: dict, number: int, attempt: dict, marks: dict,
+                  dispatches: dict, reached: int | None) -> tuple[str | None, set]:
+    """(the phase the attempt was dispatched in or None when uncertain, the phases it may be in).
+    Each known phase start puts the attempt before or after it: by event order when both the
+    dispatch and the start are events (timestamps have second precision), else by time; an
+    equal time or a missing start leaves that side open. The job's kind narrows what is left."""
     started = parse_time(attempt.get("started"))
-    if started:
-        for phase in ("executing", "planning"):
-            start = bounds[phase][0]
-            if start and started >= start:
-                return phase
-        return "shaping"
-    if job.get("kind") == "review":
-        return {"spec": "shaping", "plan": "planning"}.get(job.get("target"), "executing")
-    return "planning" if job.get("kind") == "planning" else "executing"
+    dispatched = dispatches.get((job_id, attempt.get("n", number)))
+
+    def after(mark) -> bool | None:
+        moment, index = mark
+        if dispatched is not None and index is not None:
+            return dispatched > index
+        if moment is not None and started is not None and started != moment:
+            return started > moment
+        return None
+
+    possible = list(PHASE_ORDER)
+    for rank, phase in enumerate(PHASE_ORDER[1:], start=1):
+        side = False if reached is not None and rank > reached else after(marks[phase])
+        if side is not None:
+            possible = [p for p in possible if (PHASE_ORDER.index(p) >= rank) == side]
+    if after(marks["plan.approved"]) is False and "executing" in possible:
+        possible.remove("executing")
+    candidates = set(possible) if len(possible) == 1 else set(possible) & kind_phases(job)
+    if len(candidates) == 1:
+        return next(iter(candidates)), candidates
+    return None, candidates or set(possible) or set(PHASE_ORDER)  # uncertain, or a record that contradicts itself
 
 
 def main_session_tokens(events: list[dict]) -> tuple[dict, dict]:
@@ -271,17 +330,28 @@ def phase_stats(state: dict, events: list[dict], now: dt.datetime | None = None)
         subagent_s      the attempts' recorded duration_s, summed
         jobs, attempts  jobs with an attempt in the phase, and those attempts
 
-    An attempt belongs to the phase it was dispatched in. Old tasks (no snapshots) get
-    main_tokens None and NOTE_NO_SNAPSHOT."""
+        subagent_note   NOTE_UNATTRIBUTED when attempts that may belong here are counted nowhere, else None
+
+    An attempt belongs to the phase it was dispatched in (attempt_phase); one whose phase is
+    uncertain is counted in no row. Old tasks (no snapshots) get main_tokens None and
+    NOTE_NO_SNAPSHOT."""
     info = state.get("task") or {}
     now = now or dt.datetime.now().astimezone()
-    bounds = phase_bounds(info, events)
+    bounds, marks = phase_bounds(info, events)
+    reached = reached_rank(info, bounds)
+    dispatches = dispatch_indexes(events)
     main, notes = main_session_tokens(events)
     snapshot_phases = {e.get(k) for e in events if e.get("type") == SNAPSHOT_EVENT for k in ("phase", "phase_before")}
     rows = {phase: {"subagent_tokens": 0, "subagent_s": 0, "jobs": set(), "attempts": 0} for _, phase in PHASE_ROWS}
+    unattributed = {phase: 0 for phase in PHASE_ORDER}
     for job_id, job in (state.get("jobs") or {}).items():
-        for attempt in job.get("attempts") or []:
-            row = rows[attempt_phase(job, attempt, bounds)]
+        for number, attempt in enumerate(job.get("attempts") or [], start=1):
+            phase, possible = attempt_phase(job_id, job, number, attempt, marks, dispatches, reached)
+            if phase is None:
+                for other in possible:
+                    unattributed[other] += 1
+                continue
+            row = rows[phase]
             row["attempts"] += 1
             row["jobs"].add(job_id)
             if is_count(attempt.get("tokens")):
@@ -311,5 +381,6 @@ def phase_stats(state: dict, events: list[dict], now: dt.datetime | None = None)
                     "main_tokens": tokens, "main_note": note,
                     "subagent_tokens": row["subagent_tokens"],
                     "tokens": tokens + row["subagent_tokens"] if tokens is not None else None,
-                    "subagent_s": round(row["subagent_s"]), "jobs": len(row["jobs"]), "attempts": row["attempts"]})
+                    "subagent_s": round(row["subagent_s"]), "jobs": len(row["jobs"]), "attempts": row["attempts"],
+                    "subagent_note": NOTE_UNATTRIBUTED.format(n=unattributed[phase]) if unattributed[phase] else None})
     return out
