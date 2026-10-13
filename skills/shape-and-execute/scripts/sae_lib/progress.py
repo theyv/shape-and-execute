@@ -56,6 +56,7 @@ from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import model_text, resolve_model, routing_text, short_text
+from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
     job_file,
@@ -407,6 +408,8 @@ def cmd_dispatch(args) -> int:
                    model=model["model"], effort=model["effort"], source=model["source"], tier=model["tier"],
                    workspace=rel(workdir, task.root) or ".",
                    reason=args.reason)
+        if task.phase == "executing":
+            record_session_snapshot(task, "dispatch", "executing")  # [MAIN-TOKENS], [AMEND-1]
         external = job["kind"] == "review" and model["harness"] != task.info.get("orchestrator_harness")
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
         if args.resume:

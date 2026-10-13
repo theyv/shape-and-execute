@@ -37,6 +37,7 @@ from .graph import (
 from .markdown import md_section, split_frontmatter, strip_html_comments
 from .prompts import review_output_file, review_output_tokens
 from .routing import resolve_model
+from .session_tokens import record_session_snapshot
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
     job_branch,
@@ -535,6 +536,8 @@ def cmd_collect(args) -> int:
         code = EXIT_OK
         task.event("job.collected", job=job_id, attempt=attempt.get("n"), status=status, summary=summary,
                    tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"), disputed=disputed)
+        if task.phase == "executing":
+            record_session_snapshot(task, "collect", "executing")  # [MAIN-TOKENS], [AMEND-1]
         if status == "done" and job.get("stale"):
             # [NO-STALE-CHECKS]: a writer merged while this final validation ran.
             reason = job.pop("stale")

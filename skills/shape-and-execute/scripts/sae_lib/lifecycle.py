@@ -35,6 +35,7 @@ from .progress import next_text
 from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, in_scope, merge_job
 from .routing import resolve_model
+from .session_tokens import record_session_snapshot, snapshot_event
 from .tasks import (
     CLOSED_PHASES,
     Task,
@@ -104,7 +105,9 @@ def cmd_new(args) -> int:
     event = {"at": iso(), "type": "task.created", "title": title, "author": author}
     if from_item:
         event["from"] = from_item
-    write_atomic(folder / "events.jsonl", json.dumps(event, ensure_ascii=False) + "\n")
+    snapshot = snapshot_event("new", None, "shaping")  # [MAIN-TOKENS]
+    write_atomic(folder / "events.jsonl", "".join(json.dumps(e, ensure_ascii=False) + "\n"
+                                                  for e in (event, snapshot) if e))
     sweep_merged_task_worktrees(root)
     remember_repo_safely(root)
     url, viewer_line = viewer_link(root, task_id)  # [VIEWER-LINK-AT-NEW]; never fails the command
@@ -152,6 +155,7 @@ def cmd_start(args) -> int:
         elif not task.info.get("orchestrator_harness"):
             task.info["orchestrator_harness"] = require_harness(None)
         resumed = task.phase == "executing"
+        phase_before = task.phase
         undo: list = []
         picked_up = None
         try:
@@ -177,6 +181,7 @@ def cmd_start(args) -> int:
                 task.info["phase"] = "executing"
             task.event("execution.started", branch=task.info.get("branch"), base=task.info.get("base"),
                        layout=task.info["layout"], worktree=task.info.get("worktree"), resumed=resumed)
+            record_session_snapshot(task, "start", phase_before)  # [MAIN-TOKENS]
             lines.insert(0, f"Executing {task.id}\n  branch: {task.info.get('branch') or '-'} · "
                             f"layout: {task.info['layout']}")
             lines += ["", next_text(task, config)]
@@ -459,6 +464,7 @@ def cmd_finish(args) -> int:
         head = git(task.root, "rev-parse", "--short", "HEAD") if task.info.get("git") else None
         task.info["phase"] = "done"
         task.event("task.finished", branch=task.info.get("branch"), commit=head)
+        record_session_snapshot(task, "finish", "executing")  # [MAIN-TOKENS]
         task.save()
         moved = move_finished_tasks(task)  # [DONE-FOLDER]; on the task branch only
         report = final_report(task, args.with_open, kept)  # after the move: its paths point into done/
