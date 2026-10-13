@@ -43,6 +43,7 @@ from .config import (
 from .gitutil import find_root, git_user
 from .graph import last_round, requires_changes, run_check
 from .routing import TASK_TARGETS, override_key, planned_review_target, resolve_model
+from .session_tokens import record_session_snapshot
 from .tasks import Task, is_generated, job_file, new_job, open_task, template
 
 
@@ -121,6 +122,7 @@ def cmd_approve(args) -> int:
         if gate == "spec":
             task.info["phase"] = "planning"
         task.event(f"{gate}.approved", by=by)
+        record_session_snapshot(task, f"approve {gate}", "shaping" if gate == "spec" else "planning")  # [MAIN-TOKENS]
         follow = (f"Next:\n  sae start {task.id}\nAnother session:\n  sae start {task.id} --harness claude|codex"
                   if gate == "plan" else "Next: planning: load references/modes/plan.md")  # [RESUME-HARNESS-HINT]
         emit(args, (report + "\n" if report else "") + f"{gate.capitalize()} approved by {by}.\n" + follow,
