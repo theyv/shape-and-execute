@@ -11,6 +11,8 @@
 <!-- Facts only. Do not repeat what AGENTS.md or CLAUDE.md already say; link them instead. -->
 
 ## Validation commands
+- Smoke:        <!-- seconds: the core path works; every job's verify adds it -->
+- Full suite:   <!-- every test, the fastest way; runs once, in the final job -->
 - Unit:
 - Typecheck:
 - Lint:

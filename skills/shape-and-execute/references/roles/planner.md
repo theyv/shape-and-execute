@@ -36,7 +36,8 @@ orchestrator may adapt it during execution.
   security-sensitive, architecturally central, or hard to check with tests.
 - Decide the final validation. Add one `--final` validation job when several workstreams meet,
   behavior crosses system boundaries, acceptance or end-to-end tests matter, or regression
-  risk is real. For a small chain, the last job's validation is enough.
+  risk is real. For a small chain, the last job's validation is enough. When the profile
+  names a full suite, one `--final` job runs it; no other job does.
 
 ## Outputs
 
@@ -46,6 +47,7 @@ orchestrator may adapt it during execution.
 2. Fill each `jobs/<ID>.md` that `sae` scaffolded: objective (one sentence), inputs (pointers
    to spec sections, brief sections, files), scope, boundaries, expected output, validation;
    frontmatter `covers`, `verify` (deterministic commands) and, for parallel writers, `scope`.
+   A writer job's `verify` runs the tests of what it changes plus the profile's smoke command.
    Describe the outcome and the limits. Leave implementation choices to the worker. Point to
    brief sections; do not restate them. A job that fixes findings names their files in
    `resolves` (implementation, integration and validation jobs only); its success closes
