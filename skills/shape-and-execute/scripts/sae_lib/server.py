@@ -291,10 +291,29 @@ SHORTSTAT_RE = re.compile(r"(\d+) (file|insertion|deletion)")
 GIT_LINES_CACHE: dict = {}  # (checkout, from, to) -> counts: two commits always give the same diff
 
 
+def merged_start(checkout: Path, tip: str, base_tip: str, run) -> str:
+    """The merge base of a task branch already merged into its base branch and kept: computed
+    against the base as it stood just before the merge commit that brought the tip in (its first
+    parent), so newer base commits the task took before merging are not counted. "" when no such
+    merge commit exists (a fast-forward, or the base tip is the task tip): the history no longer
+    tells the task's own commits from the base's, so the number is missing, never wrong."""
+    proc = run(["git", "rev-list", "--first-parent", "--ancestry-path", f"{tip}..{base_tip}"], checkout)
+    chain = proc.stdout.split() if proc.returncode == 0 else []
+    if not chain:
+        return ""
+    proc = run(["git", "rev-list", "--parents", "-n", "1", chain[-1]], checkout)
+    parents = proc.stdout.split()[1:] if proc.returncode == 0 else []
+    if len(parents) < 2 or parents[0] == tip:
+        return ""
+    proc = run(["git", "merge-base", parents[0], tip], checkout)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def git_lines(checkout: Path, info: dict) -> dict | None:
     """The task's changed lines ([GIT-LINES]): `git diff --shortstat` from the merge base of the
     base branch and the task branch to the task branch tip, as {added, removed, files}. None
-    without a task branch (not started, or deleted after merge): missing, never wrong."""
+    without a task branch (not started, or deleted after merge) or after a fast-forward merge:
+    missing, never wrong."""
     from .gitutil import run
     branch, base = info.get("branch"), info.get("base") or {}
     if not info.get("git") or not branch:
@@ -314,12 +333,8 @@ def git_lines(checkout: Path, info: dict) -> dict | None:
         return None
     proc = run(["git", "merge-base", base_tip, tip], checkout)
     start = proc.stdout.strip() if proc.returncode == 0 else ""
-    if start == tip and base.get("commit"):
-        # merged into the base branch and kept: the merge base is the tip itself, so count from the
-        # commit the task started from, when the tip still descends from it
-        started = rev(base["commit"])
-        start = started if started and run(["git", "merge-base", "--is-ancestor", started, tip],
-                                           checkout).returncode == 0 else ""
+    if start == tip:
+        start = merged_start(checkout, tip, base_tip, run)
     if not start:
         return None
     key = (str(checkout), start, tip)

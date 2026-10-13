@@ -112,6 +112,29 @@ class ExternalReviewTokenTests(SaeTestCase):
                     (reviews / output).write_text("not json\n")
                 self.assertIsNone(self.collected_attempt(sb, task)["tokens"])
 
+    def test_unreadable_output_is_collected_without_tokens(self):
+        # invalid UTF-8 and a permission error count as unavailable usage, not as a failed collect
+        cases = [("bad-utf8", "claude", "REVIEW-ONE.codex.jsonl")]
+        if os.geteuid() != 0:  # root reads a mode-000 file
+            cases.append(("no-permission", "codex", "REVIEW-ONE.claude.json"))
+        for name, orchestrator, output in cases:
+            with self.subTest(name):
+                sb, task, _, _ = self.review_dispatched(orchestrator)
+                reviews = sb.task_dir(task) / "reviews"
+                reviews.mkdir(exist_ok=True)
+                (reviews / "REVIEW-ONE.md").write_text(REVIEW_TEXT)
+                capture = reviews / output
+                if name == "bad-utf8":
+                    capture.write_bytes(b'{"type": "turn.completed", "usage": {"input_tokens": 5}}\n\xff\xfe\n')
+                else:
+                    capture.write_text(json.dumps(CLAUDE_OUTPUT))
+                    capture.chmod(0)
+                try:
+                    self.assertIsNone(self.collected_attempt(sb, task)["tokens"])
+                finally:
+                    if capture.exists():  # let the sandbox be removed
+                        capture.chmod(0o644)
+
     def test_tokens_given_at_collect_win(self):
         sb, task, command, env = self.review_dispatched("claude")
         self.run_command(sb, command, env)

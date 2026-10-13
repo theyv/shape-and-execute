@@ -74,6 +74,32 @@ console.log(JSON.stringify(vm.runInContext(`({
 """
 
 
+# task-views.js in node: gvHi() on a small fake graph ([GRAPH-EDGE-HOVER]): which elements carry `on` after hover and clear
+GVHI_JS = r"""
+const vm = require("vm"), fs = require("fs");
+const node = (cls, attrs) => {const c = new Set(cls.split(" ")); return {attrs, cls: c, classList: {
+  add: x => c.add(x), remove: x => c.delete(x), toggle: (x, on) => on ? c.add(x) : c.delete(x), contains: x => c.has(x)}}};
+const kids = [node("nd", {"data-card": "A"}), node("nd", {"data-card": "B"}), node("nd", {"data-card": "C"}),
+  node("e", {"data-i": "0"}), node("e", {"data-i": "1"}), node("mk hold on", {}), node("mk on", {})];
+const match = (k, sel) => sel.split(",").some(one => {one = one.trim();
+  const m = one.match(/^((?:\.[\w-]+)+)(?:\[([\w-]+)="(.*)"\])?$/), need = m[1].split(".").filter(Boolean);
+  return need.every(x => k.cls.has(x)) && (!m[2] || k.attrs[m[2]] === m[3])});
+const g = {classList: node("gv", {}).classList, querySelectorAll: sel => kids.filter(k => match(k, sel)),
+  querySelector: sel => kids.find(k => match(k, sel)) || null};
+const ctx = {console, document: {addEventListener() {}, querySelector: sel => sel === ".gwrap .gv" ? g : null},
+  addEventListener() {}, setInterval() {}, localStorage: {getItem() { return null }, setItem() {}}};
+ctx.window = ctx; vm.createContext(ctx);
+for (const f of process.argv.slice(2, 4)) vm.runInContext(fs.readFileSync(f, "utf8"), ctx);
+const on = () => kids.filter(k => k.cls.has("on")).map(k => [...k.cls].join(" ") + (k.attrs["data-card"] || k.attrs["data-i"] || ""));
+ctx.GE_SET = [["A", "B"], ["B", "C"]];
+vm.runInContext("GE = GE_SET", ctx);
+const out = {};
+vm.runInContext('gvHi("A")', ctx); out.hover = on();
+vm.runInContext('gvHi("C")', ctx); out.moved = on();
+vm.runInContext("gvHi(null)", ctx); out.cleared = on();
+console.log(JSON.stringify(out));
+"""
+
 def card(out: dict, card_id: str) -> dict:
     found = [c for c in out["cards"] if c["id"] == card_id]
     if not found:
@@ -181,6 +207,19 @@ class FinishedTaskTests(GraphCardsCase):
         self.assertEqual(card(out, "@finish")["st"], "✓ done")
         self.assertIn('data-card="@finish"', out["svg"])
         self.assertNotIn("Shaping and planning", out["plan"], "the phase cards replace the chips")
+
+    def test_a_finished_integration_attempt_shows_its_tokens_and_time(self):
+        """[GRAPH-INTEGRATION-CARD]: the card sums the tokens and time of its non-planned rows."""
+        sb = self.sandbox()
+        self.copy_done(sb, FINDINGS_DOCS)
+        data = self.data(sb, FINDINGS_DOCS)
+        jobs = data["state"]["jobs"]
+        for job_id in ("REVIEW-INTEGRATION", "INTEGRATION-FIX-1", "REVIEW-INTEGRATION-2"):
+            jobs[job_id]["attempts"] = []
+        jobs["REVIEW-INTEGRATION"]["attempts"] = [{"n": 1, "tokens": 60000, "duration_s": 720}]
+        it = card(run_node(CARDS_JS, "app.js", "task-views.js", data=data), "@integration")
+        self.assertEqual(it["tk"], "60k tk · 12m")
+        self.assertIn("60k tk · 12m", it["tip"])
 
     def test_every_finished_task_renders_and_hover_links_only_its_own_edges(self):
         """[EDGE-OLD-TASKS], [GRAPH-EDGE-HOVER]: every task in .tasks/done/ draws; on the 50 jobs of
@@ -495,6 +534,14 @@ class CanvasTests(unittest.TestCase):
         js = (SKILL_DIR / "assets" / "viewer" / "task-views.js").read_text()
         self.assertIn('data-gz="fit" aria-label="Fit the whole graph"', js)
         self.assertNotIn('">fit</button>', js)
+
+    def test_hover_cleanup_keeps_the_active_hold_styling(self):
+        """[GRAPH-EDGE-HOVER]: gvHi() clears only the highlighted edges and cards; `.mk.hold.on` and `.mk.on` stay."""
+        out = run_node(GVHI_JS, "app.js", "task-views.js", data={})
+        marks = ["mk hold on", "mk on"]
+        self.assertEqual(sorted(out["hover"]), sorted(["nd onA", "nd onB", "e on0"] + marks))
+        self.assertEqual(sorted(out["moved"]), sorted(["nd onB", "nd onC", "e on1"] + marks))
+        self.assertEqual(sorted(out["cleared"]), sorted(marks))
 
     def test_the_css_highlights_dims_fades_and_stops_the_pulse_for_reduced_motion(self):
         """[GRAPH-EDGE-HOVER], [GRAPH-NOT-YET], [GRAPH-JOB-CARD]: the styles the page's classes need."""

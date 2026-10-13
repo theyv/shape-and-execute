@@ -221,7 +221,10 @@ def review_output_file(task: Task, job_id: str, harness: str) -> Path:
 def review_output_tokens(path: Path, harness: str) -> int | None:
     """[REVIEW-TOKENS] Every input token (cached included) plus output tokens, summed over turns;
     None when the output is missing, unreadable or has no usage."""
-    text = read_text(path)
+    try:
+        text = read_text(path)
+    except (OSError, UnicodeDecodeError):  # no permission, invalid UTF-8: usage unavailable
+        return None
     if not text:
         return None
     if harness == "codex":
