@@ -36,6 +36,12 @@ def selected(test_id: str, names: list[str]) -> bool:
     return any(name in (module, method, test_id) or test_id.startswith(name + ".") for name in names)
 
 
+def selected_broken(test: unittest.TestCase, names: list[str]) -> bool:
+    """A module that failed to import: its id is `unittest.loader._FailedTest.<module>`."""
+    module = test.id().rsplit(".", 1)[-1]
+    return not names or any(name == module or name.startswith(module + ".") for name in names)
+
+
 def run_one(test_id: str, test=None) -> tuple:
     """Run one test case; returns picklable (test_id, outcome, report, seconds)."""
     if test is None:
@@ -47,10 +53,13 @@ def run_one(test_id: str, test=None) -> tuple:
         result.buffer = True  # a test's own prints go into its failure report only
         unittest.TestSuite([test]).run(result)
     seconds = time.monotonic() - start
-    for outcome, entries in (("error", result.errors), ("fail", result.failures),
-                             ("unexpected success", [(t, "") for t in result.unexpectedSuccesses])):
-        if entries:
-            return test_id, outcome, "\n".join(report for _, report in entries), seconds
+    # One test can both fail and error (in subtests): report every entry, not only the first kind.
+    bad = [(outcome, entries) for outcome, entries in (
+        ("error", result.errors), ("fail", result.failures),
+        ("unexpected success", [(t, "") for t in result.unexpectedSuccesses])) if entries]
+    if bad:
+        report = "\n".join(report for _, entries in bad for _, report in entries)
+        return test_id, " + ".join(outcome for outcome, _ in bad), report, seconds
     return test_id, "skip" if result.skipped else "ok", "", seconds
 
 
@@ -69,9 +78,10 @@ def main() -> int:
     init_worker()
     tests = flatten(unittest.defaultTestLoader.discover(HERE, pattern="test*.py", top_level_dir=HERE))
     # A module that fails to import becomes unittest.loader._FailedTest: run it here, it reports the error.
-    broken = [t for t in tests if isinstance(t, unittest.loader._FailedTest) and selected(t.id(), args.names)]
+    broken = [t for t in tests if isinstance(t, unittest.loader._FailedTest) and selected_broken(t, args.names)]
     ids = [t.id() for t in tests if not isinstance(t, unittest.loader._FailedTest) and selected(t.id(), args.names)]
-    unmatched = [n for n in args.names if not any(selected(i, [n]) for i in ids + [t.id() for t in broken])]
+    unmatched = [n for n in args.names
+                 if not any(selected(i, [n]) for i in ids) and not any(selected_broken(t, [n]) for t in broken)]
     if unmatched:
         print(f"run.py: no test matches {', '.join(unmatched)}", file=sys.stderr)
         return 2
