@@ -1,7 +1,7 @@
 # Shape: from a rough note to an approved intent and spec
 
-Phase `shaping`. You are the main session. Goal: an approved `intent.md` (and `specs.md` when
-needed) that a planner can use without asking the user anything.
+Phase `shaping`. You are the main session. Goal: an approved `intent.md` and `specs.md` that a
+planner can use without asking the user anything.
 
 Keep the start short and concrete. The deep work comes after research.
 
@@ -63,9 +63,9 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
 
 ## 4. Spec
 
-Write `specs.md` (template `templates/specs.md`) when shaping went deep or exact contracts
-matter: APIs, rules, data, permissions. Otherwise put acceptance criteria into `intent.md`
-under `## Acceptance` and skip the spec.
+Always write `specs.md` (template `templates/specs.md`); it is the only place for requirement
+IDs. For a small task, keep only the sections with content, often Summary, Requirements and
+Decisions.
 
 - Requirements get semantic IDs: `### [CLAIM-STATUS] Show current claim status`, each with
   acceptance checks.
@@ -107,9 +107,11 @@ user.
 **Task difficulty.** Before the first review or planner dispatch, set the task's size and risk:
 `sae set <task> task-difficulty=hard` for a large or risky task (default `normal`). The spec,
 plan and integration reviews and the planner run on it; the next-step card shows it, and the
-user may change it there.
+user may change it there. For a small task, also propose the review points `spec` off and
+`plan` on: the plan review sees the spec and the jobs together. Change them only on the
+user's word (`sae set`).
 
-## 6. Spec review (when `spec` is a review point and `specs.md` exists)
+## 6. Spec review (when `spec` is a review point)
 
 When grilling is done: `sae check <task>`. A clean check makes `REVIEW-SPEC` due.
 `sae next <task>` prints its next-step card: show it and wait (ok, change, refine first, skip;

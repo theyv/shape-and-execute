@@ -15,16 +15,13 @@
 -
 
 ## Proposed outcome
-<!-- What we build or change, seen from the user's (or the operator's) side. -->
-
-## Acceptance
-<!-- Small tasks only, when there is no specs.md. One line each; semantic IDs are optional:
-     - [EXPORT-CSV] The table has an "Export CSV" button that downloads the visible rows. -->
+<!-- What we build or change, seen from the user's (or the operator's) side: a direction in
+     the user's words, without IDs and without decisions; those go into specs.md. -->
 
 ## Affected users and systems
 
 ## Constraints
-<!-- Non-negotiables in plain words. specs.md makes them precise when it exists. -->
+<!-- Non-negotiables in plain words. specs.md makes them precise. -->
 
 ## Related tasks
 <!-- Prose with task IDs, only when another task matters for this one:
@@ -33,7 +30,7 @@
      "Deferred to the backlog: <backlog file> — <what and why>." -->
 
 ## Nice to have
-<!-- Each item moves into Goal, Acceptance or the spec, or out (to the backlog when the user
+<!-- Each item moves into Goal or the spec, or out (to the backlog when the user
      wants it later), as decisions are made. -->
 
 ## Open questions
