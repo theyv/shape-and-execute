@@ -159,10 +159,13 @@ def repo_known(root: Path) -> bool:
                for r in (read_state("repos.json") or {}).get("repos") or [])
 
 
-def stamped_items(folder: Path) -> list[Path]:
+def stamped_items(folder: Path, areas: bool = False) -> list[Path]:
+    """Stamped `*.md` files of `folder`, newest first. `areas`: also one level of subfolders
+    (the backlog groups items per area, for example per skill)."""
     if not folder.is_dir():
         return []
-    return sorted((p for p in folder.glob("*.md") if STAMPED_FILE_RE.match(p.name)), reverse=True)
+    files = list(folder.glob("*.md")) + (list(folder.glob("*/*.md")) if areas else [])
+    return sorted((p for p in files if STAMPED_FILE_RE.match(p.name)), key=lambda p: p.name, reverse=True)
 
 
 # ---------------------------------------------------------------- start, reuse, stop

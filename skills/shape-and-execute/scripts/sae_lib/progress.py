@@ -176,7 +176,7 @@ def cmd_status(args) -> int:
                           "folder": str(copy.folder)})
     picked = picked_up_items(located)
     backlog = []
-    for path in stamped_items(tasks_dir(root) / "backlog"):
+    for path in stamped_items(tasks_dir(root) / "backlog", areas=True):
         meta, body = split_frontmatter(read_text(path, ""))
         backlog.append({"file": rel(path, root), "title": re.sub(r"^Intent:\s*", "", first_heading(body) or path.stem),
                         "source": meta.get("source"), "created": stamp_time(path.name),

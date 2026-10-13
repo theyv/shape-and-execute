@@ -18,8 +18,8 @@ The skill scales by three things, each decided when the information exists:
 **uncertainty** (grill only, or research first), **breadth** (one worker, or a graph of
 jobs) and **stakes** (the task's settings: levels per phase and review). A small task is
 `intent.md` and one or two jobs. A large task gets research, a spec, a planner, reviews and a
-fresh session for execution. Work the user defers waits in `.tasks/backlog/` as an intent, and
-gets its spec when someone picks it up.
+fresh session for execution. Work the user defers waits in `.tasks/backlog/` as an intent (optionally in subfolders, for
+example one per module), and gets its spec when someone picks it up.
 
 Files are the memory. A fresh session can continue any task from its task folder; `sae` finds
 it in any checkout of the repository.

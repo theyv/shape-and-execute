@@ -97,7 +97,7 @@ def merged_items(root: Path, sub: str) -> list[tuple[Path, Path]]:
     seen: dict[str, tuple[Path, Path]] = {}
     for checkout in task_checkouts(root):
         folder = tasks_dir(checkout) / sub
-        files = stamped_items(folder) if sub != "adr" else (
+        files = stamped_items(folder, areas=sub == "backlog") if sub != "adr" else (
             sorted((p for p in folder.glob("*.md") if p.name != "closed.md"), reverse=True) if folder.is_dir() else [])
         for path in files:
             seen.setdefault(path.name, (checkout, path))

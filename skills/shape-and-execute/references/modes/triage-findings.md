@@ -19,6 +19,8 @@ open, or reject.
    success closes it.
    Later → `sae new "<title>" --backlog`, and write its intent from the findings: what should
    be true when it is done, with the finding files as evidence.
+   When `.tasks/backlog/` groups items in subfolders (for example one per module), move the new
+   item into its folder.
 6. Close what was handled (a finding a job resolved is closed already):
    `sae finding close <file> --outcome "fixed in <task-id>"` (when that task finishes),
    `--outcome "moved to backlog/<file>"`, `--outcome "rejected: <reason>"` or

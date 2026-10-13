@@ -475,7 +475,7 @@ def sourced_items(task: Task, folders=("findings", "backlog", "adr")) -> list[Pa
     found = []
     for folder in folders:
         base = tasks_dir(task.root) / folder
-        items = sorted(base.glob("*.md")) if folder == "adr" and base.is_dir() else stamped_items(base)
+        items = sorted(base.glob("*.md")) if folder == "adr" and base.is_dir() else stamped_items(base, areas=folder == "backlog")
         for path in items:
             source = str(split_frontmatter(read_text(path, ""))[0].get("source") or "")
             if source == task.id or source.startswith(task.id + "/"):
