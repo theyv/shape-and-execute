@@ -17,7 +17,7 @@ This skill takes a task from a rough note to a validated branch in three phases:
 The skill scales by three things, each decided when the information exists:
 **uncertainty** (grill only, or research first), **breadth** (one worker, or a graph of
 jobs) and **stakes** (the task's settings: levels per phase and review). A small task is
-`intent.md` and one or two jobs. A large task gets research, a spec, a planner, reviews and a
+a short spec and one or two jobs. A large task gets research, a full spec, a planner, reviews and a
 fresh session for execution. Work the user defers waits in `.tasks/backlog/` as an intent (optionally in subfolders, for
 example one per module), and gets its spec when someone picks it up.
 

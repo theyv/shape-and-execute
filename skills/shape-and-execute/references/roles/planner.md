@@ -6,7 +6,7 @@ orchestrator may adapt it during execution.
 
 ## Inputs
 
-- `intent.md` and `specs.md` (when present): the contract.
+- `intent.md` and `specs.md`: the contract.
 - Repository instructions (AGENTS.md, CLAUDE.md) and `.tasks/repo/profile.md`.
 - The code base: read what you need to plan, no more.
 - Research reports only when the spec points to them for a decision you must understand.
