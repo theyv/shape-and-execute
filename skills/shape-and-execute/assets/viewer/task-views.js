@@ -423,7 +423,9 @@ TAB.overview=t=>{var js=JS(t),ids=Object.keys(js),info=t.state.task,c={},L=[],ne
    ["Tokens",num(tk.n)+(tk.sub?"<span> subagents only</span>":"")],["Lines",ln||'<span title="No task branch: nothing to count yet, or it was deleted after the merge.">–</span>',ln?linesTip(t):""]].map(k=>'<div class="kpi"'+(k[2]?' title="'+esc(k[2])+'"':"")+"><div>"+k[0]+"</div><b>"+k[1]+"</b></div>").join("")+"</div>";
   // [OVERVIEW-STATS-FIRST]: Needs you first (while not done), the stats per phase, the merge checks and the risks side by side,
   // then the report, Running and Ready ([OVERVIEW-LAYOUT])
+  // the server's waiting reasons (open asks, the parked task, active holds); parked jobs get their own rows below
   if(!/^(done|abandoned)$/.test(info.phase)){var nx=next(t);if(nx)need.push(line(nx[0],nx[1]&&code(nx[1])));
+    (t.waiting||[]).filter(r=>r.kind!=="parked").forEach(r=>need.push(line((r.kind==="hold"?"⏸ ":"● ")+esc(r.text),r.kind==="hold"&&holdBtn(t,r.job))));
     jf(t,j=>j.status==="parked").forEach(id=>{var dj=jf(t,j=>j.kind==="decision"&&j.target===id);
       need.push(jrow(t,id,[ask(t,id),dj.length&&"Decision job: "+dj.map(k=>esc(k)+" ("+stOf(t,k)+")").join(", ")].filter(Boolean).join("<br>"),agoH(js[id].last_change)))});
     jf(t,j=>j.status==="failed").forEach(id=>need.push(jrow(t,id,"",agoH(js[id].last_change))));
@@ -623,6 +625,9 @@ var rsn=e=>e.reason?' <span class="ink2">— '+esc(e.reason)+"</span>":"",
   "hold.set":e=>"Hold after "+J(e.job)+" set"+(e.by==="viewer"?" in the viewer":"")+rsn(e),
   "hold.released":e=>"Hold after "+J(e.job)+" released"+(e.by==="viewer"?" in the viewer":""),
   "override.set":e=>"Override for "+code(e.job)+": "+esc([e.harness,e.model,e.effort].filter(Boolean).join(" · "))+(e.by==="viewer"?" (in the viewer)":"")+rsn(e),
+  "ask.opened":e=>"Asked the owner"+(e.job?" ("+J(e.job)+")":"")+": "+esc(e.question),
+  "ask.closed":e=>"Ask "+(e.asks||[]).map(n=>"#"+esc(n)).join(", ")+" answered"+(e.how==="log"?" by a log":""),
+  "session.snapshot":e=>"Main session: "+esc(e.phase)+(e.total!=null?", "+num(e.total)+" tokens":"")+' <span class="mut">'+esc([e.harness,e.command].filter(Boolean).join(" · "))+"</span>",
   "override.cleared":e=>"Override for "+code(e.job)+" cleared"+(e.by==="viewer"?" (in the viewer)":"")+rsn(e)};
 EV["plan.checked"]=EV["spec.checked"];EV["plan.approved"]=EV["spec.approved"];
 var evText=(t,e)=>(EV[e.type]||(e=>esc(JSON.stringify(e))))(e,t);

@@ -337,7 +337,7 @@ def git_lines(checkout: Path, info: dict) -> dict | None:
     """The task's changed lines ([GIT-LINES]): `git diff --shortstat` from the merge base of the
     base branch and the task branch to the task branch tip, as {added, removed, files}. None
     without a task branch (not started, or deleted after merge) or after a fast-forward merge:
-    missing, never wrong."""
+    missing, never wrong. A task branch still at its start commit gives zeros."""
     from .gitutil import run
     branch, base = info.get("branch"), info.get("base") or {}
     if not info.get("git") or not branch:
@@ -358,7 +358,9 @@ def git_lines(checkout: Path, info: dict) -> dict | None:
     proc = run(["git", "merge-base", base_tip, tip], checkout)
     start = proc.stdout.strip() if proc.returncode == 0 else ""
     if start == tip:
-        start = merged_start(checkout, tip, base_tip, run)
+        # still at the commit the task started from: nothing merged into the task branch yet
+        started = rev(base["commit"]) if base.get("commit") else None
+        start = tip if started == tip else merged_start(checkout, tip, base_tip, run)
     if not start:
         return None
     key = (str(checkout), start, tip)
