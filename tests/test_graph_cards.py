@@ -403,6 +403,52 @@ class LiveStateTests(GraphCardsCase):
         fb = [i for i, e in enumerate(out["edges"]) if e[2] == "fb"]
         self.assertTrue(set(fb) <= set(links["A"]["edges"]) and set(fb) <= set(links["CHECK"]["edges"]))
 
+    def test_a_cycle_of_two_planned_roots_keeps_both_plan_and_finish_edges(self):
+        """[GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH]: A and B start the plan; A-FIX-1 needs REVIEW-B and B-FIX-1
+        needs REVIEW-A, so the cards fold into A ⇄ B. The Plan and Finish edges come from the job graph: both
+        cards start the graph and both hold a terminal fix."""
+        sb = self.sandbox()
+        task = self.planned(sb, "crossed", [("A", "implementation", "", ["--review"]), ("B", "implementation", "", ["--review"])],
+                            settings=["review=selected-jobs"])
+        for job in ("A", "B"):
+            self.run_writer(sb, task, "crossed", job)
+            self.review(sb, task, "crossed", f"REVIEW-{job}", job, "changes-required")
+        for job, other in (("A", "B"), ("B", "A")):
+            sb.sae("job", "add", "crossed", f"{job}-FIX-1", "--kind", "implementation", "--fix-of", job,
+                   "--needs", f"REVIEW-{other}", "--reason", f"REVIEW-{job}: changes required")
+            sb.job_file(task, f"{job}-FIX-1")
+        out = self.cards(sb, task)
+        edges = {(a, b): c for a, b, c in out["edges"]}
+        for job in ("A", "B"):
+            self.assertIn(("@plan", job), edges)
+            self.assertIn((job, "@finish"), edges)
+        self.assertEqual(sorted(c for (a, b), c in edges.items() if {a, b} == {"A", "B"}), ["", "fb"])
+        self.assertNotIn(("@plan", "@finish"), edges)
+        self.assertEqual(len(out["edges"]), len(edges), "no edge twice")
+        self.assertNotIn("NaN", out["svg"])
+
+    def test_a_cycle_with_an_edge_out_keeps_the_finish_edge_of_its_terminal_fix(self):
+        """[GRAPH-PLACEHOLDER-FINISH]: A → REVIEW-A → CHECK → A-FIX-1 and CHECK → SIDE. A edge leaves the cycle
+        A ⇄ CHECK, but A still holds the terminal fix: A → Finish and SIDE → Finish, and CHECK, which holds no
+        terminal job, has no Finish edge."""
+        sb = self.sandbox()
+        task = self.planned(sb, "side", [("A", "implementation", "", ["--review"])], settings=["review=selected-jobs"])
+        self.run_writer(sb, task, "side", "A")
+        self.review(sb, task, "side", "REVIEW-A", "A", "changes-required")
+        for job, kind, extra in (("CHECK", "validation", ["--needs", "REVIEW-A"]), ("SIDE", "validation", ["--needs", "CHECK"]),
+                                 ("A-FIX-1", "implementation", ["--fix-of", "A", "--needs", "CHECK"])):
+            sb.sae("job", "add", "side", job, "--kind", kind, *extra, "--reason", "REVIEW-A: changes required")
+            sb.job_file(task, job)
+        out = self.cards(sb, task)
+        edges = {(a, b): c for a, b, c in out["edges"]}
+        self.assertEqual(edges.get(("CHECK", "A")), "fb")
+        self.assertEqual(edges.get(("CHECK", "SIDE")), "")
+        self.assertIn(("A", "@finish"), edges)
+        self.assertIn(("SIDE", "@finish"), edges)
+        self.assertNotIn(("CHECK", "@finish"), edges)
+        self.assertEqual([b for a, b in edges if a == "@plan"], ["A"])
+        self.assertNotIn("NaN", out["svg"])
+
     def test_added_job_fill_tooltip_with_title_objective_and_result(self):
         """[GRAPH-ADDED-FILL], [GRAPH-TOOLTIPS]."""
         sb = self.sandbox()

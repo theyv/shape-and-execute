@@ -209,13 +209,13 @@ function graph(t){var js=JS(t),info=t.state.task,ph=info.phase,ch=changes(t).r,H
   JP.forEach(e=>pa(cardOf(e[1]),cardOf(e[0]),e[2],e[0],e[1]));
   // card cycles: rows in cards can close a cycle that the job graph has not (A → REVIEW-A → CHECK → A-FIX-1 makes
   // A ⇄ CHECK). Inside a cycle, an edge into a card that starts earlier in the job graph is a feedback edge: drawn
-  // below the cards, outside the layers and the Plan edges; the card with the cycle's last job gets the Finish edge
+  // below the cards, outside the layers; the Plan and Finish edges come from the job graph (see the phase edges)
   var jpar={},jd={},dep=id=>{if(jd[id]!=null)return jd[id];jd[id]=0;var v=0;(jpar[id]||[]).forEach(p=>{if(js[p]||PL[p])v=Math.max(v,dep(p)+1)});return jd[id]=v},
    cd={},cix={},succ={},num={},low={},on={},stk=[],scc={},sN=[],FB=[],nx=0;
   JP.forEach(e=>(jpar[e[1]]=jpar[e[1]]||[]).push(e[0]));
   Object.keys(js).concat(pls.map(p=>p.id)).forEach(id=>{var c=cardOf(id);(cd[c]=cd[c]||[]).push(dep(id))});
   cards.forEach((c,i)=>{cix[c.id]=i;(par[c.id]||[]).forEach(x=>(succ[x[0]]=succ[x[0]]||[]).push(c.id))});
-  var first=id=>Math.min.apply(null,cd[id]||[1e9]),lastJ=id=>Math.max.apply(null,cd[id]||[-1]),
+  var first=id=>Math.min.apply(null,cd[id]||[1e9]),
    before=(a,b)=>first(a)<first(b)||first(a)===first(b)&&cix[a]<cix[b],
    tj=v=>{num[v]=low[v]=nx++;stk.push(v);on[v]=1;(succ[v]||[]).forEach(w=>{if(num[w]==null){tj(w);low[v]=Math.min(low[v],low[w])}else if(on[w])low[v]=Math.min(low[v],num[w])});
     if(low[v]===num[v]){var w,k=sN.length;sN.push(0);do{w=stk.pop();on[w]=0;scc[w]=k;sN[k]++}while(w!==v)}};
@@ -227,15 +227,19 @@ function graph(t){var js=JS(t),info=t.state.task,ph=info.phase,ch=changes(t).r,H
   cards.forEach(c=>(par[c.id]||[]).forEach(x=>{var nw=x[1]===""||x[1]==="tgt"?ch.newE[x[2]+">"+x[3]]:null;eg(x[0],c.id,(nw!=null?"new ":"")+x[1],nw!=null?"Edge added after plan approval: "+nw:"")}));
   ghosts.forEach(id=>ch.removed[id].needs.map(cardOf).filter(n=>has[n]&&n!==id).forEach(x=>eg(x,id,"old")));
   Object.keys(ch.oldE).map(k=>k.split(">")).forEach(e=>{var a=cardOf(e[0]),b=cardOf(e[1]);if(has[a]&&has[b]&&a!==b&&!(inc[b]||[]).includes(a))eg(a,b,"old","Edge removed after plan approval: "+ch.oldE[e.join(">")])});
-  // phase edges: Shape → Plan → the first jobs of the plan; the last cards → Finish
-  var pa0=ev.findIndex(e=>e.type==="plan.approved"),src={};
+  // phase edges: Shape → Plan → the first jobs of the plan; the last cards → Finish. Both come from the job graph,
+  // not the card graph, whose cycles hide them: Plan → every card that holds an entry job (no needs among the jobs,
+  // planned before plan approval); every card that holds a terminal job (nothing needs it) → Finish. Outside a card
+  // cycle a card with an edge out needs no Finish edge: its terminal jobs (review rows) never follow the cards after it
+  var pa0=ev.findIndex(e=>e.type==="plan.approved"),src={},jkid={},inG=id=>(js[id]||PL[id])&&C[cardOf(id)],
+   ends=(rel,ok)=>{var o={};Object.keys(js).concat(pls.map(p=>p.id)).forEach(id=>{var c=cardOf(id);
+    if(C[c]&&/^(job|integration)$/.test(C[c].kind)&&ok(c,id)&&!(rel[id]||[]).some(inG))o[c]=1});return o};
+  JP.forEach(e=>(jkid[e[0]]=jkid[e[0]]||[]).push(e[1]));E0.forEach(e=>{src[e[0]]=1});
+  var entry=ends(jpar,(c,id)=>pa0<0||C[c].kind!=="job"||at[id]==null||at[id]<pa0),last=ends(jkid,c=>sN[scc[c]]>1||!src[c]);
   eg(PC.shape,PC.plan,"");
-  cards.forEach(c=>{if(/^(job|integration)$/.test(c.kind)&&!inc[c.id]&&(pa0<0||c.kind!=="job"||at[c.id]==null||at[c.id]<pa0))eg(PC.plan,c.id,"")});
+  cards.forEach(c=>{if(entry[c.id])eg(PC.plan,c.id,"")});
   if(C[PC.jobs])eg(PC.plan,PC.jobs,"pl");
-  // a card of a cycle ends the graph when no edge leaves the cycle and it holds the cycle's last job
-  var sOut={},sLast={};E0.forEach(e=>{src[e[0]]=1;if(scc[e[0]]!==scc[e[1]])sOut[scc[e[0]]]=1});
-  cards.forEach(c=>{var k=scc[c.id];sLast[k]=Math.max(sLast[k]==null?-1:sLast[k],lastJ(c.id))});
-  var sinks=cards.filter(c=>/^(job|integration|holder)$/.test(c.kind)&&(sN[scc[c.id]]>1?!sOut[scc[c.id]]&&lastJ(c.id)===sLast[scc[c.id]]:!src[c.id]));
+  var sinks=cards.filter(c=>last[c.id]||c.kind==="holder");
   if(sinks.length)sinks.forEach(c=>eg(c.id,PC.finish,c.kind==="holder"?"pl":""));else eg(PC.plan,PC.finish,"");
   var nF=E0.length;FB.forEach(x=>E0.push([x[0],x[1],"fb","Feedback edge: "+x[3]+" follows "+x[2]+". "+C[x[1]].title+" starts before "+C[x[0]].title+", so the edge runs back below the cards."]));
   // [AMEND-4] a card added during execution without parents starts in the column of the rightmost job
