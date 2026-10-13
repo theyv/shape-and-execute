@@ -169,7 +169,7 @@ function jobCard(t,id,rows,ch){var js=JS(t),j=js[id],s=stOf(t,id),live=rows.filt
 function intCard(t,rows){var js=JS(t),live=rows.filter(r=>!r.planned).map(r=>js[r.id]),rv=rows.filter(r=>r.k==="review"&&!r.planned),
    fixing=rows.some(r=>r.k==="fix"&&!r.planned&&js[r.id].status==="running"),last=rv[rv.length-1],
    k=!live.length?"planned":live.some(r=>r.status==="parked")?"parked":live.some(r=>r.status==="failed")?"failed":fixing?"fixing":last?stOf(t,last.id):"pending",
-   c={id:PC.integration,title:"Integration",kind:"integration",cls:[],kc:"var(--kd-review)",st:stp1(k),rows:rows,sub:"review → integration",tk:spent(t,live.map(r=>r.id).filter(Boolean)),v:verdictOf(rows,fixing,false)};
+   c={id:PC.integration,title:"Integration",kind:"integration",cls:[],kc:"var(--kd-review)",st:stp1(k),rows:rows,sub:"review → integration",tk:spent(t,rows.filter(r=>!r.planned).map(r=>r.id)),v:verdictOf(rows,fixing,false)};
   if(!live.length){c.cls.push("planned","nyet");c.l3="after every writer is merged"}else if(k==="pending")c.cls.push("nyet");
   c.tip="Integration — "+c.st.text.replace(/^\S+ /,"")+"\nThe integration review checks the whole change once every writer job is merged.\nIts rounds and fixes are the rows below; click a row to open that job."+(c.tk?"\n"+c.tk:"");
   return c}
@@ -344,7 +344,7 @@ function gvMount(){var w=$(".gwrap");if(!w||w.dataset.task!==S.task)return;var W
   w.style.backgroundSize=16*v.k+"px "+16*v.k+"px";w.style.backgroundPosition=v.x+"px "+v.y+"px";
   if(GHI)gvHi(GHI)}
 // hover or keyboard focus on a card: its edges in the highlight color, its neighbours at full strength, the rest dimmed
-function gvHi(id){var g=$(".gwrap .gv");GHI=id||null;if(!g||!g.classList)return;g.querySelectorAll(".on").forEach(x=>x.classList.remove("on"));
+function gvHi(id){var g=$(".gwrap .gv");GHI=id||null;if(!g||!g.classList)return;g.querySelectorAll(".e.on, .nd.on").forEach(x=>x.classList.remove("on"));
   var k=id&&g.querySelector('.nd[data-card="'+String(id).replace(/["\\]/g,"\\$&")+'"]');g.classList.toggle("hov",!!k);if(!k)return;
   var ln=gvLinks(GE,id);ln.edges.forEach(i=>{var p=g.querySelector('.e[data-i="'+i+'"]');if(p)p.classList.add("on")});
   ln.cards.forEach(c=>{var n=g.querySelector('.nd[data-card="'+c.replace(/["\\]/g,"\\$&")+'"]');if(n)n.classList.add("on")})}
