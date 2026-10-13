@@ -35,6 +35,7 @@ from .graph import (
     review_rounds,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
+from .prompts import review_output_file, review_output_tokens
 from .routing import resolve_model
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
@@ -517,6 +518,13 @@ def cmd_collect(args) -> int:
         for key, value in (("tokens", args.tokens), ("duration_s", args.duration_s), ("agent_ref", args.agent_ref)):
             if value is not None:
                 attempt[key] = value
+        harness = attempt.get("harness")
+        if (args.tokens is None and job["kind"] == "review" and harness in ("codex", "claude")
+                and harness != task.info.get("orchestrator_harness")):
+            # [REVIEW-TOKENS]: a review in the other harness ran the COMMAND, which kept its output.
+            tokens = review_output_tokens(review_output_file(task, job_id, harness), harness)
+            if tokens is not None:
+                attempt["tokens"] = tokens
         job["summary"] = summary
         job.update(fields)
         task.touch(job)
@@ -691,8 +699,9 @@ def cmd_merge(args) -> int:
 def register_collect(sub, command):
     """Add the `collect` command to the parser."""
     p = command(sub, "collect", "Read a job's result file, re-run verify, then merge or add its review.",
-                "Add --tokens, --duration-s and --agent-ref when your harness reports them. Exit 5: resume the same\n"
-                "worker with --reason verify-failed; after the task's limit the job is failed instead (exit 0).\n"
+                "Add --tokens, --duration-s and --agent-ref when your harness reports them. A review run through\n"
+                "the printed COMMAND records its tokens itself. Exit 5: resume the same worker with --reason\n"
+                "verify-failed; after the task's limit the job is failed instead (exit 0).\n"
                 "Exit 4: merge conflict, sae added INTEGRATE-<ID>.",
                 ["collect claims-status STATUS-API --tokens 48210 --duration-s 312 --agent-ref a1b2c3"],
                 [0, 1, 2, 4, 5], cmd_collect)

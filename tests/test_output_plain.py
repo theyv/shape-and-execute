@@ -174,7 +174,7 @@ class PlainProseTests(SaeTestCase):
         script = (f"#!{sys.executable}\nimport json, sys\nfrom pathlib import Path\n"
                   "args = sys.argv[1:]\n"
                   "if '-o' in args:\n    Path(args[args.index('-o') + 1]).write_text(json.dumps(args))\n"
-                  "else:\n    print(json.dumps(args))\n")
+                  "else:\n    print(json.dumps({'result': json.dumps(args)}))\n")  # --output-format json
         for harness in ("claude", "codex"):
             executable = fake_bin / harness
             executable.write_text(script)
