@@ -7,8 +7,9 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
   /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
-  /api/task?repo=K&task=ID         one task: files, events, process map and its steps, routing,
-                                   effective difficulty, review marks, waits, next, finish readiness
+  /api/task?repo=K&task=ID         one task: files, events, the process-map steps, routing,
+                                   effective difficulty, review marks, waits, next, finish readiness,
+                                   per-phase stats, changed lines
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config,
                                    Codex catalog, known Claude families
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
@@ -225,14 +226,11 @@ def computed(task, config: dict | None) -> dict:
     """What the views need, from the same functions as the CLI (`sae next`)."""
     from .progress import next_data, task_status_data
     from .reviews import finish_readiness, next_review_rounds, planned_reviews, review_mark
-    from .control import map_steps, process_map
+    from .control import map_steps
     from .routing import PLANNER_ID, job_context, planned_planner, resolve_model
     from .graph import active_holds, waits_for
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
-                 "waits": {}, "holds_active": [], "map": [], "difficulty": {}}
-    # the process map of `sae status`, in every phase ([VIEWER-PROCESS-MAP])
-    with contextlib.suppress(Exception):
-        out["map"] = process_map(task)["lines"]
+                 "waits": {}, "holds_active": [], "difficulty": {}}
     # readiness for the graph and job panels: the rules of `sae next`, never a copy in app.js
     with contextlib.suppress(Exception):
         out["waits"] = {i: waits_for(task, i) for i, j in task.jobs.items() if j["status"] == "pending"}
@@ -282,6 +280,52 @@ def computed(task, config: dict | None) -> dict:
     return out
 
 
+SHORTSTAT_RE = re.compile(r"(\d+) (file|insertion|deletion)")
+GIT_LINES_CACHE: dict = {}  # (checkout, from, to) -> counts: two commits always give the same diff
+
+
+def git_lines(checkout: Path, info: dict) -> dict | None:
+    """The task's changed lines ([GIT-LINES]): `git diff --shortstat` from the merge base of the
+    base branch and the task branch to the task branch tip, as {added, removed, files}. None
+    without a task branch (not started, or deleted after merge): missing, never wrong."""
+    from .gitutil import run
+    branch, base = info.get("branch"), info.get("base") or {}
+    if not info.get("git") or not branch:
+        return None
+
+    def rev(ref: str) -> str | None:
+        proc = run(["git", "rev-parse", "--verify", "--quiet", ref + "^{commit}"], checkout)
+        return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+    tip = rev("refs/heads/" + branch)
+    if tip is None:
+        return None
+    # a deleted base branch: the commit the task started from stands in for it
+    base_tip = (rev("refs/heads/" + base["branch"]) if base.get("branch") else None) or (
+        rev(base["commit"]) if base.get("commit") else None)
+    if base_tip is None:
+        return None
+    proc = run(["git", "merge-base", base_tip, tip], checkout)
+    start = proc.stdout.strip() if proc.returncode == 0 else ""
+    if start == tip and base.get("commit"):
+        # merged into the base branch and kept: the merge base is the tip itself, so count from the
+        # commit the task started from, when the tip still descends from it
+        started = rev(base["commit"])
+        start = started if started and run(["git", "merge-base", "--is-ancestor", started, tip],
+                                           checkout).returncode == 0 else ""
+    if not start:
+        return None
+    key = (str(checkout), start, tip)
+    if key not in GIT_LINES_CACHE:
+        proc = run(["git", "diff", "--shortstat", start, tip], checkout)
+        if proc.returncode != 0:
+            return None
+        counts = {kind: int(n) for n, kind in SHORTSTAT_RE.findall(proc.stdout)}
+        GIT_LINES_CACHE[key] = {"added": counts.get("insertion", 0), "removed": counts.get("deletion", 0),
+                                "files": counts.get("file", 0)}
+    return dict(GIT_LINES_CACHE[key])
+
+
 def task_data(key: str, task_id: str | None) -> dict:
     from .tasks import Task, locate_tasks
     root = repo_by_key(key)
@@ -305,6 +349,16 @@ def task_data(key: str, task_id: str | None) -> dict:
             "location_path": where, "worktree": state["task"].get("worktree"),
             "overrides": state["task"].get("overrides") or {},
             "prototypes": prototype_files(folder, key, copy.task_id)}
+    # the Overview's numbers, computed here so the page only draws them ([OVERVIEW-PHASE-STATS], [GIT-LINES])
+    data["phase_stats"], data["git_lines"] = None, None
+    with contextlib.suppress(Exception):
+        from .session_tokens import phase_stats
+        data["phase_stats"] = phase_stats(state, events)
+        for row in data["phase_stats"]:  # a running phase's wall time grows each second: the page counts it
+            if row["running"]:            # from `started`, so the answer's version stays put between changes
+                row["wall_s"] = None
+    with contextlib.suppress(Exception):
+        data["git_lines"] = git_lines(copy.checkout, state["task"])
     task = Task(copy.checkout, copy.task_id, folder)
     try:
         task.load()  # read only: nothing is saved

@@ -128,17 +128,19 @@ function phaseCard(t,which,rows){var info=t.state.task,ph=info.phase,js=JS(t),sh
    ok=ap||(sh?/^(planning|executing|done)$/:/^(executing|done)$/).test(ph),cur=ph===(sh?"shaping":"planning"),
    st=ok?stp1("approved"):cur?stp1("running"):ph==="abandoned"?stp1("stopped"):stp1("waiting"),
    steps=stepsOf(t,sh?"shape":"plan"),planner=sh?null:jf(t,j=>j.kind==="planning")[0],ids=rows.filter(r=>!r.planned).map(r=>r.id).concat(planner?[planner]:[]),
-   tk=spent(t,ids),c={id:sh?PC.shape:PC.plan,title:sh?"Shape":"Plan",kind:"phase",cls:["phase"],kc:sh?"var(--ph-s)":"var(--ph-p)",st:st,rows:rows,tk:tk,job:planner||null};
+   ps=phaseRow(t,sh?"shape":"plan"),sum=ps&&ps.tokens!=null?ps.tokens:null,
+   tk=sum!=null?[sum&&tkT(sum),spent(t,ids).split(" · ").filter(x=>!/ tk$/.test(x))[0]].filter(Boolean).join(" · "):spent(t,ids),c={id:sh?PC.shape:PC.plan,title:sh?"Shape":"Plan",kind:"phase",cls:["phase"],kc:sh?"var(--ph-s)":"var(--ph-p)",st:st,rows:rows,tk:tk,job:planner||null};
   if(sh){var S0=k=>{var s=steps.find(x=>x.key===k);return s?s.state==="done"?"✓":"–":ok?"✓":"–"};c.sub="intake "+S0("intake")+" · spec "+S0("spec")}
   else{c.sub="planner";var pst=steps.find(x=>x.key==="planner");
     if(planner){c.x=modelOf(t,planner);c.xid=planner}else if(t.planned_planner){c.x=modelOf(t,t.planned_planner);c.xid=t.planned_planner}
     else if(pst&&pst.state==="none")c.r3="planned inline"}
-  if(tk)c.l3="subagents only";
+  // the sum with the main session where its tokens are known, else the subagents alone ([OVERVIEW-PHASE-STATS])
+  if(tk&&sum==null)c.l3="subagents only";
   if(!ok&&!cur&&ph!=="abandoned")c.cls.push("nyet");
   c.tip=c.title+" — "+st.text+"\n"+(sh?"From your note to an approved spec.":"The job graph, from the approved spec.")+
    (ap?"\nApproved"+(ap.by?" by "+ap.by:"")+(ap.at?" on "+fmt(ap.at):"")+".":"")+(steps.length?"\nSteps: "+stepLine(steps):"")+
    (sh?"\nIntake and spec: written in the main session.":planner?"\nPlanner: "+planner+(spent(t,[planner])?" · "+spent(t,[planner]):""):c.xid?"\nPlanner: "+c.xid+", planned; click its model to change it.":c.r3?"\nPlanned inline: no planner job.":"")+
-   (tk?"\nSubagent tokens: "+tk+" (subagents only; the main session is not counted).":"")+(rows.length?"\nThe rows below are its subagent jobs; click one to open it.":"");
+   (sum!=null?"\nTokens: "+num(sum)+" (main session "+num(ps.main_tokens)+" + subagents "+num(ps.subagent_tokens)+").":tk?"\nSubagent tokens: "+tk+" (subagents only; the main session is not counted"+(ps&&ps.main_note?": "+ps.main_note:"")+").":"")+(rows.length?"\nThe rows below are its subagent jobs; click one to open it.":"");
   return c}
 function jobCard(t,id,rows,ch){var js=JS(t),j=js[id],s=stOf(t,id),live=rows.filter(r=>!r.planned).map(r=>js[r.id]),
    fixing=rows.some(r=>r.k==="fix"&&!r.planned&&js[r.id].status==="running"),
@@ -355,28 +357,61 @@ D.addEventListener("mouseover",e=>{var n=e.target.closest&&e.target.closest(".gw
 D.addEventListener("focusin",e=>{var n=e.target.closest&&e.target.closest(".gwrap .nd");if(n)gvHi(n.dataset.card)});
 D.addEventListener("focusout",e=>{if(e.target.closest&&e.target.closest(".gwrap .nd"))gvHi(null)});
 
-// the process map of `sae status` ([VIEWER-PROCESS-MAP]): the server sends its lines, the page only shows them
-var pmap=t=>(t.map||[]).length?'<pre class="pmap" aria-label="Process map">'+esc(t.map.join("\n"))+"</pre>":"";
+/* ---------- the slim header ([HEADER-SLIM]) and the Overview's numbers: the server computes, the page draws ---------- */
+// one row of the server's phase_stats ([OVERVIEW-PHASE-STATS]); an old answer without them gives null
+var phaseRow=(t,ph)=>(t.phase_stats||[]).find(r=>r.phase===ph)||null,
+ // tokens of the task: subagents plus the main session when every started phase knows its main-session tokens
+ taskTokens=t=>{var sub=Object.keys(JS(t)).reduce((s,id)=>s+tokens(JS(t)[id]),0),rs=(t.phase_stats||[]).filter(r=>r.started),
+   known=rs.length>0&&rs.every(r=>r.main_tokens!=null);
+  return{n:known?sub+rs.reduce((s,r)=>s+r.main_tokens,0):sub,sub:!known}},
+ // +added −removed from git ([GIT-LINES]); missing without a task branch
+ linesOf=t=>{var g=t.git_lines;return g&&g.added!=null?'<span class="la">+'+num(g.added)+'</span> <span class="lr">−'+num(g.removed)+"</span>":""},
+ linesTip=t=>{var g=t.git_lines;return g?plural(g.files,"file")+" changed on the task branch, from its merge base with the base branch":""};
+// the step bar: Shape → Plan → Execute n/m → Finish. A step is done when every step of the server's
+// `steps` in it is; the first one that is not is current (stopped for an abandoned task). Without steps: the phase.
+function stepBar(t){var ph=t.state.task.phase,L=t.steps||[],js=L.find(s=>s.key==="jobs"),
+   grp=s=>s.key==="finish"?3:{shape:0,plan:1,execute:2}[s.phase],open=L.filter(s=>/^(pending|current)$/.test(s.state)).map(grp).filter(i=>i!=null),
+   at=ph==="done"?4:L.length?open.length?Math.min.apply(null,open):4:{shaping:0,planning:1,executing:2}[ph]||0,
+   names=["Shape","Plan","Execute"+(js?" "+js.name.replace(/^jobs /,""):""),"Finish"];
+  return'<ol class="stepbar" aria-label="Steps">'+names.map((n,i)=>{var st=i<at?"done":ph==="abandoned"?"stop":i===at?"cur":"next";
+    return(i?'<li class="sa" aria-hidden="true">→</li>':"")+'<li class="sb '+st+'"'+(st==="cur"?' aria-current="step"':"")+">"+({done:"✓ ",cur:"◐ ",stop:"– "}[st]||"")+esc(n)+"</li>"}).join("")+"</ol>"}
+function slimHead(t){var c={},ids=Object.keys(JS(t)),tk=taskTokens(t),ln=linesOf(t);ids.forEach(id=>{var s=stOf(t,id);c[s]=(c[s]||0)+1});
+  var st=[["jobs done",(c.done||0)+" / "+ids.length],["running",c.running||0],["parked",c.parked||0],
+   [tk.sub?"tokens · subagents only":"tokens",num(tk.n)]].map(x=>'<span class="hs"><b>'+x[1]+"</b> "+x[0]+"</span>");
+  if(ln)st.push('<span class="hs" title="'+esc(linesTip(t))+'"><b>'+ln+"</b> lines</span>");
+  return'<div class="slim">'+stepBar(t)+'<div class="hstats">'+st.join("")+"</div></div>"}
+// the table of stats per phase; "–" and a note where main-session tokens are unknown
+function phaseTable(t){var R=t.phase_stats;if(!R||!R.length)return"";var notes=[],nm={shape:"Shape",plan:"Plan",execution:"Execution"},
+   d=s=>s==null?"–":tmT(s),n=v=>v==null?"–":num(v);
+   note=(k,p)=>{var x=notes.find(y=>y[0]===k);if(x)x[1].push(p);else notes.push([k,[p]])};
+  var rows=R.map(r=>{if(r.main_tokens==null&&r.main_note&&r.started)note("main session unknown, "+r.main_note,nm[r.phase]);if(r.subagent_note)note(r.subagent_note,nm[r.phase]);
+    return tr([nm[r.phase]||esc(r.phase),["n",r.main_tokens==null?'<span title="'+esc(r.main_note||"")+'">–</span>':num(r.main_tokens)],["n",num(r.subagent_tokens)],["n",n(r.tokens)],["n",r.subagent_s?tmT(r.subagent_s):"–"],
+     ["n",r.jobs+" · "+r.attempts],["n",r.running?"running · "+esc(tmT(Math.max(0,mins(r.started)*60))):!r.started?"not started":d(r.wall_s)]],r.started?"":' class="mut"')});
+  return sec("Stats per phase",tbl("nw","Phase,~Main session,~Subagents,~Total,~Subagent time,~Jobs · attempts,~Wall time",rows)+
+   (notes.length?'<p class="pnote">'+notes.map(x=>esc(x[1].join(", ")+": "+x[0]+".")).join("<br>")+"</p>":""))}
 
 /* ---------- tabs ---------- */
 var TAB={};
-TAB.overview=t=>{var js=JS(t),ids=Object.keys(js),info=t.state.task,c={},tok=0,L=[],R="",need=[],plan=t.files["plan.md"];
-  ids.forEach(id=>{var s=stOf(t,id);c[s]=(c[s]||0)+1;tok+=tokens(js[id])});
-  var out='<div class="kpis">'+[["Done",(c.done||0)+"<span> / "+ids.length+"</span>"],["Running",c.running||0],["Parked",c.parked||0],["Ready",c.ready||0],["Tokens",num(tok)]].map(k=>'<div class="kpi"><div>'+k[0]+"</div><b>"+k[1]+"</b></div>").join("")+"</div>";
-  if(info.phase==="done")L.push(report(t));
-  else if(info.phase==="abandoned")L.push(sec("Abandoned",box([line(esc((evs(t,/^task\.abandoned$/)[0]||{}).reason))])));
-  else{var nx=next(t);if(nx)need.push(line(nx[0],nx[1]&&code(nx[1])));
+TAB.overview=t=>{var js=JS(t),ids=Object.keys(js),info=t.state.task,c={},L=[],need=[],plan=t.files["plan.md"],tk=taskTokens(t),ln=linesOf(t);
+  ids.forEach(id=>{var s=stOf(t,id);c[s]=(c[s]||0)+1});
+  var out='<div class="kpis">'+[["Done",(c.done||0)+"<span> / "+ids.length+"</span>"],["Running",c.running||0],["Parked",c.parked||0],["Ready",c.ready||0],
+   ["Tokens",num(tk.n)+(tk.sub?"<span> subagents only</span>":"")],["Lines",ln||'<span title="No task branch: nothing to count yet, or it was deleted after the merge.">–</span>',ln?linesTip(t):""]].map(k=>'<div class="kpi"'+(k[2]?' title="'+esc(k[2])+'"':"")+"><div>"+k[0]+"</div><b>"+k[1]+"</b></div>").join("")+"</div>";
+  // [OVERVIEW-LAYOUT]: Needs you first (while not done), the merge checks and the risks side by side, then the report, Running and Ready
+  if(!/^(done|abandoned)$/.test(info.phase)){var nx=next(t);if(nx)need.push(line(nx[0],nx[1]&&code(nx[1])));
     jf(t,j=>j.status==="parked").forEach(id=>{var dj=jf(t,j=>j.kind==="decision"&&j.target===id);
       need.push(jrow(t,id,[ask(t,id),dj.length&&"Decision job: "+dj.map(k=>esc(k)+" ("+stOf(t,k)+")").join(", ")].filter(Boolean).join("<br>"),agoH(js[id].last_change)))});
     jf(t,j=>j.status==="failed").forEach(id=>need.push(jrow(t,id,"",agoH(js[id].last_change))));
-    L.push(sec("Needs you",box(need,"Nothing needs you.")));
-    var ru=jf(t,j=>j.status==="running").map(id=>{var a=lastA(js[id]);return jrow(t,id,esc(js[id].kind)+(a?" · "+code(model(a))+" · "+esc(a.harness+" "+tierOf(a)):""),stale(t,id)||"last change "+agoH(js[id].last_change))}),
+    out+=sec("Needs you",box(need,"Nothing needs you."))}
+  var ra=section(stripC(plan),"Riskiest assumptions"),
+   chk=sec("To check before you merge",box(evs(t,FT.decisions).filter(e=>e.by==="agent").map(e=>row("",'<span class="tag">'+esc(e.type)+"</span>",(e.id?code(e.id)+" ":"")+esc(e.summary),agoH(e.at),[e["class"],J(e.job)].filter(Boolean).join(" · "))),"No agent decisions or amendments.")),
+   risk=plan!=null?sec("Riskiest assumptions",filled(ra)?'<div class="box pad">'+md(ra,{meta:false})+"</div>":box([],"None recorded in plan.md.")):"";
+  out+='<div class="cols">'+[chk,risk].map(x=>"<div>"+x+"</div>").join("")+"</div>";
+  if(info.phase==="done")L.push(report(t));
+  else if(info.phase==="abandoned")L.push(sec("Abandoned",box([line(esc((evs(t,/^task\.abandoned$/)[0]||{}).reason))])));
+  else{var ru=jf(t,j=>j.status==="running").map(id=>{var a=lastA(js[id]);return jrow(t,id,esc(js[id].kind)+(a?" · "+code(model(a))+" · "+esc(a.harness+" "+tierOf(a)):""),stale(t,id)||"last change "+agoH(js[id].last_change))}),
      re=ids.filter(id=>stOf(t,id)==="ready").map(id=>{var j=js[id];return jrow(t,id,esc(j.kind+(j.target?" → "+j.target:" · "+j.difficulty)))});
     if(ru.length)L.push(sec("Running",box(ru)));if(re.length)L.push(sec("Ready",box(re)))}
-  var ra=section(stripC(plan),"Riskiest assumptions");
-  if(plan!=null)R+=sec("Riskiest assumptions",filled(ra)?'<div class="box pad">'+md(ra,{meta:false})+"</div>":box([],"None recorded in plan.md."));
-  R+=sec("To check before you merge",box(evs(t,FT.decisions).filter(e=>e.by==="agent").map(e=>row("",'<span class="tag">'+esc(e.type)+"</span>",(e.id?code(e.id)+" ":"")+esc(e.summary),agoH(e.at),[e["class"],J(e.job)].filter(Boolean).join(" · "))),"No agent decisions or amendments."));
-  return out+'<div class="cols"><div>'+L.join("")+"</div><div>"+R+"</div></div>"};
+  return out+L.join("")+phaseTable(t)};
 function next(t){var i=t.state.task,p=i.phase,rd=jf(t,(j,k)=>stOf(t,k)==="ready"),run=jf(t,j=>j.status==="running").length,park=jf(t,j=>j.status==="parked").length;
   if(/^(shaping|planning)$/.test(p)){if(rd.length)return["Next: dispatch "+rd[0],"sae dispatch "+i.id+" "+rd[0]];if(run)return null;
     if(p==="shaping")return["Spec gate: check, then approve the spec.","sae approve "+i.id+" spec"];

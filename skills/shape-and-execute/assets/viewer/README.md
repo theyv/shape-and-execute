@@ -45,6 +45,19 @@ no ES modules, no CDN, no web fonts, no external requests.
 - Hover or keyboard focus on a card highlights its edges (`gvHi`, `gvLinks`); the highlight survives
   a refresh.
 
+## The header and the Overview
+
+- Below the title, `slimHead()` draws the step bar (Shape → Plan → Execute n/m → Finish, from
+  `steps`) and the key stats; the settings card (`headerCard()`, `settings.js`) follows. The
+  terminal-style process map stays in the CLI (`sae status`) only.
+- **Server data**: `phase_stats` (`session_tokens.phase_stats`: one row per phase with main-session
+  and subagent tokens, times, jobs and attempts; a running phase's `wall_s` is null, the page counts
+  it from `started`) and `git_lines` (`server.git_lines`: `{added, removed, files}` of
+  `git diff --shortstat` from the merge base of the base and the task branch to the task branch;
+  null without a task branch).
+- Tokens show the sum with the main session only when every started phase knows its main-session
+  tokens; otherwise the subagent tokens, marked "subagents only".
+
 ## How it is used
 
 - `sae view [<task>] [--open]` starts the server or reuses the running one and prints
