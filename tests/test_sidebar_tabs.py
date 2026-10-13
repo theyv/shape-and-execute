@@ -154,7 +154,7 @@ class TabsAndTablesTests(unittest.TestCase):
         self.assertIn('class="zero"', findings.group(0))
         self.assertIn('data-act="tab" data-tab="findings"', findings.group(0))
         self.assertNotRegex(main, r'id="tab-plan" class="zero"')
-        main = page(idx=index(ts, findings=[{"file": "f.md", "title": "x", "text": ""}]), task=ts[0]["id"])["main"]
+        main = page(idx=index(ts, findings=[{"file": "f.md", "title": "x", "text": "", "source": ts[0]["id"]}]), task=ts[0]["id"])["main"]
         self.assertNotRegex(main, r'id="tab-findings" class="zero"')
         self.assertIn(".tabs button.zero{opacity:", (VIEWER / "app.css").read_text())
 

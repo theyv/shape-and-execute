@@ -499,7 +499,7 @@ class LiveStateTests(GraphCardsCase):
         out = self.cards(sb, task)
         late, one = card(out, "LATE"), card(out, "ONE")
         self.assertIn("added", late["cls"])
-        self.assertIn("Added after plan approval: the owner asked for it", late["tip"])
+        self.assertIn("Added after plan approval (the hatched fill): the owner asked for it", late["tip"])  # [GRAPH-NO-LEGEND]
         self.assertIn("Objective: Add the late part.", late["tip"])
         self.assertIn("test job", late["tip"])  # the title of its job file
         self.assertNotIn("added", one["cls"])

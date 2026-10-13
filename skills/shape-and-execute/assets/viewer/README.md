@@ -48,15 +48,25 @@ no ES modules, no CDN, no web fonts, no external requests.
   `asks.owner_wait`. In executing, a card with a parked job or row, or named by an open ask, gets the red
   frame (`--frame-wait`); while `waiting` is not empty, the graph area gets the yellow pulsing frame
   (`--frame-ask`, `--g-wpulse`) and the banner `waitBanner()`, the title starts with "● Needs you" and
-  the favicon is `favicon-wait.svg` (`signal()` in `app.js`).
+  the favicon is `favicon-wait.svg` (`signal()` in `app.js`). An active hold (a `waiting` reason of kind
+  `hold`) turns frame and banner red ([WAIT-HOLD-FRAME]); the banner names the hold and the other waits
+  and carries "Release hold". There is no separate hold bar.
+- No status legend above the graph ([GRAPH-NO-LEGEND]): cards and rows say their status in words; the rule
+  where a review lives is in the Integration card's tooltip, the added-after-approval fill in the tooltip of
+  a filled card. The legend of kinds and marks below the graph stays.
 - Hover or keyboard focus on a card highlights its edges (`gvHi`, `gvLinks`); the highlight survives
   a refresh.
 
 ## The header and the Overview
 
-- Below the title, `slimHead()` draws the step bar (Shape → Plan → Execute n/m → Finish, from
-  `steps`) and the key stats; the settings card (`headerCard()`, `settings.js`) follows. The
-  terminal-style process map stays in the CLI (`sae status`) only.
+- The task's title and phase are in the top bar only (`renderTop()`, [HEADER-TOP-BAR]). Below it the
+  page has the settings card (`headerCard()`, `settings.js`), "All settings" and "?". The ask signal is
+  in the Settings tab only ([ASK-SETTING-TEXT]).
+- `slimHead()` draws the step bar (Shape → Plan → Execute n/m → Finish, from `steps`) and the key
+  stats on the Plan tab, below the graph and above "Next up". The terminal-style process map stays in
+  the CLI (`sae status`) only.
+- The Overview starts with the branch and the task worktree (`whereLine()`), then the KPI row, "Needs
+  you", the stats per phase ([OVERVIEW-STATS-FIRST]), the merge checks and the risks.
 - **Server data**: `phase_stats` (`session_tokens.phase_stats`: one row per phase with main-session
   and subagent tokens, times, jobs and attempts; a running phase's `wall_s` is null, the page counts
   it from `started`) and `git_lines` (`server.git_lines`: `{added, removed, files}` of
@@ -64,6 +74,15 @@ no ES modules, no CDN, no web fonts, no external requests.
   null without a task branch).
 - Tokens show the sum with the main session only when every started phase knows its main-session
   tokens; otherwise the subagent tokens, marked "subagents only".
+
+## Findings and Decisions: this task or all
+
+A switch ([SCOPE-TOGGLE], `S.sc`, `scope=all` in the hash; default "this task") filters both tabs, and
+their counts follow it. A finding belongs to the task when its `source` names it, when the task's events
+say it filed it (`finding.created`) or closed it (`finding.closed`), or when its `closed.md` outcome names
+the task (the server's `closed_list`: `{date, stem, title, outcome, task, job}`). A decision-record draft
+belongs to it when its `source` names it or an `adr.created` event of the task does. Decision jobs and
+decision events are the task's own in both views.
 
 ## How it is used
 

@@ -28,6 +28,10 @@
 @keyframes wpulse{50%{opacity:var(--g-wpulse-min)}}
 .wbar{display:flex;gap:8px;align-items:baseline;min-width:0;margin-bottom:6px;padding:4px 10px;border:1px solid var(--frame-ask);border-radius:6px;font-size:12px;color:var(--ink2);white-space:nowrap;cursor:help}
 .wbar b{color:var(--park);font-weight:600}.wbar span{min-width:0;overflow:hidden;text-overflow:ellipsis}.wbar i{font-style:normal;color:var(--ink3)}
+/* [WAIT-HOLD-FRAME]: an active hold turns the same thin frame, its pulse and the banner red; the banner wraps and carries "Release hold" */
+.gwrap.owner.hold{border-color:var(--frame-wait)}.gwrap.owner.hold::after{border-color:var(--frame-wait)}
+.wbar.hold{align-items:center;border-color:var(--frame-wait);white-space:normal;cursor:default}.wbar.hold b{color:var(--fail)}
+.wbar.hold .wt{flex:1;min-width:0;cursor:help}.wbar.hold .wt>*{margin-right:8px}.wbar.hold span{overflow:visible}.wbar.hold .also{color:var(--ink3)}
 @media (prefers-reduced-motion:reduce){.gwrap.owner::after{animation:none}}
 .gwrap.drag{cursor:grabbing}.gz{position:absolute;right:8px;bottom:8px;display:flex;gap:4px}.gz .btn{background:var(--s1)}.gz .btn.ic{width:24px}.gwrap svg{display:block}
 /* graph cards ([DECISION-STACK-CARDS]): border = job kind ([VIEWER-PLAN-FIRST]); status keeps its text pill and glyph.
@@ -50,7 +54,7 @@
 /* rows: a review round or a fix job below the separator; the glyph's tone says its state, the label and tooltip say it in words */
 .rw{cursor:pointer}.rw:focus{outline:none}.rw.planned{cursor:default;opacity:var(--g-fade)}
 .rw .hitr{fill:transparent}.rw[role=button]:hover .hitr{fill:var(--hl)}.rw.sel .hitr{fill:var(--s3)}.rw:focus-visible .hitr{stroke:var(--acc);stroke-width:1.5}
-.nd .rw .rl{font-family:var(--mono);fill:var(--ink2)}.nd .rw .rg{fill:var(--c,var(--ink3));font-size:13px}.lgr{cursor:help}.lgr i{font-style:normal;color:var(--c)}
+.nd .rw .rl{font-family:var(--mono);fill:var(--ink2)}.nd .rw .rg{fill:var(--c,var(--ink3));font-size:13px}
 .t-planned{--c:var(--ink2)}.t-pending{--c:var(--pend)}.t-ready{--c:var(--ready)}.t-running{--c:var(--run)}.t-done{--c:var(--done)}.t-parked,.t-park{--c:var(--park)}.t-failed,.t-fail{--c:var(--fail)}.t-pass{--c:var(--pass)}.t-mut{--c:var(--ink3)}
 .rw .rg.pulse{animation:rpulse var(--g-pulse) ease-in-out infinite}@keyframes rpulse{50%{opacity:.35}}
 @media (prefers-reduced-motion:reduce){.nd.k-running>.nb,.nd.k-fixing>.nb,.rw .rg.pulse{animation:none}}
@@ -69,7 +73,6 @@
 .mk rect{fill:var(--s3);stroke:var(--line2)}.mk.forced rect{fill:var(--park-b);stroke:none}.mk.off rect{fill:none;stroke:var(--line2);stroke-dasharray:3 2}.mk.hold rect{fill:none;stroke:var(--fail);stroke-dasharray:3 2}.mk.hold.on rect{fill:var(--fail-b);stroke-dasharray:none}
 .nbar{fill:var(--ink2)}.lgb{border-left:2px solid var(--ink2);padding-left:6px}
 .legend.kinds{margin-top:8px}.legend.kinds>span{white-space:nowrap}.ks{display:inline-block;width:14px;height:10px;border-radius:3px;border:1.5px solid var(--kc);margin-right:5px;vertical-align:-1px}.ks.run{border-style:dashed;border-color:var(--ink2)}.ks.pl{border-style:dotted;border-color:var(--ink3)}.ks.ny{opacity:.5;border-style:dotted;border-color:var(--ink3)}.ks.hatch{border-color:var(--line2);background:repeating-linear-gradient(45deg,var(--added-hatch) 0 2px,var(--s2) 2px 5px)}
-.hbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:12px;padding:8px 12px;border:1px solid var(--fail);border-radius:6px;background:var(--fail-b)}.hbar b{font-weight:600}
 .note{margin:0 0 12px;color:var(--ink2)}.note.err{color:var(--fail)}
 .tip .w{font-size:12px}
 /* the override dropdown of a node's model label ([JOB-MODEL-OVERRIDE]) */
@@ -80,8 +83,8 @@
 .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi:nth-child(4){border-left:0}.kpi:nth-child(n+4){border-top:1px solid var(--line)}.kpi{padding:8px 10px}.kpi b{font-size:16px}.kpi b span{font-size:12px}
 .ev{grid-template-columns:auto auto minmax(0,1fr);gap:2px 12px}.ev>:nth-child(3){grid-column:1/4;grid-row:2;white-space:normal}.ev>:nth-child(4){grid-column:3;grid-row:1;justify-self:end}
 .gt{grid-template-columns:112px minmax(0,1fr)}}
-/* [HEADER-SLIM]: the step bar and the key stats below the title; the current step carries ◐ as well as its color */
-.slim{display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin:10px 0 12px}
+/* [HEADER-SLIM], [HEADER-TOP-BAR]: the step bar and the key stats, on the Plan tab below the graph; the current step carries ◐ as well as its color */
+.slim{display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin:10px 0 4px}
 .stepbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0;padding:0;list-style:none;font-size:12px}
 .stepbar .sb{padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--ink3);white-space:nowrap}
 .stepbar .sb.done{color:var(--ink2)}.stepbar .sb.cur{color:var(--ink);font-weight:600;border-color:var(--run);background:var(--run-b)}
@@ -89,3 +92,4 @@
 .hstats{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2)}.hstats b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
 .la{color:var(--pass)}.lr{color:var(--fail)}.kpi b .la,.kpi b .lr{font-size:inherit;font-weight:inherit}.kpi b .la{color:var(--pass)}.kpi b .lr{color:var(--fail)}
 .pnote{margin:6px 0 0;font-size:12px;color:var(--ink3)}
+.meta.where{margin:0 0 12px}

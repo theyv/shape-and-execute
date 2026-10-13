@@ -260,18 +260,19 @@ class AskSignalTests(AskCase):
 
 class AskViewerTests(ViewerServerCase, AskCase):
     @unittest.skipUnless(shutil.which("node"), "node runs the viewer scripts")
-    def test_header_card_and_settings_tab_show_and_change_the_signal(self):
-        """[ASK-SETTING]: the settings card and the Settings tab show the effective signal; a save
-        from the viewer runs sae set ask-signal=…"""
+    def test_the_settings_tab_shows_and_changes_the_signal_the_card_does_not(self):
+        """[ASK-SETTING], [ASK-SETTING-TEXT]: only the Settings tab shows the effective signal, the unset
+        option as "default (off)"; the settings card has none; a save from the viewer runs sae set ask-signal=…"""
         sb = self.sandbox()
         task = self.started(sb, "viewer", jobs=("A",), mode="collaborative")
         view = self.view(sb, "viewer")
         _, data, _ = request(view["port"], "GET", f"/api/task?repo={view['repo']}&task={task}")
         self.assertEqual(data["status"]["ask_signal"], {"on": False, "set": None, "text": "off (mode default)"})
         out = run_node(SETTINGS_JS, "app.js", "task-views.js", "settings.js", data=data)
-        self.assertIn('data-k="ask-signal"', out["card"])
-        self.assertIn('<option value="unset" selected>mode default (off)</option>', out["card"])
+        self.assertNotIn("ask-signal", out["card"])
+        self.assertNotIn("ask signal", out["card"])
         self.assertIn("Ask signal", out["tab"])
+        self.assertIn('data-v="unset">default (off)</button>', out["tab"])
         self.assertIn('data-k="task|ask-signal" data-v="unset"', out["tab"])
         self.assertIn('aria-checked="true" data-act="sxv" data-k="task|ask-signal" data-v="unset"', out["tab"])
         self.assertIn("now off (interaction mode)", out["tab"])
@@ -280,7 +281,7 @@ class AskViewerTests(ViewerServerCase, AskCase):
         self.assertEqual((status, answer["ok"]), (200, True), answer)
         _, data, _ = request(view["port"], "GET", f"/api/task?repo={view['repo']}&task={task}")
         out = run_node(SETTINGS_JS, "app.js", "task-views.js", "settings.js", data=data)
-        self.assertIn('<option value="on" selected>on</option>', out["card"])
+        self.assertNotIn("ask-signal", out["card"])
         self.assertIn('aria-checked="true" data-act="sxv" data-k="task|ask-signal" data-v="on"', out["tab"])
         self.assertIn("set here", out["tab"])
 

@@ -185,8 +185,8 @@ class ServerDataTests(HeaderOverviewCase):
 
 class PageTests(HeaderOverviewCase):
     def test_overview_layout_and_lines_kpi(self):
-        """[OVERVIEW-LAYOUT]: Needs you first, then the merge checks, then the risks; Running and the
-        phase table below; the KPI Lines, "–" without a task branch."""
+        """[OVERVIEW-LAYOUT], [OVERVIEW-STATS-FIRST]: Needs you first, then the phase table, the merge checks,
+        the risks and Running; the KPI Lines, "–" without a task branch."""
         sb = self.sandbox()
         task = self.planned(sb, "layout", [("CORE", "implementation", "", []), ("NEXT", "implementation", "CORE", [])])
         (sb.task_dir(task) / "plan.md").write_text("# Plan\n\n## Riskiest assumptions\n- the merge base is right\n")
@@ -194,8 +194,8 @@ class PageTests(HeaderOverviewCase):
         data = self.data(sb, task)
         ov = text(self.page(data)["overview"])
         start = ov.index("Needs you")  # after the KPI row, which also says "Running"
-        order = [ov.index(h, start) for h in ("Needs you", "To check before you merge", "Riskiest assumptions", "Running",
-                                              "Stats per phase")]
+        order = [ov.index(h, start) for h in ("Needs you", "Stats per phase", "To check before you merge",
+                                              "Riskiest assumptions", "Running")]
         self.assertEqual(order, sorted(order), ov)
         self.assertIn("Lines", ov)
         data["git_lines"] = None
