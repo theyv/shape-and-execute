@@ -352,6 +352,7 @@ class ExecutionTests(SaeTestCase):
     def test_review_rounds_fix_jobs_and_accept(self):
         sb = self.sandbox(points=["all-jobs"])
         task = self.planned(sb, "rounds", [("CORE", "implementation", "", [], {})])
+        sb.sae("set", "rounds", "max-review-rounds=2")  # park after the second round
         sb.sae("start", "rounds")
         self.assertEqual(sb.json("status", "rounds")["layout"], "chain")
         ws = dispatch_workspace(sb, task, "CORE")

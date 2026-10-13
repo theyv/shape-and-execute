@@ -116,7 +116,7 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
 
 
 # Snapshot keys that a card recorded by an older sae lacks: their absence is no change.
-LATER_SNAPSHOT_KEYS = ("ask_signal",)
+LATER_SNAPSHOT_KEYS = ("ask_signal", "max_review_rounds")
 
 
 def last_snapshot(old: dict, new: dict | None = None) -> dict:

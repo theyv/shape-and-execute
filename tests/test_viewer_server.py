@@ -534,6 +534,7 @@ class ViewerReadinessTests(ViewerServerCase, ReviewFlowCase):
         self.run_writer(sb, held, "held", "ONE")
         # a second changes-required integration round parks the task: FINAL waits
         parked = self.integration_task(sb, "parked")
+        sb.sae("set", "parked", "max-review-rounds=2")
         self.review(sb, parked, "parked", "REVIEW-INTEGRATION", "integration", "changes-required")
         sb.sae("job", "add", "parked", "INTEGRATION-FIX-1", "--kind", "implementation",
                "--fix-of", "REVIEW-INTEGRATION", "--reason", "finding 1")

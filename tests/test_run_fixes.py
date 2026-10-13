@@ -34,6 +34,7 @@ class ParkedThenPassedTests(SaeTestCase):
     def three_rounds(self, sb: Sandbox, slug: str, *, old_sae_park: bool) -> str:
         """CORE: review fails, fix, review fails (parked), fix, review passes."""
         task = sb.new_task(slug, slug)
+        sb.sae("set", slug, "max-review-rounds=2")  # the second round parks
         sb.sae("job", "add", slug, "CORE", "--kind", "implementation")
         sb.job_file(task, "CORE")
         sb.approve_plan(slug)

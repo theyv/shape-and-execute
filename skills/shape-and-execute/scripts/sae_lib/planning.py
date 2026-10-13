@@ -361,10 +361,12 @@ def register_set(sub, command):
                 f"Keys: interaction ({'|'.join(INTERACTION_MODES)}); research, planning, execution, review-level\n"
                 f"({'|'.join(LEVELS)}); review (comma list of {', '.join(REVIEW_POINTS)}; or off);\n"
                 f"reviewer ({'|'.join(REVIEW_PROVIDERS)}; cross-harness: the harness that does not orchestrate);\n"
-                "max-verify-failures (1-10; change it only when the user asks); task-difficulty (normal|hard: the\n"
-                "planner and the spec, plan and integration reviews); ask-signal (on|off|unset: whether sae next\n"
-                "reminds the orchestrator to record its questions to the owner; unset is on in full-auto, auto and\n"
-                "critical-only, off in collaborative and interactive).\n"
+                "max-verify-failures (1-10: failed verify runs before a job fails; change it only when the user\n"
+                "asks); max-review-rounds (1-10, default 3: changes-required rounds after which a job, or for the\n"
+                "integration review the task, parks for the user; change it only when the user asks);\n"
+                "task-difficulty (normal|hard: the planner and the spec, plan and integration reviews);\n"
+                "ask-signal (on|off|unset: whether sae next reminds the orchestrator to record its questions to the\n"
+                "owner; unset is on in full-auto, auto and critical-only, off in collaborative and interactive).\n"
                 f"Routing keys (task level; inherit removes the task value): {ROUTING_KEYS_HELP}.\n"
                 "Run it only on the user's word. The next dispatch uses the new values. Prints the settings card.",
                 ["set claims-status execution=economy", "set claims-status review=spec,plan,selected-jobs,integration reviewer=cross-harness",

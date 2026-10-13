@@ -51,11 +51,12 @@ Repeat until `sae next` reports that all jobs are done.
    - job review `changes-required` → add fix jobs
      (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID> --reason "<review>: changes required"`),
      or accept it when the mode lets you decide: `sae merge <task> <ID> --accept-review "<why>"`.
-     After a second `changes-required`, the job parks for the user.
+     After `max-review-rounds` changes-required rounds (default 3), the job parks for the user.
    - integration review `changes-required` → add fix jobs
      (`sae job add <task> INTEGRATION-FIX-1 --kind implementation --fix-of <round ID> --reason "<why>"`).
-     When they are merged, `sae` adds the next round. After a second `changes-required`, the
-     task parks: ask the user in every mode — more fix jobs, or finish with an override.
+     When they are merged, `sae` adds the next round. After `max-review-rounds` changes-required
+     rounds (default 3), the task parks: ask the user in every mode — more fix jobs, or finish
+     with an override.
 4. While anything waits for the user, keep dispatching independent jobs.
 
 **Holds and changes.** On the user's word: a hold after any job (`sae hold <task> <ID>`,

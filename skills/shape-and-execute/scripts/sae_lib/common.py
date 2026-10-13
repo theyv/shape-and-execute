@@ -72,6 +72,10 @@ HARD_STOPS_LINE = ("Hard stops: no push/deploy, no secrets, no CI/permission cha
 # A settings.json without the key uses it;
 # `sae new` writes it into every new task unless config.defaults.max_verify_failures says otherwise.
 DEFAULT_MAX_VERIFY_FAILURES = 3
+# The changes-required review rounds after which a job (or, for the integration review, the task)
+# parks for the owner ([REVIEW-ROUNDS-LIMIT]). A settings.json without the key uses it, as does
+# `sae new` unless config.defaults.max_review_rounds says otherwise.
+DEFAULT_MAX_REVIEW_ROUNDS = 3
 STALE_RUNNING_MINUTES = 60   # `sae status`: a running job without change this long → "check on it"
 BRIEF_MAX_LINES = 80         # `sae check`: warning above this length
 # Codex shell detection: the Codex shell tool sets these in every command it runs

@@ -485,8 +485,8 @@ def register_dispatch(sub, command):
                 "with --reason, or reopens a done research or planning job (a follow-up question; the planner\n"
                 "after a plan review); sae collect then reads the updated report or result. The message also\n"
                 "works for a fresh agent. A due spec or plan review is added first. Exit 3: an active hold (the\n"
-                "message names the release command), or the task is parked after a second changes-required\n"
-                "integration round.",
+                "message names the release command), or the task is parked after max-review-rounds (default 3)\n"
+                "changes-required integration rounds.",
                 ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed",
                  'dispatch claims-status PLAN --resume --reason "REVIEW-PLAN: changes required"'],
                 [0, 1, 2, 3, 4], cmd_dispatch)
