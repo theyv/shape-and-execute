@@ -1,4 +1,4 @@
-"""Viewer fixes: process map in the task data, effective difficulty in prompts and the viewer,
+"""Viewer fixes: the process-map steps in the task data, effective difficulty in prompts and the viewer,
 known Claude families in the settings answer, a state path below a file, `by` of hold events.
 
 Run from the repository root:  /usr/bin/python3 -m unittest discover -s tests -v
@@ -23,7 +23,7 @@ sys.path.insert(0, str(SCRIPTS))
 from sae_lib.setup_mode import CLAUDE_FAMILIES  # noqa: E402
 
 
-# app.js and task-views.js in node: the process map, the job table and the job header of one job
+# app.js and task-views.js in node: the slim header, the job table and the job header of one job
 TASK_VIEW_JS = r"""
 const vm = require("vm"), fs = require("fs");
 const el = () => new Proxy({innerHTML: "", hidden: true, scrollTop: 0, dataset: {}, style: {},
@@ -40,7 +40,7 @@ ctx.TASK = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
 ctx.ID = process.argv[5];
 vm.runInContext(`readHash(); IDX = {sae: "sae", tasks: []}; S.task = TASK.state.task.id; TASKS[S.task] = TASK;
   S.tab = "plan"; S.job = ID; renderPanel()`, ctx);
-const out = vm.runInContext("({map: pmap(TASK), jobs: TAB.jobs(TASK)})", ctx);
+const out = vm.runInContext("({head: slimHead(TASK), jobs: TAB.jobs(TASK)})", ctx);
 out.header = panel.innerHTML;
 console.log(JSON.stringify(out));
 """
@@ -82,7 +82,8 @@ class DifficultyDisplayTests(ViewerServerCase, ReviewFlowCase):
     @unittest.skipUnless(shutil.which("node"), "node runs the viewer scripts")
     def test_job_review_of_a_mechanical_job_shows_normal_in_prompt_and_viewer(self):
         """[DIFFICULTY-DISPLAY], [VIEWER-PROCESS-MAP]: prompt, job table and job header show the
-        difficulty of `sae next`; the task data carries the process map of `sae status`."""
+        difficulty of `sae next`; the task data carries the process-map steps of `sae status`, and the
+        page draws them as the step bar of the slim header ([HEADER-SLIM]), not as the process map."""
         sb = self.sandbox()
         task = self.planned(sb, "mech", [("MECH", "implementation", "", ["--difficulty", "mechanical"])],
                             settings=["review=all-jobs"])
@@ -92,26 +93,28 @@ class DifficultyDisplayTests(ViewerServerCase, ReviewFlowCase):
         view = self.view(sb, "mech")
         _, data, _ = request(view["port"], "GET", f"/api/task?repo={view['repo']}&task={task}")
         self.assertEqual(data["difficulty"]["REVIEW-MECH"], "normal")
-        self.assertEqual(data["map"], sb.json("status", "mech")["map"])
-        self.assertTrue(data["map"])
+        self.assertNotIn("map", data)
+        self.assertTrue(data["steps"])
         out = run_node(TASK_VIEW_JS, "app.js", "task-views.js", data=data, args=["REVIEW-MECH"])
         self.assertIn("review · normal", out["header"])
         self.assertIn('review<span class="mut"> · normal</span>', out["jobs"])
         self.assertNotIn("review · null", out["header"])
-        for line in data["map"]:
-            self.assertIn(line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"), out["map"])
+        self.assertIn('class="stepbar"', out["head"])
+        self.assertIn('aria-current="step">◐ Execute 1/1</li>', out["head"])
+        self.assertNotIn("pmap", out["head"])
         prompt = sb.json("dispatch", "mech", "REVIEW-MECH")["prompt"]
         self.assertIn("Job: REVIEW-MECH (review, normal)", prompt)
 
     def test_task_data_carries_the_process_map_before_execution(self):
-        """[VIEWER-PROCESS-MAP]: every phase, not only executing."""
+        """[VIEWER-PROCESS-MAP]: every phase, not only executing; the steps, not the map's lines ([HEADER-SLIM])."""
         sb = self.sandbox()
         task = sb.new_task("Shaping", "shaping")
         view = self.view(sb, "shaping")
         _, data, _ = request(view["port"], "GET", f"/api/task?repo={view['repo']}&task={task}")
         self.assertEqual(data["state"]["task"]["phase"], "shaping")
-        self.assertEqual(data["map"], sb.json("status", "shaping")["map"])
-        self.assertTrue(data["map"])
+        self.assertTrue(sb.json("status", "shaping")["map"])  # the CLI keeps printing its process map
+        self.assertNotIn("map", data)
+        self.assertEqual([s["phase"] for s in data["steps"]][:1], ["shape"])
 
 
 class ClaudeFamilyTests(ViewerServerCase):
