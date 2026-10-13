@@ -27,13 +27,13 @@ Show this before the proposal, in the conversation language:
 ```
 How models are chosen
 - Each phase (research, planning, execution, review)
-  has a level: economy, balanced or max.
+  has a level: economy, balanced or premium.
 - Each job has a difficulty: mechanical, normal or hard.
   Planning and review are never mechanical.
 - A routing table per harness and phase maps
   level x difficulty to a model and an effort, directly
   or through a tier (L1-L4: one named model + effort).
-- Change it any time, per phase: plan on max, execute
+- Change it any time, per phase: plan on premium, execute
   on economy. The next dispatch uses the change.
 - Where: tell me in the chat; `sae set` (one task);
   `sae project set` (this repository); the viewer
@@ -84,49 +84,49 @@ cell.
 |---|---|---|---|
 | economy | L1 · sonnet · medium | L1 · sonnet · medium | L2 · sonnet · high |
 | balanced | L1 · sonnet · medium | L2 · sonnet · high | L3 · opus · low |
-| max | L2 · sonnet · high | L3 · opus · low | L4 · opus · medium |
+| premium | L2 · sonnet · high | L3 · opus · low | L4 · opus · medium |
 
 | claude · execution | mechanical | normal | hard |
 |---|---|---|---|
 | economy | L1 · sonnet · medium | L1 · sonnet · high | L2 · opus · low |
 | balanced | L1 · sonnet · high | L2 · opus · medium | L3 · opus · high |
-| max | L2 · opus · low | L3 · opus · high | L4 · opus · xhigh |
+| premium | L2 · opus · low | L3 · opus · high | L4 · opus · xhigh |
 
 | claude · planning | normal | hard |
 |---|---|---|
 | economy | L2 · sonnet · high | L3 · opus · medium |
 | balanced | L3 · opus · high | L4 · opus · xhigh |
-| max | L4 · opus · xhigh | L4 · opus · xhigh |
+| premium | L4 · opus · xhigh | L4 · opus · xhigh |
 
 | claude · review | normal | hard |
 |---|---|---|
 | economy | L1 · sonnet · high | L2 · opus · medium |
 | balanced | L2 · opus · medium | L3 · opus · high |
-| max | L3 · opus · high | L4 · opus · xhigh |
+| premium | L3 · opus · high | L4 · opus · xhigh |
 
 | codex · research | mechanical | normal | hard |
 |---|---|---|---|
 | economy | L1 · luna · high | L1 · luna · xhigh | L2 · sol · low |
 | balanced | L1 · luna · xhigh | L3 · sol · medium | L4 · sol · high |
-| max | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
 
 | codex · execution | mechanical | normal | hard |
 |---|---|---|---|
 | economy | L1 · luna · xhigh | L1 · luna · xhigh | L2 · sol · low |
 | balanced | L2 · sol · low | L3 · sol · medium | L4 · sol · high |
-| max | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
 
 | codex · planning | normal | hard |
 |---|---|---|
 | economy | L2 · sol · low | L3 · sol · medium |
 | balanced | L4 · sol · high | L4 · sol · xhigh |
-| max | L4 · sol · xhigh | L4 · sol · max |
+| premium | L4 · sol · xhigh | L4 · sol · max |
 
 | codex · review | normal | hard |
 |---|---|---|
 | economy | L2 · sol · low | L3 · sol · medium |
 | balanced | L3 · sol · medium | L4 · sol · high |
-| max | L4 · sol · high | L4 · sol · xhigh |
+| premium | L4 · sol · high | L4 · sol · xhigh |
 
 **Defaults for new tasks:** interaction mode `critical-only`; levels per phase; review points
 `spec, plan, selected-jobs, integration` (a second model checks the spec against the intent

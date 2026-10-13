@@ -23,6 +23,7 @@ from .common import (
     INTERACTION_MODES,
     LEVELS,
     LEVEL_PHASES,
+    OLD_LEVEL_NAMES,
     Parser,
     REVIEW_POINTS,
     SKILL_DIR,
@@ -50,6 +51,7 @@ from .config import (
     project_key,
     provider_text,
     save_config,
+    upgrade_level_names,
     validate_config,
     worktree_root,
 )
@@ -272,12 +274,14 @@ def convert_schema1(old: dict, catalog: list[dict] | None) -> dict:
             for level in LEVELS:
                 row = {}
                 for difficulty in columns:
-                    tier = review_map.get(level) if phase == "review" else (level_map.get(level) or {}).get(difficulty)
+                    names = [level] + [o for o, n in OLD_LEVEL_NAMES.items() if n == level]
+                    tier = next((t for t in (review_map.get(n) if phase == "review"
+                                             else (level_map.get(n) or {}).get(difficulty) for n in names) if t), None)
                     row[difficulty] = {"tier": tier or "<L1-L4>"}
                 tables[phase][level] = row
         models[harness] = list(entries.values())
         routing[harness] = {"tiers_in_cells": True, "tiers": tiers, "tables": tables}
-    defaults = dict(old.get("defaults") or {})
+    defaults = upgrade_level_names(copy.deepcopy(old.get("defaults") or {}))
     return {"schema": CONFIG_SCHEMA, "models": models, "routing": routing, "defaults": defaults, "projects": {},
             **{k: old[k] for k in ("language", "worktrees", "parallel", "verify") if k in old}}
 
@@ -386,7 +390,7 @@ def cmd_setup_save(args) -> int:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
         fail(EXIT_USAGE, f"stdin is not valid JSON: {exc}")
-    errors = validate_config(data, codex_catalog())
+    errors = validate_config(upgrade_level_names(data), codex_catalog())
     if errors:
         fail(EXIT_USAGE, "Config not saved:\n" + "\n".join(f"  - {e}" for e in errors))
     path = save_config(data)

@@ -36,6 +36,9 @@ def _schema1_place(name: str, line: str) -> bool:
 RETIRED = [
     ("rung", r"\brungs?\b", _schema1_place),
     ("level map", r"level[ _-]maps?", _schema1_place),
+    # the level max is premium now; max as an effort stays, so only level contexts are matched
+    ("level max", r"balanced\W{1,4}(or\W+)?max\b|\.max\.(mechanical|normal|hard)\b|\bon max\b|^\| max \||"
+                  r"\blevels? (is |are )?max\b|\[\"economy\",\s*\"balanced\",\s*\"max\"", None),
     ("model ladder", r"model ladder", None),
     ("task checkout", r"task checkout", None),
     ("execution checkout", r"execution checkout", None),

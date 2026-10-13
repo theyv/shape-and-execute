@@ -27,6 +27,7 @@ from .common import (
     INTERACTION_MODES,
     LEVELS,
     LEVEL_PHASES,
+    OLD_LEVEL_NAMES,
     REVIEW_POINTS,
     SCHEMA_VERSION,
     fail,
@@ -71,11 +72,44 @@ def load_config(required: bool = True, allow_old: bool = False) -> dict | None:
         fail(EXIT_CONFIG, f"User config {path} is not valid JSON: {exc}.\n{CONFIG_HINT}")
     if not isinstance(data, dict):
         fail(EXIT_CONFIG, f"User config {path} must be a JSON object.\n{CONFIG_HINT}")
+    upgrade_level_names(data)
     if not allow_old and data.get("schema") != CONFIG_SCHEMA:
         if data.get("schema") == 1:
             fail(EXIT_CONFIG, SCHEMA1_TEXT)
         fail(EXIT_CONFIG, f"User config {path}: schema must be {CONFIG_SCHEMA}.\n{CONFIG_HINT}")
     return data
+
+
+def upgrade_level_names(data):
+    """In place: old level names (`max`) become the new ones (`premium`) in a user config, a
+    project entry or a settings.json — level values in `levels`, rows of routing tables, also
+    under `defaults` and `projects`. A row present under both names stays as it is, so the
+    validation reports it. Returns `data`."""
+    if not isinstance(data, dict):
+        return data
+    levels = data.get("levels")
+    if isinstance(levels, dict):
+        for phase, level in levels.items():
+            if isinstance(level, str) and level in OLD_LEVEL_NAMES:
+                levels[phase] = OLD_LEVEL_NAMES[level]
+    routing = data.get("routing")
+    for block in routing.values() if isinstance(routing, dict) else ():
+        tables = block.get("tables") if isinstance(block, dict) else None
+        for table in tables.values() if isinstance(tables, dict) else ():
+            if isinstance(table, dict) and any(o in table and n not in table for o, n in OLD_LEVEL_NAMES.items()):
+                rows = list(table.items())
+                table.clear()
+                table.update((OLD_LEVEL_NAMES.get(k, k), v) for k, v in rows)
+    upgrade_level_names(data.get("defaults"))
+    projects = data.get("projects")
+    for entry in projects.values() if isinstance(projects, dict) else ():
+        upgrade_level_names(entry)
+    return data
+
+
+def level_name(value):
+    """A level as given on the command line; an old name is read as the new one."""
+    return OLD_LEVEL_NAMES.get(value, value) if isinstance(value, str) else value
 
 
 def save_config(data: dict) -> Path:
@@ -534,10 +568,12 @@ def worktree_root(config: dict) -> Path:
 
 def settings_errors(s) -> list[str]:
     """Shape of settings.json. Task routing pairs are checked against the config by `sae set` and
-    at dispatch, where the config is loaded."""
+    at dispatch, where the config is loaded. Reads old level names as the new ones first, in place
+    (`upgrade_level_names`): every reader of a task's settings.json validates it here."""
     errors: list[str] = []
     if not isinstance(s, dict):
         return ["settings must be a JSON object"]
+    upgrade_level_names(s)
     if s.get("schema") != SCHEMA_VERSION:
         errors.append(f"schema must be {SCHEMA_VERSION}")
     if s.get("interaction") not in INTERACTION_MODES:
@@ -601,6 +637,8 @@ def parse_set_value(key: str, value: str):
         if not value.isdigit():
             fail(EXIT_USAGE, "max-verify-failures must be an integer from 1 to 10.")
         return int(value)
+    if SET_KEYS.get(key, ("",))[0] == "levels":
+        return level_name(value)
     return value
 
 
@@ -629,6 +667,7 @@ def apply_routing_key(routing: dict, key: str, value: str) -> None:
         path, new = ["tiers", parts[2]], (None if value == "inherit" else pair(value))
     elif head == "routing" and len(parts) == 5:
         phase, level, difficulty = parts[2:]
+        level = level_name(level)
         if phase not in PHASE_DIFFICULTIES or level not in LEVELS:
             fail(EXIT_USAGE, f"{key}: phases are {', '.join(LEVEL_PHASES)}; levels are {', '.join(LEVELS)}.")
         if difficulty not in PHASE_DIFFICULTIES[phase]:
@@ -700,7 +739,8 @@ def flatten_settings(s: dict) -> dict:
 
 
 def settings_diff(old: dict, new: dict) -> dict:
-    a, b = flatten_settings(old or {}), flatten_settings(new)
+    # an old level name in `old` (settings_seen of an older sae) is not a change
+    a, b = flatten_settings(upgrade_level_names(copy.deepcopy(old or {}))), flatten_settings(new)
     return {key: [a.get(key), b.get(key)] for key in sorted(set(a) | set(b)) if a.get(key) != b.get(key)}
 
 
