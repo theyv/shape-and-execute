@@ -2,7 +2,8 @@
    the three scripts share their top-level names; app.js loads first and boots on DOMContentLoaded. */
 "use strict";
 var D=document,W=window,$=s=>D.querySelector(s);
-var TABS=[["plan","Plan"],["overview","Overview"],["jobs","Jobs"],["timeline","Timeline"],["reviews","Reviews"],["decisions","Decisions"],["spec","Intent & Spec"],["findings","Findings"]],
+// [TAB-ORDER]; settings.js appends Settings, the last tab
+var TABS=[["plan","Plan"],["spec","Intent & Spec"],["reviews","Reviews"],["findings","Findings"],["decisions","Decisions"],["overview","Overview"],["timeline","Timeline"],["jobs","Jobs"]],
  PHASES=[["executing","Executing"],["planning","Planning"],["shaping","Shaping"],["done","Done"],["abandoned","Abandoned"]],
  WR={implementation:1,integration:1},
  MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","max"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
@@ -165,28 +166,43 @@ function renderTop(){var it=IT(S.task),th=D.documentElement.dataset.theme||"dark
    '<div class="crumb">'+projectSwitch()+(it?'<span>/</span><span class="t">'+esc(it.title)+"</span>":"")+"</div>"+
    '<div class="live" title="Read live from the repository; this page asks again every few seconds.">'+(IDX?'<span class="hm">Last updated '+esc(clock(IDX.generated))+' · </span><span class="sm">Updated </span><span data-ago="'+esc(IDX.generated)+'">'+esc(ago(IDX.generated))+"</span>":"No data")+"</div>"+
    '<div class="seg" role="radiogroup" aria-label="Theme">'+["dark","light"].map(m=>'<button role="radio" data-act="theme" data-m="'+m+'" aria-checked="'+(th===m)+'">'+(m==="dark"?"Dark":"Light")+"</button>").join("")+"</div>"}
-/* ---------- sidebar: collapsible sections, phase groups, a status bar per task ---------- */
-var BAR=["done","running","parked","failed","pending"],
+/* ---------- sidebar: collapsible sections, phase and backlog-folder groups, ten items per group ---------- */
+var BAR=["done","running","parked","failed","pending"],GROUP_CAP=10,MORE={}, // MORE: groups opened past their first ten
  shut=(k,n)=>own(FOLD,k)!=null?!!FOLD[k]:/^ph:(done|abandoned)$/.test(k)&&n>3,
- fold=(k,n,cls,label,cnt)=>'<button class="sx '+cls+'" data-act="fold" data-k="'+k+'" data-n="'+n+'" data-nav aria-expanded="'+!shut(k,n)+'"><svg class="cv" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>'+label+'<span class="n">'+cnt+"</span></button>",
+ fold=(k,n,cls,label,cnt)=>'<button class="sx '+cls+'" data-act="fold" data-k="'+esc(k)+'" data-n="'+n+'" data-nav aria-expanded="'+!shut(k,n)+'"><svg class="cv" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>'+label+'<span class="n">'+cnt+"</span></button>",
  pmark=p=>'<i class="pd" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>",
- since=(p,iso)=>p==="done"?"finished "+agoH(iso):p==="abandoned"?"abandoned "+agoH(iso):active(iso);
-// where a task is ([VIEWER-ALL-WORKTREES]): its task worktree, the home checkout, .tasks/done/ or another checkout
-var where=t=>{var l=t.location,pth=t.location_path||t.checkout||"",kept=t.phase==="done"&&t.worktree;
-  return!l&&!t.checkout?"":'<span class="tm" title="'+esc(pth)+'"><span>'+esc(l==="checkout"||!l?"in …/"+pth.split(/[\\\/]/).pop():l==="done"?"in .tasks/done/":"in "+l)+"</span>"+(kept?"<span>worktree kept for testing</span>":"")+"</span>"};
+ since=(p,iso)=>p==="done"?"finished "+agoH(iso):p==="abandoned"?"abandoned "+agoH(iso):active(iso),
+ // [SIDEBAR-SHOW-MORE]: the items a group shows (lists come newest first) and how many stay behind "Show N more";
+ // the open item shows even in a folded group and beyond the first ten
+ groupItems=(k,L,isOpen,folded)=>{var all=!!MORE[k],show=L.filter((x,i)=>isOpen(x)||!folded&&(all||i<GROUP_CAP));return{show:show,rest:folded?0:L.length-show.length}},
+ showMore=(k,n)=>n?'<button class="smore" data-act="more" data-k="'+esc(k)+'" data-nav>Show '+n+" more</button>":"",
+ // [SIDEBAR-BACKLOG-FOLDERS]: an item in .tasks/backlog/<folder>/ belongs to that folder; one at the top level to none
+ backlogFolder=b=>{var m=/(?:^|[\\\/])\.tasks[\\\/]backlog[\\\/]([^\\\/]+)[\\\/][^\\\/]+$/.exec(b.file||"");return m?m[1]:""};
+// where a task is ([VIEWER-ALL-WORKTREES]): its task worktree, the home checkout or another checkout; never .tasks/done/ ([SIDEBAR-NO-DONE-PATH])
+var where=t=>{var l=t.location,pth=t.location_path||t.checkout||"",kept=t.phase==="done"&&t.worktree,
+  at=l==="done"?"":l==="checkout"||!l?"in …/"+pth.split(/[\\\/]/).pop():"in "+l;
+  return(!l&&!t.checkout)||!at&&!kept?"":'<span class="tm" title="'+esc(pth)+'"><span>'+esc(at)+"</span>"+(kept?"<span>worktree kept for testing</span>":"")+"</span>"};
 function renderSide(){if(!IDX){$("#side").innerHTML="";return}var ts=IDX.tasks,bl=IDX.backlog||[],
-  item=(on,a,v,title,meta,more,cls)=>'<button class="ti'+(on?" on":"")+(cls||"")+'" data-act="'+a+'" data-'+(a==="bl"?"f":"id")+'="'+esc(v)+'" data-nav'+(on?' aria-current="true"':"")+'><span class="tt">'+esc(title)+'</span><span class="tm">'+meta+"</span>"+(more||"")+"</button>",
-  h='<div class="ssec">'+fold("tasks",0,"top","Tasks",ts.length);
+  item=(on,a,v,title,meta,more,cls,dot)=>'<button class="ti'+(on?" on":"")+(dot?" dot":"")+(cls||"")+'" data-act="'+a+'" data-'+(a==="bl"?"f":"id")+'="'+esc(v)+'" data-nav'+(on?' aria-current="true"':"")+'><span class="tt">'+(dot||"")+esc(title)+'</span><span class="tm">'+meta+"</span>"+(more||"")+"</button>",
+  // [SIDEBAR-SLIM-ROWS]: the open task keeps its full row; every other task shows its title and one meta.
+  // [SIDEBAR-ACTIVE-PULSE]: the phase dot of a task in shaping, planning or executing pulses
+  taskItem=(t,p)=>{var on=t.id===S.task,cls=" p-"+p+(/^(done|abandoned)$/.test(p)?" mu":" pulse")+(on?"":" slim"),meta="<span>"+since(p,t.last_change)+"</span>";
+    if(!on)return item(false,"task",t.id,t.title||t.id,meta,"",cls,pmark(p));
+    var c=t.counts||{},tot=BAR.reduce((v,x)=>v+(c[x]||0),0),
+     right=(t.parked?pill("parked").replace("parked</span>",t.parked+" parked</span>"):"")+(t.holds&&!/^(done|abandoned)$/.test(p)?' <span class="tag" title="'+esc(plural(t.holds,"hold"))+'">⏸ held</span>':"")||(p==="planning"&&t.plan_approved?"<span>plan approved</span>":""),
+     bar=tot?'<span class="sbw" title="'+esc(BAR.filter(x=>c[x]).map(x=>c[x]+" "+x).join(", "))+'"><span class="sbar">'+BAR.filter(x=>c[x]).map(x=>'<i class="k-'+x+'" style="flex:'+c[x]+'"></i>').join("")+"</span><b>"+(c.done||0)+"/"+tot+"</b></span>":"";
+    return item(true,"task",t.id,t.title||t.id,meta+right,bar+where(t),cls,pmark(p))},
+  blItem=b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>"+(b.picked_up_by?'<span class="tag" title="'+esc("Picked up by "+b.picked_up_by)+'">picked up</span>':"")),
+  // one group: its fold (when it has a label), its items and its "Show N more"
+  group=(k,L,isOpen,draw,head)=>{var sh=head?shut(k,L.length):false,g=groupItems(k,L,isOpen,sh);return(head?'<div class="sgrp">'+head(L.length):"")+g.show.map(draw).join("")+showMore(k,g.rest)+(head?"</div>":"")},
+  h='<div class="ssec">'+fold("tasks",0,"top",'<span class="sl">Tasks</span>',ts.length);
   if(!shut("tasks",0)){if(!ts.length)h+=empty("No tasks yet.");
-    PHASES.forEach(p=>{var L=ts.filter(t=>t.phase===p[0]),k="ph:"+p[0],sh=shut(k,L.length);if(!L.length)return;
-      h+='<div class="sgrp">'+fold(k,L.length,"p-"+p[0],pmark(p[0])+p[1],L.length);
-      L.forEach(t=>{if(sh&&t.id!==S.task)return;var c=t.counts||{},tot=BAR.reduce((v,x)=>v+(c[x]||0),0),
-        right=(t.parked?pill("parked").replace("parked</span>",t.parked+" parked</span>"):"")+(t.holds&&!/^(done|abandoned)$/.test(p[0])?' <span class="tag" title="'+esc(plural(t.holds,"hold"))+'">⏸ held</span>':"")||(p[0]==="planning"&&t.plan_approved?"<span>plan approved</span>":""),
-        bar=tot?'<span class="sbw" title="'+esc(BAR.filter(x=>c[x]).map(x=>c[x]+" "+x).join(", "))+'"><span class="sbar">'+BAR.filter(x=>c[x]).map(x=>'<i class="k-'+x+'" style="flex:'+c[x]+'"></i>').join("")+"</span><b>"+(c.done||0)+"/"+tot+"</b></span>":"";
-        h+=item(t.id===S.task,"task",t.id,t.title||t.id,"<span>"+since(p[0],t.last_change)+"</span>"+right,bar+where(t),/^(done|abandoned)$/.test(p[0])?" mu":"")});
-      h+="</div>"})}
-  h+='</div><div class="ssec">'+fold("backlog",0,"top","Backlog",bl.length)+(shut("backlog",0)?"":bl.map(b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>"+(b.picked_up_by?'<span class="tag" title="'+esc("Picked up by "+b.picked_up_by)+'">picked up</span>':""))).join("")||empty("Empty."))+"</div>";
-  var dr=IDX.drafts||[];h+='<div class="ssec">'+fold("drafts",0,"top","Decision drafts",(IDX.open_drafts||0)+" open")+(shut("drafts",0)?"":dr.map(d=>item(S.bl===d.file,"bl",d.file,d.title,"<span>"+esc((d.type||"draft")+" · "+(d.status||"proposed"))+"</span>")).join("")||empty("None."))+"</div>";
+    PHASES.forEach(p=>{var L=ts.filter(t=>t.phase===p[0]),k="ph:"+p[0];if(!L.length)return;
+      h+=group(k,L,t=>t.id===S.task,t=>taskItem(t,p[0]),n=>fold(k,n,"p-"+p[0],pmark(p[0])+p[1],n))})}
+  h+='</div><div class="ssec">'+fold("backlog",0,"top",'<span class="sl">Backlog</span>',bl.length);
+  if(!shut("backlog",0)){var isBl=b=>S.bl===b.file,folders=[...new Set(bl.map(backlogFolder).filter(Boolean))].sort();
+    h+=bl.length?group("bl:",bl.filter(b=>!backlogFolder(b)),isBl,blItem)+folders.map(f=>group("blf:"+f,bl.filter(b=>backlogFolder(b)===f),isBl,blItem,n=>fold("blf:"+f,n,"bf",esc(f),n))).join(""):empty("Empty.")}
+  var dr=IDX.drafts||[];h+='</div><div class="ssec">'+fold("drafts",0,"top",'<span class="sl">Decision drafts</span>',(IDX.open_drafts||0)+" open")+(shut("drafts",0)?"":dr.length?group("drafts",dr,d=>S.bl===d.file,d=>item(S.bl===d.file,"bl",d.file,d.title,"<span>"+esc((d.type||"draft")+" · "+(d.status||"proposed"))+"</span>")):empty("None."))+"</div>";
   $("#side").innerHTML=h}
 function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   if(!IDX||!it){m.innerHTML='<div class="wrap">'+empty(!IDX?(ERR?esc(ERR):PROJ&&!PROJ.length?"No repository yet. Run <code>sae view</code> in a repository.":"Loading…"):IDX.tasks.length?"Select a task.":"No tasks yet. Start one with <code>sae new</code>.")+"</div>";return}
@@ -196,7 +212,7 @@ function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.worktree?'<span class="wt" title="'+esc(it.worktree)+'"><span class="mut">task worktree</span> '+code("…/"+it.worktree.split(/[\\\/]/).slice(-2).join("/"))+cpi(it.worktree,it.worktree,"Copy path: ")+"</span>":it.location?'<span title="'+esc(it.location_path||"")+'"><span class="mut">in</span> '+esc(it.location==="done"?".tasks/done/":it.location==="checkout"?"…/"+String(it.location_path||"").split(/[\\\/]/).pop():it.location)+"</span>":"")+"</div></div>"+
    '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
   if(t)h+=headerCard(t)+pmap(t); // settings.js: the settings card, editable in place; task-views.js: the process map
-  h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0];return'<button role="tab" id="tab-'+x[0]+'" aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(cnt[x[0]]?"<i>"+cnt[x[0]]+"</i>":"")+"</button>"}).join("")+"</div>";
+  h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0],n=cnt[x[0]];return'<button role="tab" id="tab-'+x[0]+'"'+(n===0?' class="zero"':"")+' aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(n!=null?"<i>"+n+"</i>":"")+"</button>"}).join("")+"</div>";
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
   m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";D.title=it.title+" · "+IDX.repo;
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
@@ -264,6 +280,8 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),p=$("#pop"
   else if(a==="row")go({job:S.job===id?null:id});
   else if(a==="bl"){side(false);openPanel({bl:d.f,job:null},e,ev)}
   else if(a==="close")closePanel();
+  // focus moves to the first item the control revealed
+  else if(a==="more"){var nav=()=>[...D.querySelectorAll("#side [data-nav]")],seen=new Set(nav().map(fkey));MORE[d.k]=1;renderSide();var nx=nav().find(x=>!seen.has(fkey(x)));if(nx)nx.focus()}
   else if(a==="fold"){FOLD[d.k]=!shut(d.k,+d.n||0);LSs("sae-fold",JSON.stringify(FOLD));renderSide();refocus($("#side"),fkey(e))}
   else if(a==="filter")go({f:d.f});
   else if(a==="doc")go({doc:d.d});
