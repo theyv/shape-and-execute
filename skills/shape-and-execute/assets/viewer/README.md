@@ -33,7 +33,10 @@ no ES modules, no CDN, no web fonts, no external requests.
 - **Feedback edges**: rows can close a cycle of cards that the job graph has not
   (A → REVIEW-A → CHECK → A-FIX-1 makes A ⇄ CHECK). Inside a cycle, an edge into the card that starts
   earlier in the job graph is a feedback edge (`fb`, dashed, drawn below the cards); it is left out of
-  the layers and the Plan edges, and the card with the cycle's last job gets the Finish edge.
+  the layers.
+- **Plan and Finish edges** come from the job graph, not the card graph, whose cycles hide them: Plan →
+  every card that holds an entry job (no needs, planned before plan approval); every card that holds a
+  terminal job (nothing needs it) → Finish, except a card outside a cycle that already has an edge out.
 - **Server data**: `steps` (`control.map_steps`, the steps of the process map) and `finish`
   (`reviews.finish_readiness`: the gates of `sae finish`, without side effects). `planned_reviews`
   also holds the next round of a changes-required round while its fixes are open
