@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<!-- favicon.svg with a dot: the task in view waits for the owner ([WAIT-TAB-TITLE]). -->
+<style>.d{fill:#17252B}.r{stroke:#17252B}@media (prefers-color-scheme:dark){.d{fill:#C9D6DB}.r{stroke:#121212}}</style>
+<path fill="#18B995" d="M33 33H109L141 65V100H106V80L94 68H68V94H33Z"/>
+<path class="d" d="M141 165H65L33 133V98H68V118L80 130H106V104H141Z"/>
+<path fill="#18B995" d="M104 87L160 100L104 113Z"/>
+<circle class="r" cx="156" cy="44" r="38" fill="#F0B35A" stroke-width="10"/>
+</svg>

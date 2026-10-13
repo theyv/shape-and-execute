@@ -61,7 +61,9 @@ from .viewer import (
     write_private,
 )
 
-STATIC_FILES = ("app.css", "app.js", "task-views.css", "task-views.js", "settings.css", "settings.js")
+STATIC_FILES = ("app.css", "app.js", "task-views.css", "task-views.js", "settings.css", "settings.js",
+                "favicon.svg", "favicon-wait.svg")
+STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
 TOKEN_META = '<meta name="sae-token" content="">'
 MAX_BODY = 2 * 1024 * 1024
 WRITE_TIMEOUT_S = 120
@@ -229,6 +231,7 @@ def computed(task, config: dict | None) -> dict:
     from .control import map_steps
     from .routing import PLANNER_ID, job_context, planned_planner, resolve_model
     from .graph import active_holds, waits_for
+    from .asks import owner_wait
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
                  "waits": {}, "holds_active": [], "difficulty": {}}
     # readiness for the graph and job panels: the rules of `sae next`, never a copy in app.js
@@ -249,6 +252,10 @@ def computed(task, config: dict | None) -> dict:
         out["steps"] = map_steps(task)
     with contextlib.suppress(Exception):
         out["finish"] = finish_readiness(task)
+    # open asks and what waits for the owner ([WAIT-FRAMES], [WAIT-TAB-TITLE]); `waiting` is empty outside executing
+    out["asks"], out["waiting"] = [], []
+    with contextlib.suppress(Exception):
+        out.update(owner_wait(task))
     if config is None:
         return out
     try:
@@ -622,8 +629,7 @@ class ViewerHandler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, html.encode(), "text/html; charset=utf-8", {"Content-Security-Policy": PAGE_CSP})
             if path.lstrip("/") in STATIC_FILES:
                 name = path.lstrip("/")
-                kind = "text/css" if name.endswith(".css") else "text/javascript"
-                return self.send(200, (VIEWER_ASSETS / name).read_bytes(), f"{kind}; charset=utf-8")
+                return self.send(200, (VIEWER_ASSETS / name).read_bytes(), STATIC_TYPES[Path(name).suffix])
             if path == "/api/health":
                 return self.send_json(200, {"ok": True, "pid": os.getpid(), "port": self.server.port,
                                             "version": self.server.version, "started": self.server.started})

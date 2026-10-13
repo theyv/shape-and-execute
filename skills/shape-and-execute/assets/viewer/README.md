@@ -13,6 +13,7 @@ has run, and changes settings only through the server, which runs the `sae` comm
 | `app.js` | data loading, palette, tabs, sidebar, Markdown, project switcher, events, boot |
 | `task-views.css` / `task-views.js` | the Plan graph and the other task tabs (`TAB.*`), the job panel |
 | `settings.css` / `settings.js` | the Settings tab (Task, Project, Global), the routing panel, the model lists, the editable header card; saving through the server |
+| `favicon.svg` / `favicon-wait.svg` | the owner's icon (its dark half turns light under `prefers-color-scheme: dark`); the second with the dot of "waiting for the owner" |
 
 Classic scripts in this order: `app.js`, `task-views.js`, `settings.js`. They share their
 top-level names; `app.js` boots on `DOMContentLoaded`, when all three are loaded. No build step,
@@ -42,6 +43,12 @@ no ES modules, no CDN, no web fonts, no external requests.
 - **Tuning**: sizes and character widths in `GC`, wheel and pinch rates in `GZR` (`task-views.js`);
   timings and strengths as `--g-*` on `:root` in `task-views.css`; colors (`--pass`, `--edge-hi`,
   `--frame-wait`, `--added-hatch`) in `app.css`.
+- **Waiting for the owner** ([WAIT-FRAMES], [WAIT-TAB-TITLE]): the server sends `asks` (open asks, any
+  phase) and `waiting` (one `{kind, job, text}` per reason, empty outside executing), both from
+  `asks.owner_wait`. In executing, a card with a parked job or row, or named by an open ask, gets the red
+  frame (`--frame-wait`); while `waiting` is not empty, the graph area gets the yellow pulsing frame
+  (`--frame-ask`, `--g-wpulse`) and the banner `waitBanner()`, the title starts with "● Needs you" and
+  the favicon is `favicon-wait.svg` (`signal()` in `app.js`).
 - Hover or keyboard focus on a card highlights its edges (`gvHi`, `gvLinks`); the highlight survives
   a refresh.
 
@@ -72,8 +79,8 @@ no ES modules, no CDN, no web fonts, no external requests.
   The body names its `repo` (and `task`): the one the change was made for, captured when the
   owner made it, never the selection when a queued save leaves; `post` refuses a body without it.
   Routes are `WRITE_ROUTES` in `server.py`; a new one is one entry there.
-- Polling: every 3 s while the open repository has an executing task, else every 30 s; paused
-  while the tab is hidden.
+- Polling: every 3 s while the open repository has an executing task, else every 30 s. A hidden
+  tab keeps polling, slower (15 s and 60 s), so the title and favicon follow the task.
 - UI state lives in the URL hash (`#repo=…&task=…&tab=…&job=…`); small conveniences (theme,
   open sections) in `localStorage`, every access in `try`/`catch`.
 

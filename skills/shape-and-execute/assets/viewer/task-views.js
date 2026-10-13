@@ -60,8 +60,15 @@ var GC={NW:240,HH:68,L4:22,RH:24,RS:10,GX:40,GY:16,P:20,DH:8,FB:14,FBS:6,CH:7.3,
  // a status pill: [svg, width]; x is its right edge (end) or its left edge
  gpill=(x,y,h,k,txt,end,v)=>{var w=Math.round(txt.length*(v?GC.CV:GC.CP)+14);return['<g class="sp k-'+k+(v?" v":"")+'" transform="translate('+(end?x-w:x)+","+y+')"><rect width="'+w+'" height="'+h+'" rx="4"/><text x="7" y="'+(h-6)+'">'+esc(txt)+"</text></g>",w]},
  accepted=(t,id)=>{var p="merge "+id+" despite review: ",e=(t.events||[]).filter(e=>e.type==="decision"&&e.job===id&&String(e.summary||"").indexOf(p)===0).pop();return e?e.summary.slice(p.length):null},
- // [WAIT-FRAMES]: a card whose job or row is parked gets the red frame (WAIT-SIGNALS adds the cards an open ask names)
- waitFrame=c=>c.st.k==="parked";
+ // [WAIT-FRAMES]: in executing, a card whose job or row is parked, or that an open ask names (`sae ask --job`), gets the
+ // red frame; `asked` holds each card's open questions (the server's `asks`)
+ waitFrame=(t,c,asked)=>t.state.task.phase==="executing"&&(c.st.k==="parked"||!!own(asked,c.id)),
+ // the open questions of each card: an ask names a job, and a row's job lives in its card
+ askedCards=(t,hm)=>{var o={};(t.asks||[]).forEach(a=>{if(a.job&&JO(t,a.job)){var c=hm(a.job);(o[c]=o[c]||[]).push(a.question)}});return o},
+ // [WAIT-FRAMES]: while the task waits for the owner (the server's `waiting`, empty outside executing), the graph area
+ // gets the yellow pulsing frame and a one-line banner: the first reason, the others in its tooltip
+ waitBanner=t=>{var w=t.waiting||[];if(!w.length)return"";var all=w.map(r=>r.text).join("\n"),more=w.length>1?" (+"+(w.length-1)+" more)":"";
+  return'<div class="wbar" role="status" tabindex="0" aria-label="'+esc("Needs you: "+all)+'" data-tip="'+esc("Needs you\n"+all)+'"><b>● Needs you</b><span>'+esc(w[0].text)+'</span>'+(more?"<i>"+esc(more)+"</i>":"")+"</div>"};
 
 var preExec=(t,id)=>{var j=JS(t)[id];return j.kind==="review"?/^(spec|plan)$/.test(j.target):/^(research|planning)$/.test(j.kind)&&!j.needs.length&&!jf(t,o=>o.needs.includes(id)).length};
 // the card of each job: a review or fix row lives in the card of what it reviews; spec and plan reviews, shaping
@@ -182,7 +189,7 @@ function graph(t){var js=JS(t),info=t.state.task,ph=info.phase,ch=changes(t).r,H
    phome=p=>p.target==="spec"?PC.shape:p.target==="plan"?PC.plan:p.target==="integration"?PC.integration:js[p.target]?hm(p.target):null,
    cardOf=id=>js[id]?hm(id):PL[id]?phome(PL[id]):id,
    ghosts=Object.keys(ch.removed).filter(id=>!js[id]&&ch.removed[id].kind!=="review"),
-   jc=Object.keys(js).filter(id=>hm(id)===id);
+   jc=Object.keys(js).filter(id=>hm(id)===id),asked=askedCards(t,hm);
   pls.forEach(p=>{PL[p.id]=p;var c=phome(p);if(c)(mem[c]=mem[c]||[]).push(p.id)});
   Object.keys(js).forEach(id=>{var c=hm(id);if(c!==id&&!(c===PC.plan&&js[id].kind==="planning"))(mem[c]=mem[c]||[]).push(id)});
   var cards=[];
@@ -194,7 +201,7 @@ function graph(t){var js=JS(t),info=t.state.task,ph=info.phase,ch=changes(t).r,H
    tip:id+" — removed\nRemoved after plan approval: "+ch.removed[id].reason}));
   if((mem[PC.integration]||[]).length)cards.push(intCard(t,rowsOf(t,mem[PC.integration],at)));
   cards.push(finishCard(t));
-  cards.forEach(c=>{C[c.id]=c;has[c.id]=1;var r4=c.mark||c.hold;c.hh=GC.HH+(r4?GC.L4:0);c.h=c.hh+(c.rows.length?GC.RS+c.rows.length*GC.RH:0);if(waitFrame(c))c.cls.push("wait")});
+  cards.forEach(c=>{C[c.id]=c;has[c.id]=1;var r4=c.mark||c.hold;c.hh=GC.HH+(r4?GC.L4:0);c.h=c.hh+(c.rows.length?GC.RS+c.rows.length*GC.RH:0);if(waitFrame(t,c,asked)){c.cls.push("wait");(own(asked,c.id)||[]).forEach(q=>{c.tip+="\nAsks the owner: "+q})}});
   // edges at job level: planner needs, edges sae generates ([GENERATED-JOB-EDGES]), targets, fixes; each end then moves to its card
   var JP=[],jp=(id,p,c)=>{if(p!==id)JP.push([p,id,c])},ints=Object.keys(js).filter(id=>js[id].kind==="review"&&js[id].target==="integration"),lastInt=ints[ints.length-1],
    rank={"":0,gen:1,tgt:2,pl:3},
@@ -324,8 +331,8 @@ var GV={},GZ=[.2,2],GE=[],GHI=null,gvK=k=>Math.min(GZ[1],Math.max(GZ[0],k)),
  // [GRAPH-EDGE-HOVER]: the edges into and out of a card, and the cards at their ends
  gvLinks=(E,id)=>{var e=[],c={};c[id]=1;E.forEach((x,i)=>{if(x[0]===id||x[1]===id){e.push(i);c[x[0]]=c[x[1]]=1}});return{edges:e,cards:Object.keys(c)}},
  FIT_ICON='<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
-function gvCanvas(g){var v=GV[S.task];
-  return'<div class="gwrap" data-task="'+esc(S.task)+'" data-w="'+g.w+'" data-h="'+g.h+'" style="height:min(70vh,'+Math.max(260,g.h+40)+'px)">'+
+function gvCanvas(g,t){var v=GV[S.task],wb=t?waitBanner(t):"";
+  return wb+'<div class="gwrap'+(wb?" owner":"")+'" data-task="'+esc(S.task)+'" data-w="'+g.w+'" data-h="'+g.h+'" style="height:min(70vh,'+Math.max(260,g.h+40)+'px)">'+
    '<svg class="gcv" width="100%" height="100%" role="group" aria-label="Job graph"><g class="gv"'+(v?' transform="'+gvT(v)+'"':"")+">"+g.inner+"</g></svg>"+
    '<div class="gz"><button class="btn ic sm" data-gz="in" aria-label="Zoom in">+</button><button class="btn ic sm" data-gz="out" aria-label="Zoom out">−</button>'+
    '<button class="btn ic sm" data-gz="fit" aria-label="Fit the whole graph" title="Fit the whole graph">'+FIT_ICON+"</button></div></div>"}
@@ -434,7 +441,7 @@ TAB.plan=t=>{var js=JS(t),g=graph(t),ch=g.ch,n=o=>Object.keys(o).length,
   // the rows' glyphs, and the rule where a review lives, in the legend's tooltip ([GRAPH-INTEGRATION-CARD])
   out+='<div class="gh"><h2 class="lbl">Graph</h2><div class="legend">'+["pending","ready","running","done","parked","failed"].map(pill).join("")+"<span>✓ merged</span>"+
    '<span class="lgr" tabindex="0" role="note" aria-label="'+esc(RULE)+'" data-tip="'+esc(RULE)+'">Rows: <i class="t-planned">◌</i> planned · <i class="t-running">◐</i> running · <i class="t-pass">✓</i> pass · <i class="t-fail">✕</i> changes required</span></div></div>';
-  out+=gvCanvas(g);
+  out+=gvCanvas(g,t);
   out+='<div class="legend kinds" aria-label="Legend">'+KINDS.map(k=>'<span><i class="ks" style="--kc:var(--kd-'+k+')"></i>'+k+"</span>").join("")+'<span><i class="ks run"></i>running</span><span><i class="ks ny"></i>cannot start yet</span>'+
    (g.cards.some(c=>c.cls.includes("added"))?'<span><i class="ks hatch"></i>added after approval</span>':"")+(g.cards.some(c=>c.bar)?'<span class="lgb">changed after approval</span>':"")+
    (g.edges.some(e=>e[2]==="fb")?ln("fb","runs back to a later row"):"")+(n(ch.newE)?ln("new","edge added after approval"):"")+(n(ch.oldE)||n(ch.removed)?ln("old","removed after approval"):"")+"</div>";
