@@ -234,19 +234,25 @@ REQ_HEADING_RE = re.compile(r"^###\s+\[([^\]]*)\]")
 REQ_GROUP_RE = re.compile(r"^##\s+requirements\b", re.I)
 
 
-def requirement_sections(spec: str) -> list[str]:
-    """The lines under every level-2 heading that starts with "Requirements" (`## Requirements`,
-    `## Requirements: graph`), in file order, up to the next level-1 or level-2 heading."""
-    out: list[str] = []
+def requirement_sections(spec: str) -> list[list[str]]:
+    """The lines under each level-2 heading that starts with "Requirements" (`## Requirements`,
+    `## Requirements: graph`), one list per group in file order, up to the next level-1 or
+    level-2 heading. Fenced lines are left out: examples add no requirements or checks."""
+    out: list[list[str]] = []
     inside = fence = False
     for line in spec.splitlines():
         if line.lstrip().startswith("```"):
             fence = not fence
-        if not fence and re.match(r"^#{1,2}\s", line):
+            continue
+        if fence:
+            continue
+        if re.match(r"^#{1,2}\s", line):
             inside = bool(REQ_GROUP_RE.match(line))
+            if inside:
+                out.append([])
             continue
         if inside:
-            out.append(line)
+            out[-1].append(line)
     return out
 
 
@@ -274,17 +280,18 @@ def requirement_ids(task: Task) -> tuple[list[str], list[str], list[str]]:
             errors.append(f"specs.md: invalid ID [{heading_id}] (use UPPER-KEBAB)")
         elif count > 1:
             errors.append(f"specs.md: duplicate ID [{heading_id}]")
-    current, has_checks = None, False
-    for line in requirement_sections(clean) + ["### [END-OF-SECTION]"]:
-        m = REQ_HEADING_RE.match(line)
-        if m:
-            if current and JOB_ID_RE.match(current) and current not in ids:
-                ids.append(current)
-                if not has_checks:
-                    warnings.append(f"specs.md: requirement [{current}] has no acceptance checks")
-            current, has_checks = m.group(1), False
-        elif re.match(r"^\s*[-*]\s+\[[ xX]\]", line):
-            has_checks = True
+    for section in requirement_sections(clean):
+        current, has_checks = None, False
+        for line in section + ["### [END-OF-SECTION]"]:
+            m = REQ_HEADING_RE.match(line)
+            if m:
+                if current and JOB_ID_RE.match(current) and current not in ids:
+                    ids.append(current)
+                    if not has_checks:
+                        warnings.append(f"specs.md: requirement [{current}] has no acceptance checks")
+                current, has_checks = m.group(1), False
+            elif re.match(r"^\s*[-*]\s+\[[ xX]\]", line):
+                has_checks = True
     if not ids and not errors:
         errors.append("specs.md has no requirements: add each as ### [ID] under a ## Requirements heading")
     return ids, errors, warnings
