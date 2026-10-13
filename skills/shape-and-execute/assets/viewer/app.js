@@ -12,7 +12,7 @@ var TABS=[["plan","Plan"],["spec","Intent & Spec"],["reviews","Reviews"],["findi
  FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/,holds:/^hold\./},
  FAM=[["f-fail",/^(job\.verify_failed|merge\.conflict)$/],["f-job",/^(job|merge)\./],["f-review",/^review\./],["f-decision",/^(decision|amendment)$/],["f-gate",/^(spec|plan|execution|task)\./]],
  STALE=60, // minutes; mirrors STALE_RUNNING_MINUTES in sae_lib/common.py
- S={repo:null,task:null,tab:"plan",job:null,doc:null,f:"all",bl:null},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
+ S={repo:null,task:null,tab:"plan",job:null,doc:null,f:"all",bl:null,sc:"task"},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
  TOKEN=(D.querySelector('meta[name="sae-token"]')||{}).content||"", // embedded by the server; sent with every change
  own=(o,k)=>o&&k!=null&&Object.prototype.hasOwnProperty.call(o,k)?o[k]:undefined,
  LSg=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSs=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
@@ -122,7 +122,6 @@ var pill=s=>'<span class="pill k-'+s+'"><i aria-hidden="true">'+(GL[s]||"")+"</i
  sp=h=>h?" "+h:"",
  stp=(t,id)=>{var j=JS(t)[id];return j.verdict?vpill(j.verdict):pill(stOf(t,id))+sp(stale(t,id))},
  jpill=(t,id)=>pill(stOf(t,id))+sp(stale(t,id))+(JS(t)[id].merged?' <span class="mut" title="merged">✓ merged</span>':""),
- php=p=>'<span class="php p-'+esc(p)+'"><i class="pd" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>"+esc(p)+"</span>",
  fam=type=>(FAM.find(f=>f[1].test(type))||[""])[0],
  dataJ=(a,id)=>' data-act="'+a+'" data-id="'+esc(id)+'"',
  J=id=>id?'<button class="lnk mono"'+dataJ("job",id)+">"+esc(id)+"</button>":"",
@@ -164,7 +163,8 @@ function projectSwitch(){var P=PROJ||[],cur=P.find(x=>x.key===S.repo);if(P.lengt
   return'<select class="proj" data-act="proj" aria-label="Project">'+P.map(x=>'<option value="'+esc(x.key)+'"'+(x.key===S.repo?" selected":"")+' title="'+esc(x.path)+'">'+esc(x.name)+"</option>").join("")+"</select>"}
 function renderTop(){var it=IT(S.task),th=D.documentElement.dataset.theme||"dark";
   $("#top").innerHTML='<button class="menu" data-act="side" aria-label="Show or hide the task list" aria-expanded="'+!$("#app").classList.contains("sc")+'"><svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 5h12M3 9h12M3 13h12" stroke="currentColor" stroke-width="1.5"/></svg></button>'+
-   '<div class="crumb">'+projectSwitch()+(it?'<span>/</span><span class="t">'+esc(it.title)+"</span>":"")+"</div>"+
+   // [HEADER-TOP-BAR]: the task's title and phase live here only
+   '<div class="crumb">'+projectSwitch()+(it?'<span class="sep">/</span><h1 class="t" title="'+esc(it.id)+'">'+esc(it.title)+'</h1><span class="tp p-'+esc(it.phase)+'">· '+esc(it.phase)+"</span>":"")+"</div>"+
    '<div class="live" title="Read live from the repository; this page asks again every few seconds.">'+(IDX?'<span class="hm">Last updated '+esc(clock(IDX.generated))+' · </span><span class="sm">Updated </span><span data-ago="'+esc(IDX.generated)+'">'+esc(ago(IDX.generated))+"</span>":"No data")+"</div>"+
    '<div class="seg" role="radiogroup" aria-label="Theme">'+["dark","light"].map(m=>'<button role="radio" data-act="theme" data-m="'+m+'" aria-checked="'+(th===m)+'">'+(m==="dark"?"Dark":"Light")+"</button>").join("")+"</div>"}
 /* ---------- sidebar: collapsible sections, phase and backlog-folder groups, ten items per group ---------- */
@@ -196,26 +196,27 @@ function renderSide(){if(!IDX){$("#side").innerHTML="";return}var ts=IDX.tasks,b
   blItem=b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>"+(b.picked_up_by?'<span class="tag" title="'+esc("Picked up by "+b.picked_up_by)+'">picked up</span>':"")),
   // one group: its fold (when it has a label), its items and its "Show N more"
   group=(k,L,isOpen,draw,head)=>{var sh=head?shut(k,L.length):false,g=groupItems(k,L,isOpen,sh);return(head?'<div class="sgrp">'+head(L.length):"")+g.show.map(draw).join("")+showMore(k,g.rest)+(head?"</div>":"")},
-  h='<div class="ssec">'+fold("tasks",0,"top",'<span class="sl">Tasks</span>',ts.length);
+  h='<div class="ssec">'+fold("tasks",0,"top s-tasks",'<span class="sl">Tasks</span>',ts.length);
   if(!shut("tasks",0)){if(!ts.length)h+=empty("No tasks yet.");
     PHASES.forEach(p=>{var L=ts.filter(t=>t.phase===p[0]),k="ph:"+p[0];if(!L.length)return;
       h+=group(k,L,t=>t.id===S.task,t=>taskItem(t,p[0]),n=>fold(k,n,"p-"+p[0],pmark(p[0])+p[1],n))})}
-  h+='</div><div class="ssec">'+fold("backlog",0,"top",'<span class="sl">Backlog</span>',bl.length);
+  h+='</div><div class="ssec">'+fold("backlog",0,"top s-backlog",'<span class="sl">Backlog</span>',bl.length);
   if(!shut("backlog",0)){var isBl=b=>S.bl===b.file,folders=[...new Set(bl.map(backlogFolder).filter(Boolean))].sort();
     h+=bl.length?group("bl:",bl.filter(b=>!backlogFolder(b)),isBl,blItem)+folders.map(f=>group("blf:"+f,bl.filter(b=>backlogFolder(b)===f),isBl,blItem,n=>fold("blf:"+f,n,"bf",esc(f),n))).join(""):empty("Empty.")}
-  var dr=IDX.drafts||[];h+='</div><div class="ssec">'+fold("drafts",0,"top",'<span class="sl">Decision drafts</span>',(IDX.open_drafts||0)+" open")+(shut("drafts",0)?"":dr.length?group("drafts",dr,d=>S.bl===d.file,d=>item(S.bl===d.file,"bl",d.file,d.title,"<span>"+esc((d.type||"draft")+" · "+(d.status||"proposed"))+"</span>")):empty("None."))+"</div>";
+  var dr=IDX.drafts||[];h+='</div><div class="ssec">'+fold("drafts",0,"top s-drafts",'<span class="sl">Decision drafts</span>',(IDX.open_drafts||0)+" open")+(shut("drafts",0)?"":dr.length?group("drafts",dr,d=>S.bl===d.file,d=>item(S.bl===d.file,"bl",d.file,d.title,"<span>"+esc((d.type||"draft")+" · "+(d.status||"proposed"))+"</span>")):empty("None."))+"</div>";
   $("#side").innerHTML=h}
 function renderMain(){var m=$("#main"),it=IT(S.task),t=T(),cnt={},js=JS(t),h;
   if(!IDX||!it){m.innerHTML='<div class="wrap">'+empty(!IDX?(ERR?esc(ERR):PROJ&&!PROJ.length?"No repository yet. Run <code>sae view</code> in a repository.":"Loading…"):IDX.tasks.length?"Select a task.":"No tasks yet. Start one with <code>sae new</code>.")+"</div>";return}
   var s=t&&settingsOf(t);
-  if(t){cnt.jobs=Object.keys(js).length;cnt.timeline=(t.events||[]).length;cnt.reviews=jf(t,j=>j.kind==="review").length;cnt.decisions=evs(t,FT.decisions).length+jf(t,j=>j.kind==="decision").length}
-  cnt.findings=(IDX.findings||[]).length;
-  h='<div class="wrap"><div class="th"><div><h1 title="'+esc(it.id)+'">'+esc(it.title)+'</h1><div class="meta">'+php(it.phase)+"<span>"+since(it.phase,it.last_change)+"</span><span>"+(it.branch?'<span class="mut">branch</span> '+code(it.branch):'<span class="mut">task</span> '+code(it.id))+"</span>"+(it.worktree?'<span class="wt" title="'+esc(it.worktree)+'"><span class="mut">task worktree</span> '+code("…/"+it.worktree.split(/[\\\/]/).slice(-2).join("/"))+cpi(it.worktree,it.worktree,"Copy path: ")+"</span>":it.location?'<span title="'+esc(it.location_path||"")+'"><span class="mut">in</span> '+esc(it.location==="done"?".tasks/done/":it.location==="checkout"?"…/"+String(it.location_path||"").split(/[\\\/]/).pop():it.location)+"</span>":"")+"</div></div>"+
+  if(t){cnt.jobs=Object.keys(js).length;cnt.timeline=(t.events||[]).length;cnt.reviews=jf(t,j=>j.kind==="review").length;cnt.decisions=evs(t,FT.decisions).length+jf(t,j=>j.kind==="decision").length+scopedDrafts(t).length}
+  cnt.findings=scopedFindings(t).open.length; // [SCOPE-TOGGLE]: the counts follow "this task" / "all"
+  // [HEADER-TOP-BAR]: no second title; the settings card, "All settings" and "?" stay; the step bar and key
+  // stats are on the Plan tab, branch and task worktree on the Overview
+  h='<div class="wrap"><div class="th">'+(t?headerCard(t):"<div></div>")+ // settings.js: the settings card, editable in place
    '<div class="acts"><button class="btn" data-act="tab" data-tab="settings">All settings</button><button class="btn ic" data-act="help" data-h="card" aria-label="About the task settings" aria-expanded="false">?</button></div></div>';
-  if(t)h+=slimHead(t)+headerCard(t); // task-views.js: the step bar and key stats ([HEADER-SLIM]); settings.js: the settings card, editable in place
   h+='<div class="tabs" role="tablist" aria-label="Task views">'+TABS.map(x=>{var on=S.tab===x[0],n=cnt[x[0]];return'<button role="tab" id="tab-'+x[0]+'"'+(n===0?' class="zero"':"")+' aria-selected="'+on+'" tabindex="'+(on?0:-1)+'" data-act="tab" data-tab="'+x[0]+'">'+x[1]+(n!=null?"<i>"+n+"</i>":"")+"</button>"}).join("")+"</div>";
   var gs=$(".gts"),gl=gs&&gs.scrollLeft;
-  m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings():t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";
+  m.innerHTML=h+'<div class="tc" role="tabpanel" aria-labelledby="tab-'+S.tab+'">'+(S.tab==="findings"?TAB.findings(t):t?TAB[S.tab](t):empty(MISS[S.task]?"This task could not be read: "+esc(MISS[S.task]):"Loading…"))+"</div></div>";
   // the timeline overview keeps its horizontal scroll; the first time it opens at the newest activity
   if((gs=$(".gts")))gs.scrollLeft=gl!=null?gl:gs.scrollWidth;
   // the Plan graph canvas applies its stored pan and zoom to the new elements ([AMEND-4])
@@ -241,8 +242,8 @@ function render(){var k=fkey(D.activeElement),ps=$("#panel").scrollTop;
 /* ---------- state, hash, polling ---------- */
 function readHash(){var q={},dec=v=>{try{return decodeURIComponent(v)}catch(e){return""}};
   location.hash.slice(1).split("&").forEach(p=>{var k=p.split("=");if(k[0])q[dec(k[0])]=dec(k.slice(1).join("="))});
-  S.repo=q.repo||null;S.task=q.task||null;S.tab=TABS.some(x=>x[0]===q.tab)?q.tab:"plan";S.job=q.job||null;S.doc=q.doc||null;S.f=own(FT,q.filter)?q.filter:"all";S.bl=q.backlog||null}
-function writeHash(){var q=[["repo",S.repo],["task",S.task],["tab",S.tab!=="plan"&&S.tab],["job",S.job],["doc",S.tab==="spec"&&S.doc],["filter",S.tab==="timeline"&&S.f!=="all"&&S.f],["backlog",S.bl]].filter(p=>p[1]).map(p=>p[0]+"="+encodeURIComponent(p[1])).join("&");
+  S.repo=q.repo||null;S.task=q.task||null;S.tab=TABS.some(x=>x[0]===q.tab)?q.tab:"plan";S.job=q.job||null;S.doc=q.doc||null;S.f=own(FT,q.filter)?q.filter:"all";S.bl=q.backlog||null;S.sc=q.scope==="all"?"all":"task"}
+function writeHash(){var q=[["repo",S.repo],["task",S.task],["tab",S.tab!=="plan"&&S.tab],["job",S.job],["doc",S.tab==="spec"&&S.doc],["filter",S.tab==="timeline"&&S.f!=="all"&&S.f],["backlog",S.bl],["scope",S.sc==="all"&&"all"]].filter(p=>p[1]).map(p=>p[0]+"="+encodeURIComponent(p[1])).join("&");
   try{history.replaceState(null,"","#"+q)}catch(e){location.hash=q}}
 function pickTask(){if(!IDX||IT(S.task))return;var ts=IDX.tasks;S.task=(ts.find(t=>t.phase==="executing")||ts.find(t=>!/done|abandoned/.test(t.phase))||ts[0]||{}).id||null}
 // reads go to the server: GET /api/projects, /api/repo, /api/task (scripts/sae_lib/server.py)
@@ -273,7 +274,8 @@ function copy(text,btn){var o=btn.innerHTML,done=()=>{btn.innerHTML=btn.classNam
 /* ---------- events ---------- */
 var side=o=>$("#app").classList.toggle("so",o),
  narrow=()=>W.matchMedia&&W.matchMedia("(max-width:860px)").matches,
- collapse=()=>{var c=$("#app").classList.toggle("sc");LSs("sae-side",c?"closed":"open");renderTop();refocus($("#top"),"side||")},
+ // [SIDEBAR-COLLAPSE-WIDTH]: the main area takes the freed width; the graph fits it again, the timeline redraws for it
+ collapse=()=>{var c=$("#app").classList.toggle("sc");LSs("sae-side",c?"closed":"open");if(typeof GV==="object")delete GV[S.task];renderTop();renderMain();refocus($("#top"),"side||")},
  panelOn=()=>!$("#panel").hidden,
  // the panel closes on ✕, Escape or a click outside it; focus goes back to what opened it
  closePanel=()=>{var k=OPENER;OPENER="";go({job:null,bl:null});refocus(D,k)},
@@ -293,6 +295,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),p=$("#pop"
   else if(a==="fold"){FOLD[d.k]=!shut(d.k,+d.n||0);LSs("sae-fold",JSON.stringify(FOLD));renderSide();refocus($("#side"),fkey(e))}
   else if(a==="filter")go({f:d.f});
   else if(a==="doc")go({doc:d.d});
+  else if(a==="scope")go({sc:d.v});
   else if(a==="side")e.closest("#top")&&!narrow()?collapse():side();
   else if(a==="theme"){D.documentElement.dataset.theme=d.m;LSs("sae-theme",d.m);renderTop()}
   else if(a==="copy")copy(d.copy,e);

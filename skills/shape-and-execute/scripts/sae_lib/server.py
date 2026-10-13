@@ -6,7 +6,8 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /<file>.css|.js        the viewer files
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
-  /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
+  /api/repo?repo=K       tasks with location, findings (open; closed with the task that closed them),
+                         backlog, decision drafts
   /api/task?repo=K&task=ID         one task: files, events, the process-map steps, routing,
                                    effective difficulty, review marks, waits, next, finish readiness,
                                    per-phase stats, changed lines
@@ -128,6 +129,28 @@ def hold_count(info: dict) -> int:
     return 0
 
 
+CLOSED_BY_RE = re.compile(r"^fixed in (\S+?)(?: by (\S+))?$")
+
+
+def closed_findings_list(text: str) -> list[dict]:
+    """The lines of `closed.md` (`- <date> · <stem> · <title> · <outcome>`), newest last, with the
+    task (and job) that closed each one when its outcome says `fixed in <task-id> [by <JOB-ID>]`
+    ([SCOPE-TOGGLE]: the Findings tab shows the findings a task closed)."""
+    out = []
+    for line in text.splitlines():
+        if not line.lstrip().startswith(("-", "*")):
+            continue
+        parts = [p.strip() for p in line.lstrip("-* ").split(" · ")]
+        if len(parts) < 4:
+            out.append({"date": "", "stem": "", "title": " · ".join(parts), "outcome": "", "task": None, "job": None})
+            continue
+        outcome = parts[-1]
+        m = CLOSED_BY_RE.match(outcome)
+        out.append({"date": parts[0], "stem": parts[1], "title": " · ".join(parts[2:-1]), "outcome": outcome,
+                    "task": m.group(1) if m else None, "job": m.group(2) if m else None})
+    return out
+
+
 def repo_data(key: str) -> dict:
     from .markdown import first_heading, split_frontmatter
     from .tasks import locate_tasks, picked_up_items, tasks_dir
@@ -176,9 +199,10 @@ def repo_data(key: str) -> dict:
                        or path.stem, "type": meta.get("type"), "status": meta.get("status"),
                        "source": meta.get("source"), "date": str(meta.get("date") or path.name[:10]), "text": body})
     open_drafts = sum(1 for d in drafts if d["status"] in (None, "proposed"))
+    closed_md = closed_text(root)
     return {"repo": root.name, "root": str(root), "key": key, "sae": sae_prefix(), "tasks": tasks,
             "findings": findings, "backlog": backlog, "drafts": drafts, "open_drafts": open_drafts,
-            "closed_findings": closed_text(root)}
+            "closed_findings": closed_md, "closed_list": closed_findings_list(closed_md)}
 
 
 def load_config_quietly() -> tuple[dict | None, str | None]:

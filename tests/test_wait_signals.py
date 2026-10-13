@@ -98,19 +98,29 @@ class WaitSignalsTests(ViewerServerCase, AskCase):
         self.assertEqual(out["icon"], "favicon-wait.svg")
         self.assertEqual(sorted(c["id"] for c in out["cards"] if "wait" in c["cls"]), ["A", "B"])
         self.assertIn("Asks the owner: Keep the v1 envelope?", card(out, "A")["tip"])
-        self.assertIn('<div class="gwrap owner"', out["plan"])
-        banner = re.search(r'<div class="wbar".*?</div>', out["plan"], re.S).group(0)
-        self.assertIn("<b>● Needs you</b><span>Release today?</span><i> (+3 more)</i>", banner)
-        for text in ("Keep the v1 envelope?", "B is parked: needs a decision", "Hold after C: look first"):
+        # [WAIT-HOLD-FRAME]: the active hold turns frame and banner red; the banner names the hold and the first
+        # other reason, carries "Release hold", and has the rest in its tooltip
+        self.assertIn('<div class="gwrap owner hold"', out["plan"])
+        banner = re.search(r'<div class="wbar hold".*?</div>', out["plan"], re.S).group(0)
+        self.assertIn("<b>⏸ Hold active</b><span>Hold after C: look first. Nothing new is dispatched", banner)
+        self.assertIn('<span class="also">Also needs you: Release today?</span><i> (+2 more)</i>', banner)
+        self.assertIn('data-act="hold" data-id="C" data-v="release"', banner)
+        for text in ("Keep the v1 envelope?", "B is parked: needs a decision"):
             self.assertIn(text, banner)  # the other reasons are in its tooltip
-        self.assertIn('class="wbar"', out["main"], "render() draws the Plan tab with the banner")
+        self.assertNotIn('class="hbar"', out["plan"], "no separate hold bar")
+        self.assertIn('class="wbar hold"', out["main"], "render() draws the Plan tab with the banner")
         # the owner answers: A's ask by a human log for A, the rest with --answered; B and the hold stay
         sb.sae("log", "wait", "decision", "Keep v1", "--job", "A", "--by", "human")
         sb.sae("ask", "wait", "--answered")
         out = self.page(self.data(sb, task))
         self.assertEqual(sorted(c["id"] for c in out["cards"] if "wait" in c["cls"]), ["B"])
         self.assertEqual(out["title"], "● Needs you · wait · R")
+        self.assertIn('<div class="gwrap owner hold"', out["plan"])
         sb.sae("hold", "wait", "C", "--release")
+        out = self.page(self.data(sb, task))  # the parked job alone: the yellow frame and banner
+        self.assertIn('<div class="gwrap owner"', out["plan"])
+        self.assertIn('<div class="wbar" role="status"', out["plan"])
+        self.assertIn("<b>● Needs you</b><span>B is parked: needs a decision</span></div>", out["plan"])
         sb.sae("dispatch", "wait", "B", "--resume", "--reason", "owner decided")
         out = self.page(self.data(sb, task))
         self.assertEqual((out["title"], out["icon"]), ("wait · R", "favicon.svg"))
