@@ -28,7 +28,8 @@ from .common import (
     stamp_time,
     table,
 )
-from .config import cfg, load_config, settings_card
+from .asks import ask_reminder_line, open_asks
+from .config import ask_signal, cfg, load_config, settings_card
 from .gitutil import find_root, git
 from .control import (
     hold_notices,
@@ -122,7 +123,8 @@ def task_status_data(task: Task) -> dict:
             "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
-            "holds": holds_data(task), "map": process_map(task)["lines"], "next": next_command(task)}
+            "holds": holds_data(task), "asks": open_asks(task), "ask_signal": ask_signal(task.settings),
+            "map": process_map(task)["lines"], "next": next_command(task)}
 
 
 def cmd_status(args) -> int:
@@ -152,6 +154,9 @@ def cmd_status(args) -> int:
                     lines.append(f"    {r['model']}")
         if data["parked"]:
             lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+        if data["asks"]:
+            lines += ["", "Open asks (waiting for the owner):"] + [
+                f"  {a['n']}." + (f" {a['job']}:" if a["job"] else "") + f" {a['question']}" for a in data["asks"]]
         if data["integration"]:
             lines += ["", data["integration"]]
         if notices:
@@ -205,8 +210,10 @@ def cmd_status(args) -> int:
 
 
 def reminder_lines(task: Task) -> list[str]:
-    """The mode with the classes to ask on, then the hard stops."""
-    return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
+    """The mode with the classes to ask on, the hard stops, then the sae ask line when it is due
+    ([ASK-REMINDER])."""
+    ask = ask_reminder_line(task)
+    return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE] + ([ask] if ask else [])
 
 
 def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
@@ -344,7 +351,7 @@ def cmd_next(args) -> int:
         with open_task(root, args.task, write=False) as task:
             data = next_data(task, config)
             text = next_text(task, config, data)
-    data["reminder"] = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
+    data["reminder"] = reminder_lines(task)
     emit(args, ("\n".join(out) + "\n" if out else "") + text, data)
     return EXIT_OK
 
@@ -443,7 +450,7 @@ def register_status(sub, command):
     p = command(sub, "status", "Where things are. The first command after any context reset. Read-only.",
                 "Without a task: every task, the backlog and the number of open findings.\n"
                 "With a task: the process map, settings card, phase, branch, holds, jobs, parked jobs with reasons,\n"
-                "ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
+                "open asks (sae ask), ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
     p.add_argument("task", nargs="?")
 
 

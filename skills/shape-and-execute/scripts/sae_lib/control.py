@@ -22,7 +22,7 @@ from .common import (
     iso,
     read_text,
 )
-from .config import PHASE_DIFFICULTIES, effective_routing, flatten_settings, level_name, routing_layers
+from .config import PHASE_DIFFICULTIES, ask_signal, effective_routing, flatten_settings, level_name, routing_layers
 from .gitutil import find_root
 from .graph import active_holds, hold_active, release_command, review_rounds
 from .markdown import md_section, split_frontmatter, strip_html_comments
@@ -84,6 +84,7 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
     """Effective task settings, the resolved routing of every cell the task can use, overrides
     and holds, as flat `{label: text}` ([OUT-NEXT-STEP-CARD])."""
     snap = {k: v for k, v in flatten_settings(task.settings).items() if not k.startswith("routing.")}
+    snap["ask_signal"] = ask_signal(task.settings)["text"]  # the effective value: unset follows the mode
     if config is not None:
         layers = routing_layers(config, task.root, task.settings)
         for harness in HARNESSES:
@@ -114,9 +115,18 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
     return snap
 
 
-def last_snapshot(old: dict) -> dict:
-    """A recorded snapshot with old level names read as the new ones: a rename is no change."""
-    return {k: level_name(v) if k.startswith("levels.") else v for k, v in old.items()}
+# Snapshot keys that a card recorded by an older sae lacks: their absence is no change.
+LATER_SNAPSHOT_KEYS = ("ask_signal",)
+
+
+def last_snapshot(old: dict, new: dict | None = None) -> dict:
+    """A recorded snapshot with old level names read as the new ones: a rename is no change.
+    A key of LATER_SNAPSHOT_KEYS that `old` lacks takes its value from `new`."""
+    out = {k: level_name(v) if k.startswith("levels.") else v for k, v in old.items()}
+    for key in LATER_SNAPSHOT_KEYS:
+        if key not in out and new and key in new:
+            out[key] = new[key]
+    return out
 
 
 def change_lines(old: dict, new: dict) -> list[str]:
@@ -157,7 +167,7 @@ def next_step_card(task: Task, config: dict | None, ready: list[str]) -> dict | 
     labels = ["start of execution"] if start else list(dict.fromkeys(next_step_label(task, i) for i in jobs))
     last = task.info.get("last_card")
     snapshot = settings_snapshot(task, config)
-    changes = change_lines(last_snapshot(last["settings"]), snapshot) if last else []
+    changes = change_lines(last_snapshot(last["settings"], snapshot), snapshot) if last else []
     unchanged = bool(last) and not changes and set(jobs) <= set(last.get("jobs") or [])
     blocks = []
     for job_id in jobs:

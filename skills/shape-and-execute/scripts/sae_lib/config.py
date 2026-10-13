@@ -40,6 +40,10 @@ CONFIG_SCHEMA = 2
 REVIEW_PROVIDERS = HARNESSES + ("cross-harness",)
 TASK_DIFFICULTIES = ("normal", "hard")
 TIERS = ("L1", "L2", "L3", "L4")
+# Task setting `ask_signal` ([ASK-SETTING]): on, off, or absent (unset). Unset follows the
+# interaction mode: on in these modes, off in collaborative and interactive.
+ASK_SIGNAL_VALUES = ("on", "off")
+ASK_SIGNAL_MODES = ("full-auto", "auto", "critical-only")
 # Planning and review are never mechanical work: their tables have no mechanical column.
 PHASE_DIFFICULTIES = {"research": DIFFICULTIES, "planning": TASK_DIFFICULTIES,
                       "execution": DIFFICULTIES, "review": TASK_DIFFICULTIES}
@@ -604,6 +608,8 @@ def settings_errors(s) -> list[str]:
             errors.append("max_verify_failures must be an integer from 1 to 10")
     if "task_difficulty" in s and s["task_difficulty"] not in TASK_DIFFICULTIES:
         errors.append(f"task_difficulty must be one of {', '.join(TASK_DIFFICULTIES)}")
+    if "ask_signal" in s and s["ask_signal"] not in ASK_SIGNAL_VALUES:
+        errors.append("ask_signal must be on or off (leave it out to follow the interaction mode)")
     routing = s.get("routing")
     if routing is not None:
         if not isinstance(routing, dict):
@@ -705,6 +711,16 @@ def task_difficulty(settings: dict) -> str:
     return settings.get("task_difficulty") or "normal"
 
 
+def ask_signal(settings: dict) -> dict:
+    """The effective ask signal ([ASK-SETTING]): `{"on": bool, "set": "on" | "off" | None,
+    "text": "on" | "off" | "on (mode default)" | "off (mode default)"}`. `set` is the task's own
+    value; None means it follows the interaction mode."""
+    own = settings.get("ask_signal")
+    on = own == "on" if own in ASK_SIGNAL_VALUES else settings.get("interaction") in ASK_SIGNAL_MODES
+    return {"on": on, "set": own if own in ASK_SIGNAL_VALUES else None,
+            "text": ("on" if on else "off") + ("" if own in ASK_SIGNAL_VALUES else " (mode default)")}
+
+
 def max_verify_failures(settings: dict) -> int:
     return settings.get("max_verify_failures", DEFAULT_MAX_VERIFY_FAILURES)
 
@@ -734,6 +750,7 @@ def flatten_settings(s: dict) -> dict:
     flat["review.provider"] = review.get("provider")
     flat["max_verify_failures"] = max_verify_failures(s)
     flat["task_difficulty"] = task_difficulty(s)
+    flat["ask_signal"] = s.get("ask_signal")
     flat.update(flatten_routing(s.get("routing")))
     return flat
 
@@ -768,6 +785,8 @@ def settings_card(s: dict, harness: str | None = None, title: str = "Settings") 
     if points:
         rows.append(("review", f"{levels['review']} · {provider_text(s['review']['provider'], harness)}"))
     rows.append(("task difficulty", task_difficulty(s)))
+    if s.get("ask_signal"):  # shown when set; unset follows the interaction mode
+        rows.append(("ask signal", s["ask_signal"]))
     if s.get("routing"):
         count = len(flatten_routing(s["routing"]))
         rows.append(("routing", f"{count} task value" + ("" if count == 1 else "s")))
