@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from saetest import SCRIPTS, Sandbox, SaeTestCase, dispatch_workspace
+from saetest import SCRIPTS, Sandbox, SaeTestCase, covers_of, dispatch_workspace
 
 
 def finding(sb: Sandbox, title: str, paths: str = "") -> str:
@@ -30,7 +30,7 @@ def commit_tasks_folder(sb: Sandbox) -> None:
 
 
 def job_file(sb: Sandbox, task: str, job_id: str, resolves=(), verify=()) -> None:
-    front = f"---\nid: {job_id}\ncovers: []\nverify: {json.dumps(list(verify))}\n"
+    front = f"---\nid: {job_id}\ncovers: {json.dumps(covers_of(sb.task_dir(task)))}\nverify: {json.dumps(list(verify))}\n"
     if resolves:
         front += "resolves:\n" + "".join(f"  - {r}\n" for r in resolves)
     folder = sb.task_dir(task) / "jobs"

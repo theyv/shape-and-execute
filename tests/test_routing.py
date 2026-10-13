@@ -174,7 +174,7 @@ class ResolutionTests(RoutingTestCase):
         self.assertIsNone(sb.state(task)["jobs"]["REVIEW-SPEC"]["difficulty"])
         sb.result(task, "reviews/REVIEW-SPEC.md", target="spec", verdict="pass")
         sb.sae("collect", "hard", "REVIEW-SPEC")
-        sb.sae("approve", "hard", "spec")
+        sb.approve_spec("hard")
         sb.sae("job", "add", "hard", "ONLY", "--kind", "implementation")
         sb.job_file(task, "ONLY", covers=["ONE"])
         same_column("REVIEW-PLAN")

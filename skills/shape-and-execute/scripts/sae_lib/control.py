@@ -25,7 +25,7 @@ from .common import (
 from .config import PHASE_DIFFICULTIES, effective_routing, flatten_settings, routing_layers
 from .gitutil import find_root
 from .graph import active_holds, hold_active, release_command, review_rounds
-from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
+from .markdown import md_section, split_frontmatter, strip_html_comments
 from .routing import TASK_TARGETS, resolve_model, route, short_text
 from .tasks import Task, is_generated, job_file, open_task
 
@@ -232,8 +232,7 @@ def map_steps(task: Task) -> list[dict]:
         steps.append({"phase": phase, "key": key or name, "name": name, "state": state, "gate": gate,
                       "note": note})
 
-    has_spec = (task.dir / "specs.md").exists() or has_content(md_section(read_text(task.dir / "intent.md", "")
-                                                                           or "", "Acceptance"))
+    has_spec = (task.dir / "specs.md").exists()
     step("shape", "intake", "done")
     research = shaping_research(task)
     if research:

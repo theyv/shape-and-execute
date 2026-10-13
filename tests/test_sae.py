@@ -139,15 +139,15 @@ class ShapingAndPlanningTests(SaeTestCase):
         sb.sae("collect", "spec-work", "REVIEW-SPEC", code=1)  # no result file yet
         sb.result(task, "reviews/REVIEW-SPEC.md", target="spec", verdict="changes-required")
         sb.sae("collect", "spec-work", "REVIEW-SPEC")
-        sb.sae("approve", "spec-work", "spec")
+        sb.approve_spec("spec-work")
         self.assertEqual(sb.state(task)["task"]["phase"], "planning")
 
     def test_plan_lint_and_gate(self):
         sb = self.sandbox(points=["plan"])
         task = sb.new_task("Plan work", "plan-work")
-        (sb.task_dir(task) / "intent.md").write_text("# Intent\n\n## Acceptance\n- [EXPORT-CSV] export\n"
-                                                      "- [ ] plain checkbox\n<!-- - [IGNORED] comment -->\n")
-        sb.sae("approve", "plan-work", "spec")
+        (sb.task_dir(task) / "specs.md").write_text("# Spec\n\n## Requirements\n\n### [EXPORT-CSV] Export\n"
+                                                     "- [ ] export\n<!-- ### [IGNORED] comment -->\n")
+        sb.approve_spec("plan-work")
         sb.sae("approve", "plan-work", "plan", code=3)  # no jobs
         sb.sae("job", "add", "plan-work", "A", "--kind", "implementation", "--needs", "B")
         sb.sae("job", "add", "plan-work", "B", "--kind", "implementation", "--needs", "A")

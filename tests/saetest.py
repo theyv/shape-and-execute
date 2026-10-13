@@ -35,6 +35,9 @@ LEVEL_TIERS = {"economy": {"mechanical": "L1", "normal": "L1", "hard": "L2"},
                "balanced": {"mechanical": "L1", "normal": "L2", "hard": "L3"},
                "max": {"mechanical": "L2", "normal": "L3", "hard": "L3"}}
 REVIEW_TIERS = {"economy": "L2", "balanced": "L2", "max": "L3"}
+# The spec that Sandbox.approve_spec writes when a test task has none; job files cover its requirement.
+TEST_REQ = "TEST-REQ"
+MIN_SPEC = f"# Spec\n\n## Requirements\n\n### [{TEST_REQ}] The test task works\nAcceptance:\n- [ ] it works\n"
 
 
 def routing_block(tiers: dict) -> dict:
@@ -180,9 +183,11 @@ class Sandbox:
     def events(self, task: str) -> list[dict]:
         return [json.loads(l) for l in (self.task_dir(task) / "events.jsonl").read_text().splitlines() if l]
 
-    def job_file(self, task: str, job: str, objective: str = "Do one thing.", covers=(), verify=(), scope=()):
+    def job_file(self, task: str, job: str, objective: str = "Do one thing.", covers=None, verify=(), scope=()):
         def yaml_list(items):
             return "[" + ", ".join(json.dumps(i) for i in items) + "]"
+        if covers is None:
+            covers = covers_of(self.task_dir(task))
         text = (f"---\nid: {job}\ncovers: {yaml_list(covers)}\nverify: {yaml_list(verify)}\n"
                 + (f"scope: {yaml_list(scope)}\n" if scope else "")
                 + f"---\n\n# {job}: test job\n\n## Objective\n{objective}\n")
@@ -200,9 +205,24 @@ class Sandbox:
         self.git("add", file, cwd=workdir)
         self.git("commit", "-q", "-m", message, cwd=workdir)
 
+    def approve_spec(self, task: str, cwd: Path | None = None) -> None:
+        """Approve the spec of a task by ID or slug; writes MIN_SPEC when the task has no specs.md."""
+        tasks = (cwd or self.repo) / ".tasks"
+        folder = tasks / task if (tasks / task).is_dir() else next(tasks.glob(f"*--{task}"))
+        if not (folder / "specs.md").exists():
+            (folder / "specs.md").write_text(MIN_SPEC)
+        self.sae("approve", task, "spec", cwd=cwd)
+
     def approve_plan(self, task: str) -> None:
-        self.sae("approve", task, "spec")
+        self.approve_spec(task)
         self.sae("approve", task, "plan")
+
+
+def covers_of(folder: Path) -> list[str]:
+    """[TEST_REQ] when the task has MIN_SPEC or no spec yet (approve_spec writes MIN_SPEC), so a test
+    job covers it; nothing for a task with its own spec."""
+    spec = folder / "specs.md"
+    return [TEST_REQ] if not spec.exists() or spec.read_text() == MIN_SPEC else []
 
 
 def dispatch_workspace(sb: Sandbox, task: str, job: str, *extra: str) -> Path:

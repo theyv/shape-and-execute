@@ -98,7 +98,7 @@ class CardAndMapTests(ControlCase):
         self.assertIn("card.shown", [e["type"] for e in sb.events(task)])
         sb.result(task, "reviews/REVIEW-SPEC.md", target="spec", verdict="pass")
         sb.sae("collect", "cards", "REVIEW-SPEC")
-        sb.sae("approve", "cards", "spec")
+        sb.approve_spec("cards")
         sb.sae("set", "cards", "review=spec")
         sb.sae("job", "add", "cards", "PLAN", "--kind", "planning")
         sb.job_file(task, "PLAN", objective="Plan the jobs. Then stop.")
@@ -114,7 +114,7 @@ class CardAndMapTests(ControlCase):
     def test_start_card(self):
         sb = self.sandbox(points=["plan", "selected-jobs"])
         task = sb.new_task("Width", "width")
-        sb.sae("approve", "width", "spec")
+        sb.approve_spec("width")
         long = ("Make the status page show every claim with its current state and the next step the "
                 "customer has to take, in plain words.")
         sb.sae("job", "add", "width", "A-VERY-LONG-JOB-IDENTIFIER-FOR-WIDTH", "--kind", "implementation", "--review")
@@ -155,7 +155,7 @@ class CardAndMapTests(ControlCase):
         self.assertEqual(lines[:3], ["💡 SHAPE", "✓ intake | ► research | □ spec", "– spec-review (off) | □ spec approval"])
         self.assertEqual(lines[-4:], ["🔨 EXECUTE", "□ jobs 0/0 | – job-reviews (off)",
                                       "– integration-review (off) | – final-validation (none)", "□ finish"])
-        sb.sae("approve", "mapoff", "spec")
+        sb.approve_spec("mapoff")
         sb.sae("job", "add", "mapoff", "ONE", "--kind", "implementation")
         sb.job_file(task, "ONE")
         text = sb.sae("status", "mapoff").stdout

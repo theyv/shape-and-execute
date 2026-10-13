@@ -315,7 +315,7 @@ class ResumeDoneJobTests(ReviewFlowCase):
     def test_resume_done_planner_after_plan_review(self):
         sb = self.sandbox(points=["plan"])
         task = sb.new_task("Replan", "replan")
-        sb.sae("approve", "replan", "spec")
+        sb.approve_spec("replan")
         sb.sae("job", "add", "replan", "PLAN", "--kind", "planning")
         sb.sae("dispatch", "replan", "PLAN")
         sb.sae("job", "add", "replan", "WORK", "--kind", "implementation")
@@ -346,9 +346,9 @@ class ReviewMarkTests(ReviewFlowCase):
         return loaded, review_mark, planned_reviews
 
     def test_flags_without_job_reviews_and_forced_reviews(self):
-        sb = self.sandbox(points=["spec", "plan", "integration"])
+        sb = self.sandbox(points=["plan", "integration"])  # no spec review: the spec gate is not under test
         task = sb.new_task("Marks", "marks")
-        sb.sae("approve", "marks", "spec")
+        sb.approve_spec("marks")
         for job, extra in (("FLAGGED", ["--review"]), ("PLAIN", []), ("FINAL", ["--kind", "validation", "--final"])):
             kind = [] if "--kind" in extra else ["--kind", "implementation"]
             out = sb.sae("job", "add", "marks", job, *kind, *extra).stdout

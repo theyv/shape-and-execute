@@ -375,7 +375,7 @@ def register_approve(sub, command):
 def register_check(sub, command):
     """Add the `check` command to the parser."""
     p = command(sub, "check", "Lint the task and name a due spec or plan review. Read-only.",
-                "In shaping: requirement IDs in specs.md and in the intent's ## Acceptance; after a clean check\n"
+                "In shaping: specs.md with requirement IDs under ## Requirements… headings; after a clean check\n"
                 "REVIEW-SPEC is due when spec is a review point. Later: the graph (unknown needs, cycles, job files\n"
                 "and objectives, covers, requirement coverage, final jobs) and warnings (verify, scopes, hot files,\n"
                 "brief length, riskiest assumptions, objective length); in planning REVIEW-PLAN is due after a clean\n"
