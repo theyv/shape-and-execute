@@ -84,14 +84,13 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         f"Task: {task.id} · Job: {job_id} ({kind}, {job_context(task, job_id)['difficulty']})",
     ]
     spec, intent = d / "specs.md", d / "intent.md"
-    spec_or_intent = (pointer("Spec — read the parts your job covers: ", spec) if spec.exists()
-                      else pointer("Intent — acceptance criteria:          ", intent))
+    spec_pointer = pointer("Spec — read the parts your job covers: ", spec)
     profile = tasks_dir(task.root) / "repo" / "profile.md"
     if kind in ("implementation", "integration", "validation"):
         lines += [
             pointer("Job file — what to achieve:            ", job_file(task, job_id)),
             pointer("Shared brief — read first:             ", d / "brief.md"),
-            spec_or_intent,
+            spec_pointer,
             pointer("Repo profile — validation, hot files:  ", profile),
         ]
         if job.get("fix_of"):
@@ -167,7 +166,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         else:
             lines += [pointer("Job file:                              ", job_file(task, target)),
                       pointer("Result:                                ", result_file(task, target)),
-                      spec_or_intent]
+                      spec_pointer]
             diff = diff_command(task, target, config)
             if diff:
                 lines.append(f"Diff: {diff}")
@@ -184,7 +183,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         lines += [pointer("Job file — the question:               ", job_file(task, job_id))]
         if target in task.jobs:
             lines.append(pointer("Decision request (section \"Decision request\"): ", result_file(task, target)))
-        lines += [spec_or_intent, pointer("Brief:                                 ", d / "brief.md"),
+        lines += [spec_pointer, pointer("Brief:                                 ", d / "brief.md"),
                   "Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "decision.md"
     if kind != "review":

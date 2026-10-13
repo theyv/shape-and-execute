@@ -12,13 +12,13 @@ import shutil
 import unittest
 from pathlib import Path
 
-from saetest import SaeTestCase, Sandbox, config_for, dispatch_workspace
+from saetest import SaeTestCase, Sandbox, config_for, covers_of, dispatch_workspace
 
 
 def plan(sb: Sandbox, slug: str, jobs: list[tuple[str, str]], cwd: Path | None = None) -> str:
     """A task with approved plan; jobs are (ID, needs), all implementation."""
     task = sb.json("new", slug.title(), "--slug", slug, cwd=cwd)["task"]
-    sb.sae("approve", slug, "spec", cwd=cwd)
+    sb.approve_spec(slug, cwd=cwd)
     for job_id, needs in jobs:
         write_job_file(sb, cwd or sb.repo, task, job_id)
         sb.sae("job", "add", slug, job_id, "--kind", "implementation", *(["--needs", needs] if needs else []),
@@ -30,7 +30,7 @@ def plan(sb: Sandbox, slug: str, jobs: list[tuple[str, str]], cwd: Path | None =
 def write_job_file(sb: Sandbox, checkout: Path, task: str, job_id: str) -> None:
     folder = checkout / ".tasks" / task / "jobs"
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"{job_id}.md").write_text(f"---\nid: {job_id}\ncovers: []\nverify: []\n---\n\n# {job_id}\n\n## Objective\nDo one thing.\n")
+    (folder / f"{job_id}.md").write_text(f"---\nid: {job_id}\ncovers: {json.dumps(covers_of(folder.parent))}\nverify: []\n---\n\n# {job_id}\n\n## Objective\nDo one thing.\n")
 
 
 def finish_job(sb: Sandbox, task: str, slug: str, job_id: str, file: str) -> Path:
@@ -140,7 +140,7 @@ class BacklogPickupTests(SaeTestCase):
         rel_item = str(item.relative_to(sb.repo))
         task = sb.json("new", "Labels", "--from", rel_item)["task"]
         self.assertTrue(item.exists())
-        sb.sae("approve", task, "spec")
+        sb.approve_spec(task)
         write_job_file(sb, sb.repo, task, "WORK")
         sb.sae("job", "add", task, "WORK", "--kind", "implementation")
         sb.sae("approve", task, "plan")
@@ -168,7 +168,7 @@ class BacklogPickupTests(SaeTestCase):
         sb = self.sandbox()
         item = self.committed_item(sb)
         task = sb.json("new", "Labels", "--from", str(item.relative_to(sb.repo)))["task"]
-        sb.sae("approve", task, "spec")
+        sb.approve_spec(task)
         write_job_file(sb, sb.repo, task, "WORK")
         sb.sae("job", "add", task, "WORK", "--kind", "implementation")
         sb.sae("approve", task, "plan")
@@ -189,7 +189,7 @@ class BacklogPickupTests(SaeTestCase):
         source_finding = sb.repo / ".tasks" / "findings" / "2026-10-10-1200--from-planning.md"
         source_finding.parent.mkdir(parents=True)
         source_finding.write_text(f"---\nsource: {task}/PLAN\n---\n\n# From planning\n")
-        sb.sae("approve", task, "spec")
+        sb.approve_spec(task)
         write_job_file(sb, sb.repo, task, "WORK")
         sb.sae("job", "add", task, "WORK", "--kind", "implementation")
         sb.sae("approve", task, "plan")
@@ -256,7 +256,7 @@ class BacklogPickupTests(SaeTestCase):
         (repo_files / "setup.sh").write_text('chmod a-w "$SAE_WORKTREE/.tasks/$SAE_TASK/events.jsonl"\n')
         item = Path(sb.json("new", "Never committed", "--backlog")["file"])
         task = sb.json("new", "Pickup", "--from", str(item.relative_to(sb.repo)))["task"]
-        sb.sae("approve", task, "spec")
+        sb.approve_spec(task)
         write_job_file(sb, sb.repo, task, "WORK")
         sb.sae("job", "add", task, "WORK", "--kind", "implementation")
         sb.sae("approve", task, "plan")
