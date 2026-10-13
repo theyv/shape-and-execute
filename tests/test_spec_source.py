@@ -47,6 +47,40 @@ class SpecSourceTests(SaeTestCase):
         sb.job_file(task, "WORK", covers=["A-ONE", "B-TWO"], verify=["true"])
         self.assertEqual(sb.json("check", "groups")["errors"], [])
 
+    def test_a_spec_with_only_fenced_examples_fails_check_and_spec_approval(self):
+        sb = self.sandbox(points=["plan"])
+        task = sb.new_task("Examples only", "examples-only")
+        (sb.task_dir(task) / "specs.md").write_text(
+            "# Spec\n\n## Requirements: a\n\n```markdown\n### [EXAMPLE] Example\n- [ ] example\n```\n")
+        errors = sb.json("check", "examples-only", code=3)["errors"]
+        self.assertTrue(any("no requirements" in e for e in errors), errors)
+        self.assertIn("no requirements", sb.sae("approve", "examples-only", "spec", code=3).stderr)
+
+    def test_fenced_examples_beside_requirements_add_no_ids_or_checks(self):
+        sb = self.sandbox(points=["plan"])
+        task = sb.new_task("Examples beside", "examples-beside")
+        (sb.task_dir(task) / "specs.md").write_text(
+            "# Spec\n\n## Requirements\n\n### [REAL] Real\n\n```markdown\n### [EXAMPLE] Example\n"
+            "- [ ] example\n```\n")
+        data = sb.json("check", "examples-beside")
+        self.assertEqual(data["errors"], [])
+        self.assertIn("specs.md: requirement [REAL] has no acceptance checks", data["warnings"])
+        sb.approve_spec("examples-beside")
+        sb.sae("job", "add", "examples-beside", "WORK", "--kind", "implementation")
+        sb.job_file(task, "WORK", covers=["REAL", "EXAMPLE"], verify=["true"])
+        errors = sb.json("check", "examples-beside", code=3)["errors"]
+        self.assertEqual(errors, ["WORK: covers [EXAMPLE], which does not exist"])
+
+    def test_checks_do_not_leak_across_requirement_groups(self):
+        sb = self.sandbox(points=["plan"])
+        task = sb.new_task("Group leak", "group-leak")
+        (sb.task_dir(task) / "specs.md").write_text(
+            "# Spec\n\n## Requirements: a\n\n### [A] One\n\n"
+            "## Requirements: b\n\n- [ ] stray check\n\n### [B] Two\n- [ ] two\n")
+        warnings = sb.json("check", "group-leak")["warnings"]
+        self.assertIn("specs.md: requirement [A] has no acceptance checks", warnings)
+        self.assertNotIn("specs.md: requirement [B] has no acceptance checks", warnings)
+
     def test_the_same_id_in_two_groups_is_a_duplicate(self):
         sb = self.sandbox(points=["plan"])
         task = sb.new_task("Dup groups", "dup-groups")
