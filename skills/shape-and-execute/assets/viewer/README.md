@@ -18,6 +18,25 @@ Classic scripts in this order: `app.js`, `task-views.js`, `settings.js`. They sh
 top-level names; `app.js` boots on `DOMContentLoaded`, when all three are loaded. No build step,
 no ES modules, no CDN, no web fonts, no external requests.
 
+## The Plan graph
+
+`graph()` in `task-views.js` builds a card model (`graph().cards`), then draws it as SVG:
+
+- **Cards**: the Shape card and the Plan card (phase cards), a job card per writer, validation,
+  research or decision job, one Integration card, the dashed jobs placeholder before the plan exists,
+  and the Finish card. Card IDs of their own start with `@` (`@shape`, `@plan`, `@jobs`,
+  `@integration`, `@finish`).
+- **Rows** below a card's separator: a job's review rounds and fix jobs (`--fix-of`), the integration
+  rounds and their fixes, the shaping research and the spec review (Shape), the plan review (Plan).
+  `homes()` says which card each job belongs to; edges of a row's job start or end at its card.
+- **Server data**: `steps` (`control.map_steps`, the steps of the process map) and `finish`
+  (`reviews.finish_readiness`: the gates of `sae finish`, without side effects).
+- **Tuning**: sizes and character widths in `GC`, wheel and pinch rates in `GZR` (`task-views.js`);
+  timings and strengths as `--g-*` on `:root` in `task-views.css`; colors (`--pass`, `--edge-hi`,
+  `--frame-wait`, `--added-hatch`) in `app.css`.
+- Hover or keyboard focus on a card highlights its edges (`gvHi`, `gvLinks`); the highlight survives
+  a refresh.
+
 ## How it is used
 
 - `sae view [<task>] [--open]` starts the server or reuses the running one and prints

@@ -494,6 +494,22 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
     return overridden
 
 
+def finish_readiness(task: Task) -> dict:
+    """The Finish card of the viewer ([GRAPH-PLACEHOLDER-FINISH]): `state` waiting | ready | blocked |
+    done | abandoned and the `reason` `sae finish` would refuse with. The same gates as `sae finish`,
+    without --with-open or --override and without side effects; blocked only once every job is done."""
+    if task.phase in ("done", "abandoned"):
+        return {"state": task.phase, "reason": None}
+    if task.phase != "executing":
+        return {"state": "waiting", "reason": None}
+    try:
+        check_finish_gates(task, False, None)
+    except SaeError as exc:
+        done = all(j["status"] == "done" for j in task.jobs.values())
+        return {"state": "blocked" if done else "waiting", "reason": str(exc)}
+    return {"state": "ready", "reason": None}
+
+
 def cmd_collect(args) -> int:
     root, _ = find_root()
     config = load_config(required=False)

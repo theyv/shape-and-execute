@@ -7,8 +7,8 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
   /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
-  /api/task?repo=K&task=ID         one task: files, events, process map, routing, effective
-                                   difficulty, review marks, waits, next
+  /api/task?repo=K&task=ID         one task: files, events, process map and its steps, routing,
+                                   effective difficulty, review marks, waits, next, finish readiness
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config,
                                    Codex catalog, known Claude families
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
@@ -222,8 +222,8 @@ def prototype_url(key: str, task_id: str, inner: str) -> str:
 def computed(task, config: dict | None) -> dict:
     """What the views need, from the same functions as the CLI (`sae next`)."""
     from .progress import next_data, task_status_data
-    from .reviews import planned_reviews, review_mark
-    from .control import process_map
+    from .reviews import finish_readiness, planned_reviews, review_mark
+    from .control import map_steps, process_map
     from .routing import job_context, resolve_model
     from .graph import active_holds, waits_for
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
@@ -243,6 +243,12 @@ def computed(task, config: dict | None) -> dict:
             out["difficulty"][job_id] = job_context(task, job_id)["difficulty"]
     with contextlib.suppress(Exception):
         out["status"] = task_status_data(task)
+    # the steps of the Shape and Plan cards and the Finish card's readiness ([GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH])
+    out["steps"], out["finish"] = [], None
+    with contextlib.suppress(Exception):
+        out["steps"] = map_steps(task)
+    with contextlib.suppress(Exception):
+        out["finish"] = finish_readiness(task)
     if config is None:
         return out
     try:

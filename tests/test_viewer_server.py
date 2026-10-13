@@ -389,7 +389,7 @@ console.log(JSON.stringify(vm.runInContext(`readHash(); IDX = {sae: "sae", tasks
   var g = graph(TASK), svg = g.svg;
   ({tab: S.tab, edges: g.edges.map(e => e.slice(0, 3)),
     marks: ["no review · forced by settings", "review · forced by settings"].filter(m => svg.includes(">" + m + "<")),
-    planned: /class="nd k-planned[^"]*planned"[^>]*aria-label="REVIEW-INTEGRATION/.test(svg),
+    planned: /class="rw t-planned planned"[^>]*aria-label="REVIEW-INTEGRATION/.test(svg),
     override: svg.includes("override")})`, ctx)));
 """
 
@@ -584,10 +584,11 @@ class ViewerPageTests(unittest.TestCase):
             out = json.loads(proc.stdout.strip().splitlines()[-1])
             self.assertEqual(out["tab"], "plan")  # a task opens on Plan
             edges = {(a, b): cls for a, b, cls in out["edges"]}
-            # after the last writer only (the others reach it through FINDINGS-CLOSE), then the final validation
-            self.assertEqual(edges.get(("FINDINGS-CLOSE", "REVIEW-INTEGRATION")), "gen", out)
-            self.assertNotIn(("VERDICT", "REVIEW-INTEGRATION"), edges)
-            self.assertEqual(edges.get(("REVIEW-INTEGRATION", "FINAL-VALIDATION")), "gen", out)
+            # the Integration card ([GRAPH-INTEGRATION-CARD]): after the last writer only (the others reach it
+            # through FINDINGS-CLOSE), then the final validation
+            self.assertEqual(edges.get(("FINDINGS-CLOSE", "@integration")), "gen", out)
+            self.assertNotIn(("VERDICT", "@integration"), edges)
+            self.assertEqual(edges.get(("@integration", "FINAL-VALIDATION")), "gen", out)
             self.assertFalse([e for e, cls in edges.items() if "new" in cls.split()], "generated edges are no plan change")
             self.assertIn("no review · forced by settings", out["marks"])
             self.assertEqual("review · forced by settings" in out["marks"], not old_sae)
@@ -595,7 +596,8 @@ class ViewerPageTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("node"), "node runs the viewer scripts")
     def test_planned_integration_review_is_a_planned_node_before_the_final_validation(self):
-        """[GENERATED-JOB-EDGES]: a review sae will add is drawn in its final place, dotted."""
+        """[GENERATED-JOB-EDGES], [GRAPH-INTEGRATION-CARD]: a review sae will add is a planned row of the
+        Integration card, which stands in its final place."""
         task = pilot_project_task(True)
         del task["state"]["jobs"]["REVIEW-INTEGRATION"]
         task["planned_reviews"] = [{"id": "REVIEW-INTEGRATION", "target": "integration", "round": 1,
@@ -612,8 +614,8 @@ class ViewerPageTests(unittest.TestCase):
         out = json.loads(proc.stdout.strip().splitlines()[-1])
         edges = {(a, b): cls for a, b, cls in out["edges"]}
         self.assertTrue(out["planned"])
-        self.assertEqual(edges.get(("FINDINGS-CLOSE", "REVIEW-INTEGRATION")), "pl")
-        self.assertEqual(edges.get(("REVIEW-INTEGRATION", "FINAL-VALIDATION")), "pl")
+        self.assertEqual(edges.get(("FINDINGS-CLOSE", "@integration")), "pl")
+        self.assertEqual(edges.get(("@integration", "FINAL-VALIDATION")), "pl")
 
 
     @unittest.skipUnless(shutil.which("node"), "node runs the viewer scripts")
@@ -639,8 +641,9 @@ class ViewerPageTests(unittest.TestCase):
         self.assertEqual(out["fit"], {"x": 16, "y": 108, "k": 0.5})  # whole graph, centered
         self.assertEqual(out["zoom"], {"x": -100, "y": -50, "k": 2})  # the point under the pointer stays
         self.assertEqual(out["min"], 0.2)
-        # planned without needs: first column; added later: the column of the rightmost dispatched job
-        self.assertEqual(out["layer"], {"VERIFY": 0, "VERDICT": 1, "LATE": 1})
+        # planned without needs: the first column after the Shape and Plan cards; added later: the column
+        # of the rightmost dispatched job
+        self.assertEqual(out["layer"], {"VERIFY": 2, "VERDICT": 3, "LATE": 3})
 
     @unittest.skipUnless(shutil.which("node"), "node runs app.js")
     def test_a_late_answer_for_the_previous_project_is_dropped(self):
