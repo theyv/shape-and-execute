@@ -171,9 +171,9 @@ Run `sae doctor` again. Fix every ✗ together with the user.
 At the first task in a repository, or when the user asks:
 
 - `.tasks/repo/profile.md` (template `templates/repo/profile.md`): only what AGENTS.md and
-  CLAUDE.md do not already say — validation commands (unit, typecheck, lint, end-to-end),
-  known hot files, notes for worktree setup. Optional frontmatter pin: `artifact_language`
-  (for a team).
+  CLAUDE.md do not already say — validation commands (smoke, full suite, unit, typecheck,
+  lint, end-to-end), known hot files, notes for worktree setup. Optional frontmatter pin:
+  `artifact_language` (for a team).
 - Ask once where decision records go, and write the answer into the profile:
   - one flat folder: `adr_folder: docs/adr` (no answer: an existing ADR folder, else
     `docs/decisions/`);
