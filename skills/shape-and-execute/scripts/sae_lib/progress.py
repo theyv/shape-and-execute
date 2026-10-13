@@ -155,7 +155,9 @@ def cmd_status(args) -> int:
         if data["parked"]:
             lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
         if data["asks"]:
-            lines += ["", "Open asks (waiting for the owner):"] + [
+            # "waiting" only in executing, like owner_wait()
+            heading = "Open asks (waiting for the owner):" if data["phase"] == "executing" else "Open asks:"
+            lines += ["", heading] + [
                 f"  {a['n']}." + (f" {a['job']}:" if a["job"] else "") + f" {a['question']}" for a in data["asks"]]
         if data["integration"]:
             lines += ["", data["integration"]]
@@ -209,20 +211,21 @@ def cmd_status(args) -> int:
     return EXIT_OK
 
 
-def reminder_lines(task: Task) -> list[str]:
-    """The mode with the classes to ask on, the hard stops, then the sae ask line when it is due
-    ([ASK-REMINDER])."""
-    ask = ask_reminder_line(task)
+def reminder_lines(task: Task, ask_reminder: bool = False) -> list[str]:
+    """The mode with the classes to ask on, the hard stops, then, for `sae next` only
+    (`ask_reminder`), the sae ask line when it is due ([ASK-REMINDER])."""
+    ask = ask_reminder_line(task) if ask_reminder else None
     return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE] + ([ask] if ask else [])
 
 
-def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
+def next_text(task: Task, config: dict | None, data: dict | None = None, ask_reminder: bool = False) -> str:
     """The `sae next` text. On a writable task (sae start) the start next-step card it prints
-    is recorded; `sae next` itself is read-only and only prints it."""
+    is recorded; `sae next` itself is read-only and only prints it. `ask_reminder`: `sae next`
+    passes True; `sae start` leaves the sae ask line out ([ASK-REMINDER])."""
     data = data or next_data(task, config)
     if task.writable and data["card"] is not None and data["card"].get("start"):
         record_card(task, data["card"])
-    lines = ["\n".join(data["map"]), ""] + reminder_lines(task) + [""]
+    lines = ["\n".join(data["map"]), ""] + reminder_lines(task, ask_reminder) + [""]
     notices = hold_notices(task)
     if data["integration"]:
         notices.append(data["integration"])
@@ -346,12 +349,12 @@ def cmd_next(args) -> int:
         with open_task(root, args.task) as task:
             materialize_integration_review(task, out)
             data = next_data(task, config)
-            text = next_text(task, config, data)
+            text = next_text(task, config, data, ask_reminder=True)
     else:
         with open_task(root, args.task, write=False) as task:
             data = next_data(task, config)
-            text = next_text(task, config, data)
-    data["reminder"] = reminder_lines(task)
+            text = next_text(task, config, data, ask_reminder=True)
+    data["reminder"] = reminder_lines(task, ask_reminder=True)
     emit(args, ("\n".join(out) + "\n" if out else "") + text, data)
     return EXIT_OK
 

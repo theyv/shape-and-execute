@@ -103,6 +103,15 @@ class AskCommandTests(AskCase):
         self.assertEqual(sb.json("ask", "answered", "--answered", "--job", "A")["closed"], [1])
         self.assertEqual(sb.json("ask", "answered", "--answered")["closed"], [2, 3])
 
+    def test_status_calls_asks_waiting_only_in_executing(self):
+        """"Waiting for the owner": an open ask outside executing is listed, not called waiting."""
+        sb = self.sandbox()
+        sb.new_task("Shape", "shape")
+        sb.sae("ask", "shape", "Which scope?")
+        status = sb.sae("status", "shape").stdout
+        self.assertIn("Open asks:\n  1. Which scope?", status)
+        self.assertNotIn("waiting for the owner", status)
+
     def test_unknown_job_and_missing_question_fail(self):
         """[ASK-COMMAND]: --job with an unknown job ID fails with exit 1; so does no question."""
         sb = self.sandbox()
@@ -206,6 +215,18 @@ class AskSignalTests(AskCase):
         self.assertNotIn("sae ask", sb.json("dispatch", "prompt", "A")["prompt"])
         self.assertNotIn("sae ask", sb.sae("status", "prompt").stdout)
         self.assertTrue(task)
+
+    def test_start_and_resume_never_show_the_reminder(self):
+        """[ASK-REMINDER]: the sae ask line is in sae next only, not in a first or resumed sae start."""
+        sb = self.sandbox()
+        task = sb.new_task("Start", "start")
+        sb.sae("set", "start", "interaction=full-auto")
+        sb.sae("job", "add", "start", "A", "--kind", "implementation")
+        sb.job_file(task, "A", objective="Build the a part.")
+        sb.approve_plan("start")
+        self.assertNotIn(ASK_LINE, sb.sae("start", "start").stdout)
+        self.assertNotIn(ASK_LINE, sb.sae("start", "start").stdout)  # resumed: phase executing
+        self.assertTrue(self.reminded(sb, "start"))
 
     def test_next_step_card_lists_the_signal_and_its_change(self):
         """[ASK-SETTING]: the next-step card's settings list has the effective ask signal; a mode
