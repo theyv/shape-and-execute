@@ -48,6 +48,17 @@ console.log(JSON.stringify(vm.runInContext(`readHash(); IDX = {sae: "sae", tasks
     links: g.cards.map(c => [c.id, gvLinks(GE, c.id)])})`, ctx)));
 """
 
+# task-views.js in node: the override control of one model ([JOB-MODEL-OVERRIDE]): can it change, and the body it posts
+OVR_JS = r"""
+const vm = require("vm"), fs = require("fs");
+const ctx = {console, document: {addEventListener() {}, querySelector() { return null }}, addEventListener() {}, setInterval() {},
+  localStorage: {getItem() { return null }, setItem() {}}};
+ctx.window = ctx; vm.createContext(ctx);
+for (const f of process.argv.slice(2, 4)) vm.runInContext(fs.readFileSync(f, "utf8"), ctx);
+ctx.TASK = JSON.parse(fs.readFileSync(process.argv[4], "utf8")); ctx.ID = process.argv[5];
+console.log(JSON.stringify(vm.runInContext(`({can: canOvr(TASK, ID), body: ovrBody(TASK, ID)})`, ctx)));
+"""
+
 # task-views.js in node: the zoom factor of a wheel event, before ([GRAPH-ZOOM]: a fixed .0015) and now
 ZOOM_JS = r"""
 const vm = require("vm"), fs = require("fs");
@@ -85,6 +96,17 @@ class GraphCardsCase(ViewerServerCase, ReviewFlowCase):
 
     def cards(self, sb, task: str) -> dict:
         return run_node(CARDS_JS, "app.js", "task-views.js", data=self.data(sb, task))
+
+    def override(self, sb, task: str, data: dict, job_id: str, effort: str) -> dict:
+        """Change the model of `job_id` as its override control does: the body ovrBody posts, through the server."""
+        out = run_node(OVR_JS, "app.js", "task-views.js", data=data, args=(job_id,))
+        self.assertTrue(out["can"], f"{job_id} has an override control")
+        view = self._view
+        code, answer, _ = self.post(view["port"], "override", {"repo": view["repo"], "task": task, **out["body"],
+                                                                "effort": effort}, self.token(view["port"]))
+        self.assertEqual(code, 200, answer)
+        self.assertTrue(answer["ok"], answer)
+        return out["body"]
 
     def copy_done(self, sb, *names: str) -> list[str]:
         """Copies of finished tasks of this repository into the sandbox's .tasks/done/."""
@@ -210,6 +232,12 @@ class LiveStateTests(GraphCardsCase):
         self.assertEqual(rows(core), [("Review 1", "✕", "fail"), ("Fix", "◐", "running"), ("Review 2", "◌", "planned")])
         self.assertNotIn("CORE-FIX-1", [c["id"] for c in out["cards"]])
         self.assertNotIn("added", core["cls"], "a fix row is no added job")
+        # Review 2 is a planned review of the server, with the routing of the round before it and an override control
+        data = self.data(sb, task)
+        nxt = [p for p in data["planned_reviews"] if p["id"] == "REVIEW-CORE-2"]
+        self.assertEqual([(p["round"], p["key"], p["like"]) for p in nxt], [(2, "REVIEW-CORE", "REVIEW-CORE")])
+        self.assertNotIn("error", data["routing"]["REVIEW-CORE-2"])
+        self.assertRegex(out["svg"], r'class="rw t-planned planned"[^>]*>.*?data-act="ovr" data-id="REVIEW-CORE-2"')
         # the fix parks: the card's badge and its red frame
         sb.work(fix_ws, "fix.txt", "fix\n", "CORE-FIX-1: work")
         sb.result(task, "jobs/CORE-FIX-1.result.md", status="parked", summary="needs a decision", validation="pass", changes="made")
@@ -218,6 +246,71 @@ class LiveStateTests(GraphCardsCase):
         self.assertEqual(core["st"], "‖ parked")
         self.assertIn("wait", core["cls"])
         self.assertEqual(core["rows"][1]["g"], "‖")
+
+    def test_the_model_of_a_next_review_round_changes_while_its_fix_runs(self):
+        """[GRAPH-JOB-CARD], [JOB-MODEL-OVERRIDE]: Review 2's control sets the override of every round of the
+        review (REVIEW-CORE); sae then dispatches REVIEW-CORE-2 on it."""
+        sb = self.sandbox()
+        task = self.planned(sb, "round", [("CORE", "implementation", "", ["--review"])], settings=["review=selected-jobs"])
+        self.run_writer(sb, task, "round", "CORE")
+        self.review(sb, task, "round", "REVIEW-CORE", "CORE", "changes-required")
+        sb.sae("job", "add", "round", "CORE-FIX-1", "--kind", "implementation", "--fix-of", "CORE", "--reason", "finding 1")
+        sb.job_file(task, "CORE-FIX-1")
+        fix_ws = Path(sb.json("dispatch", "round", "CORE-FIX-1")["workspace"])
+        data = self.data(sb, task)
+        effort = next(e for e in ("xhigh", "low") if e != data["routing"]["REVIEW-CORE-2"]["effort"])
+        self.assertEqual(self.override(sb, task, data, "REVIEW-CORE-2", effort), {"job": "CORE", "review": True})
+        routed = self.data(sb, task)["routing"]["REVIEW-CORE-2"]
+        self.assertEqual((routed["effort"], routed["source"]), (effort, "override"))
+        self.assertIn("· override", self.cards(sb, task)["svg"])
+        sb.work(fix_ws, "fix.txt", "fix\n", "CORE-FIX-1: work")
+        sb.result(task, "jobs/CORE-FIX-1.result.md", status="done", summary="fixed", validation="pass", changes="made")
+        self.assertIn("Added REVIEW-CORE-2", sb.sae("collect", "round", "CORE-FIX-1").stdout)
+        self.assertEqual(sb.json("dispatch", "round", "REVIEW-CORE-2")["effort"], effort)
+
+    def test_the_next_integration_round_routes_as_the_round_before_it(self):
+        """[GRAPH-INTEGRATION-CARD]: the next round has the difficulty that carries over from the last round
+        (not round 1), and its control sets the override of every round (REVIEW-INTEGRATION)."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "intround")
+        self.review(sb, task, "intround", "REVIEW-INTEGRATION", "integration", "changes-required")
+        sb.sae("job", "add", "intround", "INTEGRATION-FIX-1", "--kind", "implementation", "--fix-of", "REVIEW-INTEGRATION",
+               "--reason", "finding 1")
+        sb.job_file(task, "INTEGRATION-FIX-1")
+        self.run_writer(sb, task, "intround", "INTEGRATION-FIX-1")
+        sb.sae("job", "edit", "intround", "REVIEW-INTEGRATION-2", "--difficulty", "hard", "--reason", "a wide change")
+        self.review(sb, task, "intround", "REVIEW-INTEGRATION-2", "integration", "changes-required")
+        sb.sae("job", "add", "intround", "INTEGRATION-FIX-2", "--kind", "implementation", "--fix-of", "REVIEW-INTEGRATION-2",
+               "--reason", "finding 2")
+        sb.job_file(task, "INTEGRATION-FIX-2")
+        sb.json("dispatch", "intround", "INTEGRATION-FIX-2")
+        data = self.data(sb, task)
+        nxt = [p for p in data["planned_reviews"] if p["id"] == "REVIEW-INTEGRATION-3"]
+        self.assertEqual([(p["round"], p["key"], p["like"]) for p in nxt], [(3, "REVIEW-INTEGRATION", "REVIEW-INTEGRATION-2")])
+        self.assertEqual(data["difficulty"]["REVIEW-INTEGRATION-3"], "hard")
+        it = card(self.cards(sb, task), "@integration")
+        self.assertEqual([(r["label"], r["g"]) for r in it["rows"]],
+                         [("Review 1", "✕"), ("Fix 1", "●"), ("Review 2", "✕"), ("Fix 2", "◐"), ("Review 3", "◌")])
+        effort = next(e for e in ("xhigh", "low") if e != data["routing"]["REVIEW-INTEGRATION-3"]["effort"])
+        self.assertEqual(self.override(sb, task, data, "REVIEW-INTEGRATION-3", effort), {"job": "REVIEW-INTEGRATION"})
+        self.assertEqual(self.data(sb, task)["routing"]["REVIEW-INTEGRATION-3"]["effort"], effort)
+
+    def test_the_planned_planner_model_changes_before_plan_exists(self):
+        """[GRAPH-PHASE-CARDS]: `sae job override <task> PLAN` before the planner job exists; PLAN gets it once added."""
+        sb = self.sandbox()
+        task = sb.new_task("Planner", "planner")
+        data = self.data(sb, task)
+        effort = next(e for e in ("xhigh", "low") if e != data["routing"]["PLAN"]["effort"])
+        self.assertEqual(self.override(sb, task, data, "PLAN", effort), {"job": "PLAN"})
+        self.assertEqual(self.data(sb, task)["routing"]["PLAN"]["effort"], effort)
+        sb.sae("job", "add", "planner", "PLAN", "--kind", "planning")
+        data = self.data(sb, task)
+        self.assertIsNone(data["planned_planner"])
+        self.assertEqual((data["routing"]["PLAN"]["effort"], data["routing"]["PLAN"]["source"]), (effort, "override"))
+        # without a planner job, a planned graph was planned inline: no planned planner
+        inline = plan(sb, "inline", [("ONE", "")])
+        self.assertIsNone(self.data(sb, inline)["planned_planner"])
+        sb.sae("job", "override", "inline", "PLAN", "--effort", effort, code=1)
 
     def test_moment_zero_a_task_in_shaping_with_its_spec_review_running(self):
         """[GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH], prototype moment 0."""
@@ -239,6 +332,10 @@ class LiveStateTests(GraphCardsCase):
         self.assertEqual(plan_card["st"], "○ waiting")
         self.assertIn("nyet", plan_card["cls"])
         self.assertEqual([(r["label"], r["g"]) for r in plan_card["rows"]], [("Review", "◌")])
+        # the planned planner's model · effort, an override control before PLAN exists
+        self.assertEqual(self.data(sb, task)["planned_planner"], "PLAN")
+        self.assertRegex(out["svg"], r'(?s)data-card="@plan".*?class="ml ed" data-act="ovr" data-id="PLAN"')
+        self.assertIn("Planner: PLAN, planned", plan_card["tip"])
         self.assertIn("nyet", card(out, "@jobs")["cls"])
         self.assertEqual(card(out, "@finish")["st"], "○ waiting")
         self.assertEqual([e[:2] for e in out["edges"]], [["@shape", "@plan"], ["@plan", "@jobs"], ["@jobs", "@finish"]])
@@ -258,6 +355,53 @@ class LiveStateTests(GraphCardsCase):
         on = self.integration_task(sb, "on")  # REVIEW-INTEGRATION exists, not run yet
         it = card(self.cards(sb, on), "@integration")
         self.assertEqual(rows(it), [("Review", "▷", "ready")])
+
+    def test_a_pending_integration_round_and_its_edges_are_faded(self):
+        """[GRAPH-NOT-YET], [GRAPH-INTEGRATION-CARD]: a round that waits for another job fades with its incoming edges;
+        a ready one does not."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "pending")
+        self.assertNotIn("nyet", card(self.cards(sb, task), "@integration")["cls"])
+        sb.sae("job", "add", "pending", "EXTRA", "--kind", "implementation", "--reason", "one more part")
+        sb.job_file(task, "EXTRA")
+        sb.sae("job", "edit", "pending", "REVIEW-INTEGRATION", "--needs", "LEFT,RIGHT,EXTRA", "--reason", "review it too")
+        out = self.cards(sb, task)
+        it = card(out, "@integration")
+        self.assertEqual(it["st"], "○ pending")
+        self.assertIn("nyet", it["cls"])
+        into = [e for e in out["edges"] if e[1] == "@integration"]
+        self.assertTrue(into)
+        for i, e in enumerate(out["edges"]):
+            if e[1] == "@integration":
+                self.assertRegex(out["svg"], rf'<path class="e [^"]*ny" data-i="{i}"')
+
+    def test_a_cycle_of_cards_keeps_the_plan_and_finish_edges(self):
+        """[GRAPH-JOB-CARD], [GRAPH-PLACEHOLDER-FINISH]: A → REVIEW-A → CHECK → A-FIX-1 folds into A ⇄ CHECK; the
+        graph keeps Plan → A and A → Finish (A holds the last job) and draws CHECK → A as a feedback edge."""
+        sb = self.sandbox()
+        task = self.planned(sb, "cycle", [("A", "implementation", "", ["--review"])], settings=["review=selected-jobs"])
+        self.run_writer(sb, task, "cycle", "A")
+        self.review(sb, task, "cycle", "REVIEW-A", "A", "changes-required")
+        sb.sae("job", "add", "cycle", "CHECK", "--kind", "validation", "--needs", "REVIEW-A", "--reason", "check the findings")
+        sb.job_file(task, "CHECK")
+        sb.sae("job", "add", "cycle", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--needs", "CHECK",
+               "--reason", "REVIEW-A: changes required")
+        sb.job_file(task, "A-FIX-1")
+        out = self.cards(sb, task)
+        self.assertEqual([r["id"] for r in card(out, "A")["rows"]], ["REVIEW-A", "A-FIX-1", "REVIEW-A-2"])
+        edges = {(a, b): c for a, b, c in out["edges"]}
+        self.assertIn(("@plan", "A"), edges)
+        self.assertEqual(edges.get(("A", "CHECK")), "")
+        self.assertEqual(edges.get(("CHECK", "A")), "fb")
+        self.assertIn(("A", "@finish"), edges)
+        self.assertNotIn(("CHECK", "@finish"), edges)
+        self.assertNotIn(("@plan", "@finish"), edges)
+        self.assertIn('class="e fb', out["svg"])
+        self.assertNotIn("NaN", out["svg"])
+        # hover: the feedback edge is one of each card's edges
+        links = dict((c, ln) for c, ln in out["links"])
+        fb = [i for i, e in enumerate(out["edges"]) if e[2] == "fb"]
+        self.assertTrue(set(fb) <= set(links["A"]["edges"]) and set(fb) <= set(links["CHECK"]["edges"]))
 
     def test_added_job_fill_tooltip_with_title_objective_and_result(self):
         """[GRAPH-ADDED-FILL], [GRAPH-TOOLTIPS]."""

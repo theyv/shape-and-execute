@@ -25,9 +25,11 @@ from .config import (
     routing_layers,
     task_difficulty,
 )
-from .tasks import Task
+from .tasks import Task, is_generated
 
 TASK_TARGETS = ("spec", "plan", "integration")
+# the planner subagent's job ID (references/modes/plan.md); before it exists it is the planned planner
+PLANNER_ID = "PLAN"
 SOURCE_RANK = {"global": 0, "project": 1, "task": 2, "override": 3}
 
 
@@ -47,6 +49,16 @@ def planned_review_target(task: Task, job_id: str) -> str | None:
     return rest if rest in task.jobs else None
 
 
+def planned_planner(task: Task) -> bool:
+    """PLAN may still be added: shaping or planning, no planning job, no plan approval and no
+    planned job graph (a graph without a planner job was planned inline)."""
+    jobs = task.jobs
+    return (task.phase in ("shaping", "planning") and PLANNER_ID not in jobs
+            and "plan" not in (task.info.get("approvals") or {})
+            and not any(j["kind"] == "planning" for j in jobs.values())
+            and not any(not is_generated(i, j) and j["kind"] != "research" for i, j in jobs.items()))
+
+
 def override_key(task: Task, job_id: str) -> str:
     """The key in task.overrides: a job ID, or the round-1 ID of a review (all its rounds)."""
     job = task.jobs.get(job_id)
@@ -61,9 +73,12 @@ def job_context(task: Task, job_id: str) -> dict:
     job = task.jobs.get(job_id)
     if job is None:
         target = planned_review_target(task, job_id)
-        if target is None:
+        if target is not None:
+            job = {"kind": "review", "target": target, "difficulty": None}
+        elif job_id == PLANNER_ID and planned_planner(task):
+            job = {"kind": "planning", "difficulty": task_difficulty(task.settings)}  # as `sae job add PLAN` sets it
+        else:
             fail(EXIT_USAGE, f"No job {job_id} in task {task.id}.")
-        job = {"kind": "review", "target": target, "difficulty": None}
     kind = job["kind"]
     phase = phase_of(kind)
     if kind == "review":

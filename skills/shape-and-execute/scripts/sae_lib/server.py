@@ -222,9 +222,9 @@ def prototype_url(key: str, task_id: str, inner: str) -> str:
 def computed(task, config: dict | None) -> dict:
     """What the views need, from the same functions as the CLI (`sae next`)."""
     from .progress import next_data, task_status_data
-    from .reviews import finish_readiness, planned_reviews, review_mark
+    from .reviews import finish_readiness, next_review_rounds, planned_reviews, review_mark
     from .control import map_steps, process_map
-    from .routing import job_context, resolve_model
+    from .routing import PLANNER_ID, job_context, planned_planner, resolve_model
     from .graph import active_holds, waits_for
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
                  "waits": {}, "holds_active": [], "map": [], "difficulty": {}}
@@ -252,15 +252,24 @@ def computed(task, config: dict | None) -> dict:
     if config is None:
         return out
     try:
-        out["planned_reviews"] = planned_reviews(task, config)
+        # the reviews sae will add, then the next round of a changes-required round while its fixes are open
+        out["planned_reviews"] = planned_reviews(task, config) + next_review_rounds(task, config)
     except Exception as exc:
         out["planned_reviews_error"] = str(exc)
-    for planned in out["planned_reviews"]:
+    # the planner job PLAN before it exists: its routing, and `sae job override <task> PLAN` sets its model
+    out["planned_planner"] = None
+    with contextlib.suppress(Exception):
+        out["planned_planner"] = PLANNER_ID if planned_planner(task) else None
+    # a next round routes as the round before it (`like`); its own ID resolves to nothing yet
+    like = {p["id"]: p.get("like") or p["id"] for p in out["planned_reviews"]}
+    if out["planned_planner"]:
+        like[PLANNER_ID] = PLANNER_ID
+    for job_id, as_id in like.items():
         with contextlib.suppress(Exception):
-            out["difficulty"][planned["id"]] = job_context(task, planned["id"])["difficulty"]
-    for job_id in list(task.jobs) + [p["id"] for p in out["planned_reviews"]]:
+            out["difficulty"][job_id] = job_context(task, as_id)["difficulty"]
+    for job_id, as_id in [(i, i) for i in task.jobs] + list(like.items()):
         try:
-            out["routing"][job_id] = resolve_model(task, job_id, config, exact=False)
+            out["routing"][job_id] = resolve_model(task, as_id, config, exact=False)
         except Exception as exc:  # incomplete routing: the view shows why
             out["routing"][job_id] = {"error": str(exc).splitlines()[0]}
     if task.phase == "executing":

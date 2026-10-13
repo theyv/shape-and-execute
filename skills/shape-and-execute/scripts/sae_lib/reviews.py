@@ -35,7 +35,7 @@ from .graph import (
     review_rounds,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .routing import resolve_model
+from .routing import override_key, resolve_model
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
     job_branch,
@@ -164,6 +164,49 @@ def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
         if writers:
             finals = [i for i, j in jobs.items() if j["final"]]
             plan("REVIEW-INTEGRATION", "integration", writers, finals)
+    return planned
+
+
+def next_review_rounds(task: Task, config: dict | None = None) -> list[dict]:
+    """The next review round of a changes-required round while its fix jobs are open: sae adds it
+    when they are done (a job review, `after_writer_done`) or merged (the integration review,
+    `materialize_integration_review`). Entries as in `planned_reviews`, plus `key` (the override
+    key of every round) and `like` (the last round: the next one routes as it does, with the same
+    target difficulty, or the difficulty that carries over). For the viewer; never stored."""
+    if task.phase != "executing":
+        return []
+    jobs = task.jobs
+    planned: list[dict] = []
+
+    def plan(review_id: str, target: str, number: int, last: str, needs: list[str], needed_by: list[str]) -> None:
+        if review_id in jobs:
+            return
+        entry = {"id": review_id, "target": target, "round": number, "needs": needs, "needed_by": needed_by,
+                 "key": override_key(task, last), "like": last, "harness": None, "model": None, "effort": None}
+        if config is not None:
+            try:
+                model = resolve_model(task, last, config, exact=False)
+                entry.update({"harness": model.get("harness"), "model": model.get("model"),
+                              "effort": model.get("effort")})
+            except SaeError:
+                pass  # incomplete routing: the round is still planned, without a model
+        planned.append(entry)
+
+    for job_id, job in jobs.items():
+        rounds = review_rounds(task, job_id)
+        if job["kind"] not in WRITER_KINDS or job["merged"] or not rounds or not requires_changes(jobs[rounds[-1]]):
+            continue
+        fixes = [i for i in jobs if fix_target(task, i) == job_id]
+        if any(jobs[i]["status"] != "done" for i in fixes):
+            number = (job.get("review_rounds") or 0) + 1
+            plan(f"REVIEW-{job_id}-{number}", job_id, number, rounds[-1], [job_id] + fixes, [])
+    rounds = review_rounds(task, "integration")
+    if "integration" in task.settings["review"]["points"] and rounds and requires_changes(jobs[rounds[-1]]):
+        fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+        if any(not jobs[i]["merged"] for i in fixes):
+            number = (jobs[rounds[-1]].get("round") or len(rounds)) + 1
+            plan(f"REVIEW-INTEGRATION-{number}", "integration", number, rounds[-1],
+                 [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS], [i for i, j in jobs.items() if j["final"]])
     return planned
 
 

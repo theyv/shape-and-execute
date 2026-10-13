@@ -29,8 +29,16 @@ no ES modules, no CDN, no web fonts, no external requests.
 - **Rows** below a card's separator: a job's review rounds and fix jobs (`--fix-of`), the integration
   rounds and their fixes, the shaping research and the spec review (Shape), the plan review (Plan).
   `homes()` says which card each job belongs to; edges of a row's job start or end at its card.
+- **Feedback edges**: rows can close a cycle of cards that the job graph has not
+  (A → REVIEW-A → CHECK → A-FIX-1 makes A ⇄ CHECK). Inside a cycle, an edge into the card that starts
+  earlier in the job graph is a feedback edge (`fb`, dashed, drawn below the cards); it is left out of
+  the layers and the Plan edges, and the card with the cycle's last job gets the Finish edge.
 - **Server data**: `steps` (`control.map_steps`, the steps of the process map) and `finish`
-  (`reviews.finish_readiness`: the gates of `sae finish`, without side effects).
+  (`reviews.finish_readiness`: the gates of `sae finish`, without side effects). `planned_reviews`
+  also holds the next round of a changes-required round while its fixes are open
+  (`reviews.next_review_rounds`: `key` is the override key of every round, `like` the round whose
+  routing it gets). `planned_planner` is `PLAN` while the planner job may still be added; its
+  routing is served, and `sae job override <task> PLAN` sets its model.
 - **Tuning**: sizes and character widths in `GC`, wheel and pinch rates in `GZR` (`task-views.js`);
   timings and strengths as `--g-*` on `:root` in `task-views.css`; colors (`--pass`, `--edge-hi`,
   `--frame-wait`, `--added-hatch`) in `app.css`.
