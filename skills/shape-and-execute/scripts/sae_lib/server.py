@@ -36,6 +36,7 @@ import urllib.parse
 from pathlib import Path
 
 from .common import (
+    DEFAULT_MAX_REVIEW_ROUNDS,
     DEFAULT_MAX_VERIFY_FAILURES,
     JOB_ID_RE,
     SKILL_DIR,
@@ -299,6 +300,7 @@ def task_data(key: str, task_id: str | None) -> dict:
     state = read_json(folder / "state.json")
     location, where = task_location(copy, state["task"])
     data = {"state": state, "settings": settings, "settings_default_max_verify_failures": DEFAULT_MAX_VERIFY_FAILURES,
+            "settings_default_max_review_rounds": DEFAULT_MAX_REVIEW_ROUNDS,
             "events": events, "files": task_files(folder), "folder": str(folder), "location": location,
             "location_path": where, "worktree": state["task"].get("worktree"),
             "overrides": state["task"].get("overrides") or {},

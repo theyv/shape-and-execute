@@ -19,6 +19,7 @@ from pathlib import Path
 from .common import (
     CODEX_ENV_VARS,
     CONFIG_HINT,
+    DEFAULT_MAX_REVIEW_ROUNDS,
     DEFAULT_MAX_VERIFY_FAILURES,
     DIFFICULTIES,
     EXIT_CONFIG,
@@ -519,14 +520,19 @@ def validate_config(data, catalog: list[dict] | None = None) -> list[str]:
     return errors
 
 
+# the integer limits of settings.json, each 1 to 10: the failed verify runs and the review rounds
+LIMIT_KEYS = ("max_verify_failures", "max_review_rounds")
+
+
 def defaults_as_settings(defaults: dict) -> dict:
     skeleton = {"schema": SCHEMA_VERSION, **{k: defaults.get(k) for k in ("interaction", "levels", "review")}}
-    if "max_verify_failures" in defaults:
-        skeleton["max_verify_failures"] = defaults["max_verify_failures"]
+    for key in LIMIT_KEYS:
+        if key in defaults:
+            skeleton[key] = defaults[key]
     return skeleton
 
 
-PROJECT_DEFAULT_KEYS = ("interaction", "levels", "review", "max_verify_failures")
+PROJECT_DEFAULT_KEYS = ("interaction", "levels", "review", *LIMIT_KEYS)
 
 
 def project_errors(config: dict, path: str, entry) -> list[str]:
@@ -557,7 +563,8 @@ def new_task_settings(config: dict, root: Path | None = None) -> dict:
     settings = {"schema": SCHEMA_VERSION, "interaction": cfg({"defaults": defaults}, "defaults.interaction"),
                 "levels": dict(cfg({"defaults": defaults}, "defaults.levels")),
                 "review": dict(cfg({"defaults": defaults}, "defaults.review")),
-                "max_verify_failures": defaults.get("max_verify_failures", DEFAULT_MAX_VERIFY_FAILURES)}
+                "max_verify_failures": defaults.get("max_verify_failures", DEFAULT_MAX_VERIFY_FAILURES),
+                "max_review_rounds": defaults.get("max_review_rounds", DEFAULT_MAX_REVIEW_ROUNDS)}
     errors = settings_errors(settings)
     if errors:
         fail(EXIT_CONFIG, f"config.defaults: {'; '.join(errors)}.\n{CONFIG_HINT}")
@@ -602,10 +609,11 @@ def settings_errors(s) -> list[str]:
             errors.append("review.points has duplicates")
         if review.get("provider") not in REVIEW_PROVIDERS:
             errors.append(f"review.provider must be one of {', '.join(REVIEW_PROVIDERS)}")
-    if "max_verify_failures" in s:
-        value = s["max_verify_failures"]
-        if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 10:
-            errors.append("max_verify_failures must be an integer from 1 to 10")
+    for key in LIMIT_KEYS:
+        if key in s:
+            value = s[key]
+            if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 10:
+                errors.append(f"{key} must be an integer from 1 to 10")
     if "task_difficulty" in s and s["task_difficulty"] not in TASK_DIFFICULTIES:
         errors.append(f"task_difficulty must be one of {', '.join(TASK_DIFFICULTIES)}")
     if "ask_signal" in s and s["ask_signal"] not in ASK_SIGNAL_VALUES:
@@ -630,7 +638,7 @@ SET_KEYS = {
     "interaction": ("interaction",), "research": ("levels", "research"), "planning": ("levels", "planning"),
     "execution": ("levels", "execution"), "review-level": ("levels", "review"), "review": ("review", "points"),
     "reviewer": ("review", "provider"), "max-verify-failures": ("max_verify_failures",),
-    "task-difficulty": ("task_difficulty",),
+    "max-review-rounds": ("max_review_rounds",), "task-difficulty": ("task_difficulty",),
 }
 ROUTING_KEYS_HELP = ("routing.<harness>.<phase>.<level>.<difficulty>=<model>:<effort>|<tier>|inherit, "
                      "tier.<harness>.<L1-L4>=<model>:<effort>|inherit, tiers-in-cells.<harness>=on|off|inherit")
@@ -639,9 +647,9 @@ ROUTING_KEYS_HELP = ("routing.<harness>.<phase>.<level>.<difficulty>=<model>:<ef
 def parse_set_value(key: str, value: str):
     if key == "review":
         return [] if value == "off" else [p.strip() for p in value.split(",") if p.strip()]
-    if key == "max-verify-failures":
+    if key in ("max-verify-failures", "max-review-rounds"):
         if not value.isdigit():
-            fail(EXIT_USAGE, "max-verify-failures must be an integer from 1 to 10.")
+            fail(EXIT_USAGE, f"{key} must be an integer from 1 to 10.")
         return int(value)
     if SET_KEYS.get(key, ("",))[0] == "levels":
         return level_name(value)
@@ -725,6 +733,11 @@ def max_verify_failures(settings: dict) -> int:
     return settings.get("max_verify_failures", DEFAULT_MAX_VERIFY_FAILURES)
 
 
+def max_review_rounds(settings: dict) -> int:
+    """Changes-required review rounds before a job or the task parks; old settings read as 3."""
+    return settings.get("max_review_rounds", DEFAULT_MAX_REVIEW_ROUNDS)
+
+
 def flatten_routing(routing: dict | None, prefix: str = "routing") -> dict:
     flat = {}
     for harness, block in (routing or {}).items():
@@ -749,6 +762,7 @@ def flatten_settings(s: dict) -> dict:
     flat["review.points"] = review.get("points")
     flat["review.provider"] = review.get("provider")
     flat["max_verify_failures"] = max_verify_failures(s)
+    flat["max_review_rounds"] = max_review_rounds(s)
     flat["task_difficulty"] = task_difficulty(s)
     flat["ask_signal"] = s.get("ask_signal")
     flat.update(flatten_routing(s.get("routing")))

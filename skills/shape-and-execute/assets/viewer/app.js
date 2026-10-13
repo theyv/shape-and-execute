@@ -59,6 +59,7 @@ var T=()=>own(TASKS,S.task)||null,
  revInfo=(t,id)=>{var j=JS(t)[id],rs=reviewsOf(t,id),l=rs.length&&JS(t)[rs[rs.length-1]];return j.kind==="review"?{v:j.verdict}:l?l.verdict?{v:l.verdict}:{x:"in review"}:(own(t.review_marks||{},id)||{}).reviewed?{x:"review due"}:{}}, // the effective mark (flag and review points), never the flag alone
  settingsOf=t=>{var s=t.settings;return s&&s.levels&&s.review&&Array.isArray(s.review.points)?s:null},
  vlimit=(t,s)=>s.max_verify_failures==null?t.settings_default_max_verify_failures:s.max_verify_failures,
+ rlimit=(t,s)=>s.max_review_rounds==null?t.settings_default_max_review_rounds||3:s.max_review_rounds, // an older server sends no default: 3, the default
  cdTo=it=>"cd "+shq(it&&it.checkout||IDX.root)+" && ",
  cmd=rest=>cdTo(IT(S.task))+IDX.sae+" "+rest,
  staleM=(t,id)=>{var j=JO(t,id),m=j&&j.status==="running"?mins(j.last_change):0;return m>=STALE?m:0},

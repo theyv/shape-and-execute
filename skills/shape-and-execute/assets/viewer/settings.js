@@ -16,7 +16,7 @@ var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draf
  // one row per setting: the `sae set` key → its path in settings.json and in `defaults`, and its key in the server's `sources`
  SXR={interaction:{p:["interaction"],f:"interaction"},research:{p:["levels","research"],f:"levels.research"},planning:{p:["levels","planning"],f:"levels.planning"},
   execution:{p:["levels","execution"],f:"levels.execution"},"review-level":{p:["levels","review"],f:"levels.review"},review:{p:["review","points"],f:"review.points"},
-  reviewer:{p:["review","provider"],f:"review.provider"},"max-verify-failures":{p:["max_verify_failures"],f:"max_verify_failures"},"task-difficulty":{p:["task_difficulty"],f:"task_difficulty"}},
+  reviewer:{p:["review","provider"],f:"review.provider"},"max-verify-failures":{p:["max_verify_failures"],f:"max_verify_failures"},"max-review-rounds":{p:["max_review_rounds"],f:"max_review_rounds"},"task-difficulty":{p:["task_difficulty"],f:"task_difficulty"}},
  SXLV=[["research","Research level"],["planning","Planning level"],["execution","Execution level"],["review-level","Review level"]],
  sxClone=o=>o==null?o:JSON.parse(JSON.stringify(o)),
  sxGet=(o,p)=>p.reduce((n,k)=>n&&typeof n==="object"?own(n,k):undefined,o),
@@ -26,7 +26,7 @@ var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draf
 
 /* ---------- texts behind every [?] ---------- */
 var SXMODE={
- "full-auto":"The agent decides everything, spec changes included; nothing waits for you. You review every agent decision in the final report before merging. Two stops still hold: a hold you set after a job, and a second changes-required round of a review.",
+ "full-auto":"The agent decides everything, spec changes included; nothing waits for you. You review every agent decision in the final report before merging. Two stops still hold: a hold you set after a job, and the last changes-required round of a review that Max review rounds allows.",
  auto:"The agent decides everything inside the spec, risky choices included, and lists each decision in the final report. A change to the spec is never decided: the affected jobs wait for you, and the rest of the work continues.",
  "critical-only":"The agent decides routine choices, clear choices and tradeoffs alone, and lists them in the final report. It asks only about lasting or risky choices (architecture, public API, data model, new dependencies) and about anything that touches the spec. Other work continues while a question waits.",
  collaborative:"The agent decides routine and clear choices alone. It asks you about real tradeoffs, lasting or risky choices and anything that touches the spec. Other work continues while a question waits.",
@@ -44,7 +44,8 @@ var SXMODE={
  integration:"<p><b>integration</b> — after every job has merged, one review of the whole change. Fixes get another round. The task cannot finish while it says changes-required.</p>",
  "jobs-mode":"<p><b>Which jobs get a review</b></p>"+sxT([["agent-selected jobs","only jobs the planner flags as risky. The plan card lists them before you approve. Stored as <code>selected-jobs</code>."],["all jobs","every implementation job, flagged or not. Slower and costlier; for risky or unfamiliar code. Stored as <code>all-jobs</code>."]]),
  provider:"<p><b>Review provider</b> — which harness reviews. The review model comes from that harness's review table.</p>"+sxT([["claude","Claude reviews."],["codex","Codex reviews."],["cross-harness","the other harness reviews: Codex when Claude orchestrates, Claude when Codex does. A second model family does not share the author's blind spots. When the other harness's CLI fails, the review runs in the orchestrator's harness."]]),
- verify:"<p><b>Verify limit</b> — how many failed check runs (the job's <code>verify</code> commands) a job may have before sae marks it failed and stops it. An integer from 1 to 10.</p>",
+ verify:"<p><b>Tests verify limit</b> — how many failed runs of the job's <code>verify</code> commands (its tests and checks) a job may have before sae marks it failed and stops it. It counts test runs, not review rounds: those are Max review rounds. An integer from 1 to 10.</p>",
+ rounds:"<p><b>Max review rounds</b> — how many review rounds may say changes-required before the work parks for you: the job, for a job review; the whole task, for the integration review. Each fix job before that gets another round. An integer from 1 to 10; 3 when a task has no value.</p>",
  ask:"<p><b>Ask signal</b> — whether <code>sae next</code> reminds the orchestrator to record each question it puts to you during execution, so the graph and the browser tab show that the task waits for you.</p>"+sxT([["mode default","on in full-auto, auto and critical-only; off in collaborative and interactive, where you expect questions. Follows a change of the interaction mode."],["on","always reminds."],["off","never reminds."]])+"<p>Parked jobs, a parked task and holds show in every mode; this setting changes only the reminder.</p>",
  difficulty:"<p><b>Task difficulty</b> — the column of the routing tables that the planner and the spec, plan and integration reviews use. Job reviews take their own job's difficulty (a mechanical job counts as normal).</p>"+sxT([["normal","most tasks."],["hard","a large or risky task: the planner and those reviews run on the hard column."]]),
  routing:"<p><b>Routing</b> — which model and effort run a job. One table per phase: rows are the levels set above, columns the difficulty the planner gives each job. Planning and reviews are never mechanical, so their mechanical cell is not used.</p><p>Changes apply from the next dispatch. Running jobs keep their model.</p>",
@@ -71,10 +72,10 @@ var sxData=()=>SX.cur&&SX.cur.key===S.repo+"|"+S.task?SX.cur:null,
 
 /* the value of a setting on one level; Project and Task fall back like `sae new` does */
 function sxVal(sc,k){var r=SXR[k],t=T(),c=sxSaved(),v;
-  if(sc==="task"){var s=t&&settingsOf(t);if(!s)return undefined;if(k==="max-verify-failures")return vlimit(t,s);if(k==="task-difficulty")return s.task_difficulty||"normal";return sxGet(s,r.p)}
+  if(sc==="task"){var s=t&&settingsOf(t);if(!s)return undefined;if(k==="max-verify-failures")return vlimit(t,s);if(k==="max-review-rounds")return rlimit(t,s);if(k==="task-difficulty")return s.task_difficulty||"normal";return sxGet(s,r.p)}
   if(sc==="project"&&(v=sxGet(sxProj().defaults,r.p))!==undefined)return v;
   v=sxGet((sc==="global"?sxConf():c||{}).defaults,r.p);
-  return v===undefined&&k==="max-verify-failures"&&t?t.settings_default_max_verify_failures:v}
+  return v===undefined&&t?k==="max-verify-failures"?t.settings_default_max_verify_failures:k==="max-review-rounds"?t.settings_default_max_review_rounds||3:v:v}
 // where a value comes from: "" on Global, else [source, reset key]
 function sxSrc(sc,k){if(sc==="global")return null;
   if(sc==="project")return sxGet(sxProj().defaults,SXR[k].p)!==undefined?"project":"global";
@@ -127,7 +128,7 @@ var SXASK=[["unset","mode default"],["on","on"],["off","off"]],
  sxAsk=t=>{var a=t&&t.status&&t.status.ask_signal,s=t&&settingsOf(t);if(a)return a;var v=s&&s.ask_signal;return{on:null,set:v==="on"||v==="off"?v:null,text:v==="on"||v==="off"?v:"mode default"}},
  sxAskNow=a=>a.on==null?"":a.set?"":"now "+(a.on?"on":"off")+" (interaction mode)";
 
-/* ---------- defaults: interaction, levels, review points, provider, verify limit, task difficulty, ask signal ---------- */
+/* ---------- defaults: interaction, levels, review points, provider, verify and review limits, task difficulty, ask signal ---------- */
 function sxDefaults(sc){var ro=sc==="task"&&sxRO(),v=k=>sxVal(sc,k),tg=k=>sxTag(sc,sxSrc(sc,k),k,"d"),pts=v("review")||[],jobs=pts.find(x=>/-jobs$/.test(x)),K=k=>sc+"|"+k,
   name=(PROJ||[]).find(x=>x.key===S.repo),
   head={task:["This task","anything not set here inherits Project; the header card edits the same values"],project:["Defaults for new tasks in "+(name?name.name:"this repository"),"anything not set here inherits Global"],global:["Defaults for new tasks","used where Project sets nothing"]}[sc];
@@ -138,7 +139,8 @@ function sxDefaults(sc){var ro=sc==="task"&&sxRO(),v=k=>sxVal(sc,k),tg=k=>sxTag(
    sxRow("Review points","points",'<div class="cbs">'+["spec","plan","jobs","integration"].map(p=>'<span class="cb"><label><input type="checkbox" data-act="sxp" data-k="'+K(p)+'"'+((p==="jobs"?jobs:pts.includes(p))?" checked":"")+(ro?" disabled":"")+">"+p+"</label>"+sxHelp(p)+"</span>").join("")+"</div>"+
     (jobs?'<div class="jsub"><span class="note">jobs:</span>'+sxSeg("sxv",K("jobs"),[["selected-jobs","agent-selected jobs"],["all-jobs","all jobs"]],jobs,ro,"Which jobs get a review")+sxHelp("jobs-mode")+"</div>":""),tg("review"))+
    sxRow("Review provider","provider",sxSeg("sxv",K("reviewer"),SXPROV,v("reviewer"),ro,"Review provider"),tg("reviewer"))+
-   (sc!=="project"?sxRow("Verify limit","verify",'<input type="number" min="1" max="10" step="1" data-act="sxn" data-k="'+K("max-verify-failures")+'" value="'+esc(v("max-verify-failures"))+'" aria-label="Failed check runs before a job fails"'+(ro?" disabled":"")+">",tg("max-verify-failures")):"")+
+   (sc!=="project"?sxRow("Tests verify limit","verify",'<input type="number" min="1" max="10" step="1" data-act="sxn" data-k="'+K("max-verify-failures")+'" value="'+esc(v("max-verify-failures"))+'" aria-label="Failed verify runs before a job fails"'+(ro?" disabled":"")+">",tg("max-verify-failures"))+
+    sxRow("Max review rounds","rounds",'<input type="number" min="1" max="10" step="1" data-act="sxn" data-k="'+K("max-review-rounds")+'" value="'+esc(v("max-review-rounds"))+'" aria-label="Changes-required review rounds before the work parks"'+(ro?" disabled":"")+">",tg("max-review-rounds")):"")+
    (sc==="task"?sxRow("Task difficulty","difficulty",sxSeg("sxv",K("task-difficulty"),[["normal","normal"],["hard","hard"]],v("task-difficulty"),ro,"Task difficulty"),tg("task-difficulty")):"")+
    (sc==="task"?sxAskRow(ro):"")+"</section>"}
 function sxAskRow(ro){var a=sxAsk(T()),now=sxAskNow(a);
@@ -213,7 +215,7 @@ function sxBad(){var c=sxConf(),n=0;sxHarn().forEach(h=>{var R=sxRoute("global",
 function sxDraftBar(){var n=sxBad();return'<div class="draft"><span>Unsaved changes to the global config.'+(n?' <b class="err">'+plural(n,"marked value")+" to fix first.</b>":"")+'</span><button class="btn sm" data-act="sxg" data-k="discard">Discard</button><button class="btn sm pri" data-act="sxg" data-k="save"'+(n?" disabled":"")+">Save</button></div>"}
 
 /* ---------- the settings card in the task header, editable in place ---------- */
-var setPairs=(t,s)=>[["interaction",s.interaction],["research",s.levels.research],["planning",s.levels.planning],["execution",s.levels.execution],["review",s.review.points.length?s.review.points.join(", ")+" · "+s.levels.review+" · "+s.review.provider:"off"],["verify limit",vlimit(t,s)],["ask signal",sxAsk(t).text]];
+var setPairs=(t,s)=>[["interaction",s.interaction],["research",s.levels.research],["planning",s.levels.planning],["execution",s.levels.execution],["review",s.review.points.length?s.review.points.join(", ")+" · "+s.levels.review+" · "+s.review.provider:"off"],["verify limit",vlimit(t,s)],["review limit",rlimit(t,s)],["ask signal",sxAsk(t).text]];
 function headerCard(t){var s=settingsOf(t);if(!s)return'<div class="card" aria-label="Settings"><span>settings.json is missing or invalid</span></div>';
   if(sxRO())return'<div class="card" aria-label="Settings">'+setPairs(t,s).map(p=>"<div><span>"+p[0]+"</span> <b>"+esc(p[1])+"</b></div>").join("")+"</div>";
   var sel=(k,opts,v)=>'<select data-act="hc" data-k="'+k+'" aria-label="'+k+'">'+opts.map(o=>sxOpt(o[0],v,o[1])).join("")+"</select>",pts=s.review.points,jobs=pts.find(x=>/-jobs$/.test(x)),lv=LEVELS.map(l=>[l,l]);
@@ -221,7 +223,7 @@ function headerCard(t){var s=settingsOf(t);if(!s)return'<div class="card" aria-l
    [["research","research"],["planning","planning"],["execution","execution"],["review-level","review"]].map(x=>"<div><span>"+x[1]+"</span>"+sel(x[0],lv,sxGet(s,SXR[x[0]].p))+"</div>").join("")+
    "<div><span>reviews</span>"+["spec","plan","jobs","integration"].map(p=>'<label><input type="checkbox" data-act="hcp" data-k="'+p+'"'+((p==="jobs"?jobs:pts.includes(p))?" checked":"")+">"+p+"</label>").join("")+
     (jobs?sel("jobs",[["selected-jobs","agent-selected"],["all-jobs","all jobs"]],jobs):"")+"</div>"+
-   "<div><span>reviewer</span>"+sel("reviewer",SXPROV,s.review.provider)+"</div><div><span>verify limit</span> <b>"+esc(vlimit(t,s))+"</b></div>"+
+   "<div><span>reviewer</span>"+sel("reviewer",SXPROV,s.review.provider)+"</div><div><span>verify limit</span> <b>"+esc(vlimit(t,s))+"</b></div><div><span>review limit</span> <b>"+esc(rlimit(t,s))+"</b></div>"+
    (a=>"<div><span>ask signal</span>"+sel("ask-signal",SXASK.map(o=>[o[0],o[0]==="unset"&&a.on!=null?"mode default ("+(a.on?"on":"off")+")":o[1]]),a.set||"unset")+"</div>")(sxAsk(t))+'<span class="smsg'+(SX.err?" err":"")+'" role="status" aria-live="polite">'+esc(SX.msg)+"</span></div>"}
 // review points after one checkbox: `jobs` stands for selected-jobs or all-jobs
 function sxToggle(pts,p,on){var o=(pts||[]).filter(x=>x!==p&&!(p==="jobs"&&/-jobs$/.test(x)));if(on)o.push(p==="jobs"?"selected-jobs":p);return sxPts(o)}
@@ -259,7 +261,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dat
 D.addEventListener("change",ev=>{var e=ev.target,a=e.dataset&&e.dataset.act;if(!a||!/^(sx|hc)/.test(a))return;var k=e.dataset.k||"",P=k.split("|"),sc=P[0],t=T(),s=t&&settingsOf(t);
   if(a==="sxs"){if(e.value)sxRouteSet(sc,P[1],e.value)}
   else if(a==="sxp")sxSet(sc,"review",sxToggle(sxVal(sc,"review"),P[1],e.checked));
-  else if(a==="sxn"){var n=+e.value;if(e.value===""||n!==Math.round(n)||n<1||n>10)return sxSay("The verify limit is an integer from 1 to 10.",true);sxSet(sc,"max-verify-failures",n)}
+  else if(a==="sxn"){var n=+e.value;if(e.value===""||n!==Math.round(n)||n<1||n>10)return sxSay((P[1]==="max-review-rounds"?"Max review rounds":"The tests verify limit")+" is an integer from 1 to 10.",true);sxSet(sc,P[1],n)}
   else if(a==="sxmon")sxEdit(c=>{c.models[P[1]][+P[2]].enabled=e.checked});
   else if(a==="hc"&&s){if(k==="jobs")sxSet("task","review",sxJobs(s.review.points,e.value));else sxSet("task",k,e.value)}
   else if(a==="hcp"&&s)sxSet("task","review",sxToggle(s.review.points,k,e.checked))});

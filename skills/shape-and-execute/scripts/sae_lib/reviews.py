@@ -22,7 +22,7 @@ from .common import (
     read_text,
     write_atomic,
 )
-from .config import cfg, load_config, max_verify_failures
+from .config import cfg, load_config, max_review_rounds, max_verify_failures
 from .findings import close_resolved, resolution_notes
 from .gitutil import find_root, git, run
 from .graph import (
@@ -693,12 +693,18 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         return merge_job(task, target, config, out)
     subject["review_rounds"] += 1
     task.touch(subject)
-    if subject["review_rounds"] >= 2:
+    limit = max_review_rounds(task.settings)
+    if subject["review_rounds"] >= limit:
         subject["status"] = "parked"
-        subject["summary"] = f"{review_id}: changes required after two review rounds — human decision"
-        out.append("\n".join([f"{target} parked: the second review round still requires changes. Ask the user. "
-                               "Accept with:",
+        subject["summary"] = (f"{review_id}: changes required after {subject['review_rounds']} review rounds "
+                              f"(max-review-rounds {limit}) — human decision")
+        out.append("\n".join([f"{target} parked: {subject['review_rounds']} review rounds required changes "
+                               f"(max-review-rounds is {limit}). Ask the user. Accept with:",
                                f"  sae merge {task.id} {target} --accept-review \"<why>\"",
+                               "Or add another fix job (the next round follows it):",
+                               f"  sae job add {task.id} {target}-FIX-<n> --kind implementation --fix-of {target} "
+                               f"--reason \"<why>\"",
+                               *raise_limit_hint(task, limit),
                                "Or adapt the graph."]))
     else:
         out.append("\n".join([f"{target}: changes required. Add fix jobs:",
@@ -709,6 +715,14 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
     return EXIT_OK
 
 
+def raise_limit_hint(task: Task, limit: int) -> list[str]:
+    """How the owner allows more changes-required rounds before the next park ([REVIEW-ROUNDS-LIMIT])."""
+    if limit >= 10:
+        return []
+    return ["More rounds before the next park, on the user's word:",
+            f"  sae set {task.id} max-review-rounds={limit + 1}"]
+
+
 def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
     verdict = task.jobs[review_id].get("verdict")
     if verdict in POSITIVE_VERDICTS:
@@ -716,10 +730,12 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
         return EXIT_OK
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
-        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round. "
-                               "Ask the owner:",
+        limit = max_review_rounds(task.settings)
+        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round "
+                               f"(max-review-rounds is {limit}). Ask the owner:",
                                "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
-                               "  - or close anyway:", f"    {forward}"]))
+                               "  - or close anyway:", f"    {forward}",
+                               *raise_limit_hint(task, limit)]))
     else:
         out.append("\n".join([f"{review_id}: changes required. Add fix jobs (sae adds the next round when "
                                "they are merged):", f"  {fix_job_command(task, review_id)}",
