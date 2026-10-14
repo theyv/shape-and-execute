@@ -14,7 +14,8 @@ shared files and shared assumptions. Months later nobody can tell what was inten
 decided, by whom, with which model, and why. And most workflows have one weight for every
 task: small tasks drown in ceremony, big tasks get too little structure.
 
-The owner named six problems (2026-10-07). Each one must stay solved:
+The owner named seven problems (1–6 on 2026-10-07, 7 on 2026-10-14). Each one must stay
+solved:
 
 1. **Scale.** Some tasks do not fit one context; after several compactions the context becomes
    imprecise. The skill keeps state in files and splits the work so that each unit fits a fresh
@@ -35,6 +36,9 @@ The owner named six problems (2026-10-07). Each one must stay solved:
    implementation, when a change of course is expensive. The skill moves that moment to the
    spec: grilling and the spec review surface the decisions before any code exists. Evals can
    hardly measure this one ("not feasible"); the design solves it.
+7. **Side fixes.** An agent that meets an error outside its task tries to fix it and poisons its
+   own context with work that is not its job. The skill records the error as a finding instead,
+   and the agent stays on its task.
 
 ## What it must do
 
