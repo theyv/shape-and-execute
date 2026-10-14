@@ -195,12 +195,12 @@ class ResolutionTests(RoutingTestCase):
     def test_config_tables_have_no_mechanical_planning_or_review_column(self):
         sb = self.sandbox()
         bad = config_for(sb.worktrees)
-        bad["routing"]["codex"]["tables"]["review"]["max"]["mechanical"] = {"tier": "L1"}
+        bad["routing"]["codex"]["tables"]["review"]["premium"]["mechanical"] = {"tier": "L1"}
         out = sb.sae("setup", "save", stdin=json.dumps(bad), code=1).stderr
-        self.assertIn("routing.codex.tables.review.max.mechanical: the review table has only normal, hard",
+        self.assertIn("routing.codex.tables.review.premium.mechanical: the review table has only normal, hard",
                       " ".join(out.split()))
         sb.new_task("t", "t")
-        out = sb.sae("set", "t", "routing.claude.planning.max.mechanical=L1", code=1).stderr
+        out = sb.sae("set", "t", "routing.claude.planning.premium.mechanical=L1", code=1).stderr
         self.assertIn("the planning table has only normal, hard", " ".join(out.split()))
 
 
@@ -271,7 +271,7 @@ class SchemaOneTests(RoutingTestCase):
         self.assertIn("ultra", proposal["models"]["codex"][1]["efforts"])
         self.assertEqual(codex["tables"]["execution"]["balanced"]["hard"], {"tier": "L3"})
         self.assertEqual(codex["tables"]["planning"]["economy"], {"normal": {"tier": "L1"}, "hard": {"tier": "L2"}})
-        self.assertEqual(codex["tables"]["review"]["max"], {"normal": {"tier": "L3"}, "hard": {"tier": "L3"}})
+        self.assertEqual(codex["tables"]["review"]["premium"], {"normal": {"tier": "L3"}, "hard": {"tier": "L3"}})
         text = sb.sae("setup", "show").stdout
         self.assertIn("schema 1", text)
         self.assertIn("claude · review", text)
@@ -399,7 +399,7 @@ class ProjectDefaultsTests(RoutingTestCase):
         task = sb.new_task("Light", "light")
         settings = json.loads((sb.task_dir(task) / "settings.json").read_text())
         self.assertEqual(settings["levels"]["execution"], "economy")
-        self.assertEqual(settings["levels"]["planning"], "max")
+        self.assertEqual(settings["levels"]["planning"], "premium")
         self.assertEqual(settings["review"], {"points": ["spec", "integration"], "provider": "cross-harness"})
         # nothing personal in the repository: only the task folder is new
         self.assertEqual(sb.git("status", "--porcelain"), "?? .tasks/")

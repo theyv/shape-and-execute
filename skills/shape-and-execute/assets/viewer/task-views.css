@@ -1,5 +1,5 @@
 /* sae viewer: the Plan graph and the other task tabs */
-.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;background:var(--s1)}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border:1px solid var(--line);border-radius:6px;background:var(--s1)}
 .kpi{padding:12px 16px;border-left:1px solid var(--line);min-width:0}.kpi:first-child{border-left:0}
 .kpi div{color:var(--ink2);font-size:12px}.kpi b{display:block;font-size:20px;font-weight:600;line-height:1.3;margin-top:2px}.kpi b span{font-size:14px;font-weight:500;color:var(--ink3)}
 .ev{display:grid;grid-template-columns:96px 136px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:7px 12px;border-top:1px solid var(--line)}
@@ -21,17 +21,48 @@
 /* graph canvas ([AMEND-4]): gvMount sets the dot grid's size and position from pan and zoom; dots in --line, quieter than the edges (--line2) */
 .gwrap{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:6px;cursor:grab;touch-action:none;user-select:none;
   background:var(--bg) radial-gradient(circle,var(--line) 1px,transparent 1.3px) 0 0/16px 16px}
+/* [WAIT-FRAMES]: while the task waits for the owner, a thin muted yellow frame around the graph area pulses softly
+   (--g-wpulse, --g-wpulse-min), and a one-line banner above it says why; no fill over the graph */
+.gwrap.owner{border-color:var(--frame-ask)}
+.gwrap.owner::after{content:"";position:absolute;inset:0;border:1px solid var(--frame-ask);border-radius:5px;pointer-events:none;animation:wpulse var(--g-wpulse) ease-in-out infinite}
+@keyframes wpulse{50%{opacity:var(--g-wpulse-min)}}
+.wbar{display:flex;gap:8px;align-items:baseline;min-width:0;margin-bottom:6px;padding:4px 10px;border:1px solid var(--frame-ask);border-radius:6px;font-size:12px;color:var(--ink2);white-space:nowrap;cursor:help}
+.wbar b{color:var(--park);font-weight:600}.wbar span{min-width:0;overflow:hidden;text-overflow:ellipsis}.wbar i{font-style:normal;color:var(--ink3)}
+/* [WAIT-HOLD-FRAME]: an active hold turns the same thin frame, its pulse and the banner red; the banner wraps and carries "Release hold" */
+.gwrap.owner.hold{border-color:var(--frame-wait)}.gwrap.owner.hold::after{border-color:var(--frame-wait)}
+.wbar.hold{align-items:center;border-color:var(--frame-wait);white-space:normal;cursor:default}.wbar.hold b{color:var(--fail)}
+.wbar.hold .wt{flex:1;min-width:0;cursor:help}.wbar.hold .wt>*{margin-right:8px}.wbar.hold span{overflow:visible}.wbar.hold .also{color:var(--ink3)}
+@media (prefers-reduced-motion:reduce){.gwrap.owner::after{animation:none}}
 .gwrap.drag{cursor:grabbing}.gz{position:absolute;right:8px;bottom:8px;display:flex;gap:4px}.gz .btn{background:var(--s1)}.gz .btn.ic{width:24px}.gwrap svg{display:block}
-/* graph nodes: border = job kind ([VIEWER-PLAN-FIRST]); status keeps its text pill */
-.nd{cursor:pointer}.nd:focus{outline:none}.nd.planned{cursor:default}
-.nb{fill:var(--s2);stroke:var(--kc,var(--line2));stroke-width:1.5}.nd:hover .nb{fill:var(--s3)}
-.ring{fill:none;stroke:none}.nd.sel .ring{stroke:var(--acc);stroke-width:1.5}.nd:focus-visible .ring{stroke:var(--acc);stroke-width:2}
-.nd.k-running .nb{stroke-dasharray:6 4;animation:march .9s linear infinite}
+/* graph cards ([DECISION-STACK-CARDS]): border = job kind ([VIEWER-PLAN-FIRST]); status keeps its text pill and glyph.
+   Timings and strengths, for polishing in a live viewer: */
+:root{--g-wpulse:3.2s;--g-wpulse-min:.1;--g-t:.12s;--g-fade:.5;--g-dim:.22;--g-dim-e:.1;--g-hi-w:2.25;--g-pulse:1.6s;--g-ny-e:.45}
+.nd{cursor:pointer;transition:opacity var(--g-t)}.nd:focus{outline:none}.nd[role=group]{cursor:default}
+.nb{fill:var(--s2);stroke:var(--kc,var(--line2));stroke-width:1.5}.nd[role=button]:hover>.nb{fill:var(--s3)}
+.ring,.wf{fill:none;stroke:none}.nd.sel>.ring{stroke:var(--acc);stroke-width:1.5}.nd:focus-visible>.ring{stroke:var(--acc);stroke-width:2}
+/* [WAIT-FRAMES]: a thin muted red frame around a card with a parked job or row */
+.nd.wait>.wf{stroke:var(--frame-wait);stroke-width:1.25}
+.nd.k-running>.nb,.nd.k-fixing>.nb{stroke-dasharray:6 4;animation:march .9s linear infinite}
 @keyframes march{to{stroke-dashoffset:-20}}
-@media (prefers-reduced-motion:reduce){.nd.k-running .nb{animation:none}}
-.nd.planned{opacity:.6}.nd.planned .nb{fill:var(--bg);stroke-dasharray:2 3}.k-planned{--c:var(--ink3);--b:none;--l:var(--line2)}
-.nd.ghost{opacity:.6}.nd.ghost .nb{fill:none;stroke-dasharray:4 3}.nd.ghost .nid{text-decoration:line-through}
-.nd text{font-size:12px;fill:var(--ink3)}.nd .nid{font:600 12px var(--mono);fill:var(--ink)}.nd .nk{fill:var(--ink2)}.nd .nm{font-family:var(--mono)}
+.nd.phase>.nb{fill:var(--bg)}.nd.planned>.nb,.nd.holder>.nb,.nd.k-waiting>.nb{fill:var(--bg);stroke-dasharray:2 3}
+/* [GRAPH-NOT-YET]: cards that cannot start yet, planned rows and the edges into them are faded */
+.nd.nyet{opacity:var(--g-fade)}.nd.nyet .rw.planned{opacity:1}.e.ny{opacity:var(--g-ny-e)}
+/* [GRAPH-ADDED-FILL]: jobs the orchestrator added after plan approval; the pattern sits in the graph's <defs> */
+.nd.added>.nb{fill:url(#g-added)}#g-added .hb{fill:var(--s2)}#g-added .hs{stroke:var(--added-hatch);stroke-width:3}
+.nd.ghost{opacity:.6}.nd.ghost>.nb{fill:none;stroke-dasharray:4 3}.nd.ghost .nid{text-decoration:line-through}
+.nd text{font-size:12px;fill:var(--ink3)}.nd .nid{font:600 12px var(--mono);fill:var(--ink)}.nd .nk{fill:var(--ink2)}.nd .nm,.nd .tk{font-family:var(--mono)}.nd .nm{font-size:11px}.nd .sp.v text{font-size:11px}.nd .tk{font-size:11.5px}.nd .sep{stroke:var(--line)}
+/* rows: a review round or a fix job below the separator; the glyph's tone says its state, the label and tooltip say it in words */
+.rw{cursor:pointer}.rw:focus{outline:none}.rw.planned{cursor:default;opacity:var(--g-fade)}
+.rw .hitr{fill:transparent}.rw[role=button]:hover .hitr{fill:var(--hl)}.rw.sel .hitr{fill:var(--s3)}.rw:focus-visible .hitr{stroke:var(--acc);stroke-width:1.5}
+.nd .rw .rl{font-family:var(--mono);fill:var(--ink2)}.nd .rw .rg{fill:var(--c,var(--ink3));font-size:13px}
+.t-planned{--c:var(--ink2)}.t-pending{--c:var(--pend)}.t-ready{--c:var(--ready)}.t-running{--c:var(--run)}.t-done{--c:var(--done)}.t-parked,.t-park{--c:var(--park)}.t-failed,.t-fail{--c:var(--fail)}.t-pass{--c:var(--pass)}.t-mut{--c:var(--ink3)}
+.rw .rg.pulse{animation:rpulse var(--g-pulse) ease-in-out infinite}@keyframes rpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.nd.k-running>.nb,.nd.k-fixing>.nb,.rw .rg.pulse{animation:none}}
+/* the graph's own status words */
+.k-approved{--c:var(--pass);--b:var(--pass-b)}.k-fixing{--c:var(--run);--b:var(--run-b)}.k-waiting,.k-stopped{--c:var(--pend);--b:var(--pend-b)}.k-blocked,.k-accepted{--c:var(--park);--b:var(--park-b)}.k-planned{--c:var(--ink3);--b:none;--l:var(--line2)}
+/* [GRAPH-EDGE-HOVER]: gvHi marks the hovered or focused card's edges and neighbours .on */
+.e{fill:none;stroke:var(--line2);stroke-width:1.25;transition:opacity var(--g-t),stroke var(--g-t)}.e.new{stroke:var(--ink2);stroke-width:2}.e.old{stroke:var(--ink3);stroke-dasharray:4 4}.e.tgt{stroke-dasharray:2 3}.e.pl{stroke-dasharray:3 3;opacity:.7}.e.fb{stroke-dasharray:6 3}
+.gv.hov .e{opacity:var(--g-dim-e)}.gv.hov .e.on{opacity:1;stroke:var(--edge-hi);stroke-width:var(--g-hi-w)}.gv.hov .nd{opacity:var(--g-dim)}.gv.hov .nd.on{opacity:1}
 /* model · effort: the routing colors, slightly muted on nodes */
 .nd .tm{fill:color-mix(in srgb,var(--mc) 78%,var(--ink3))}.nd .te{fill:color-mix(in srgb,var(--ec) 78%,var(--ink3))}.nd .te.u{text-decoration:underline}.nd .to{fill:var(--run)}
 .ml .hit{fill:transparent}.ml.ed{cursor:pointer}.ml.ed:hover .hit{fill:var(--hl);stroke:var(--line2)}.ml:focus{outline:none}.ml:focus-visible .hit{stroke:var(--acc);stroke-width:1.5}
@@ -40,19 +71,25 @@
 .mk{cursor:help}.mk:focus{outline:none}.mk:focus-visible rect{stroke:var(--acc);stroke-width:1.5}
 .mk text{font-size:12px}.mk.on text{fill:var(--ink)}.mk.forced text{fill:var(--park)}.mk.off text{fill:var(--ink3);text-decoration:line-through}.mk.hold text{fill:var(--fail)}
 .mk rect{fill:var(--s3);stroke:var(--line2)}.mk.forced rect{fill:var(--park-b);stroke:none}.mk.off rect{fill:none;stroke:var(--line2);stroke-dasharray:3 2}.mk.hold rect{fill:none;stroke:var(--fail);stroke-dasharray:3 2}.mk.hold.on rect{fill:var(--fail-b);stroke-dasharray:none}
-.nbar{fill:var(--ink2)}.lgb{border-left:2px solid var(--ink2);padding-left:6px}.e{fill:none;stroke:var(--line2);stroke-width:1.25}.e.new{stroke:var(--ink2);stroke-width:2}.e.old{stroke:var(--ink3);stroke-dasharray:4 4}.e.tgt{stroke-dasharray:2 3}.e.pl{stroke-dasharray:3 3;opacity:.7}
-.legend.kinds{margin-top:8px}.ks{display:inline-block;width:14px;height:10px;border-radius:3px;border:1.5px solid var(--kc);margin-right:5px;vertical-align:-1px}.ks.run{border-style:dashed;border-color:var(--ink2)}.ks.pl{border-style:dotted;border-color:var(--ink3)}
-.hbar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:12px;padding:8px 12px;border:1px solid var(--fail);border-radius:6px;background:var(--fail-b)}.hbar b{font-weight:600}
+.nbar{fill:var(--ink2)}.lgb{border-left:2px solid var(--ink2);padding-left:6px}
+.legend.kinds{margin-top:8px}.legend.kinds>span{white-space:nowrap}.ks{display:inline-block;width:14px;height:10px;border-radius:3px;border:1.5px solid var(--kc);margin-right:5px;vertical-align:-1px}.ks.run{border-style:dashed;border-color:var(--ink2)}.ks.pl{border-style:dotted;border-color:var(--ink3)}.ks.ny{opacity:.5;border-style:dotted;border-color:var(--ink3)}.ks.hatch{border-color:var(--line2);background:repeating-linear-gradient(45deg,var(--added-hatch) 0 2px,var(--s2) 2px 5px)}
 .note{margin:0 0 12px;color:var(--ink2)}.note.err{color:var(--fail)}
 .tip .w{font-size:12px}
 /* the override dropdown of a node's model label ([JOB-MODEL-OVERRIDE]) */
 .ovm{position:fixed;z-index:35;display:flex;flex-direction:column;gap:8px;width:min(320px,calc(100% - 16px));padding:10px 12px;background:var(--s2);border:1px solid var(--line2);border-radius:6px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .ovm .oh{display:flex;justify-content:space-between;align-items:center;gap:8px}.ovm label{display:flex;flex-direction:column;gap:4px}.ovm select{width:100%;height:28px;padding:0 6px;border:1px solid var(--line2);border-radius:6px;background:var(--s1)}
 .ovm .btn.ic.sm{width:24px}.ovm .om:empty{display:none}.ovm .err{color:var(--fail)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
-.chip{display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 4px 0 8px;border:1px solid var(--line);border-radius:6px;background:var(--s1)}.chip.planned{border-style:dotted;opacity:.75;padding-right:8px}
 @media (max-width:860px){
-.kpi{padding:8px 10px}.kpi b{font-size:16px}.kpi b span{font-size:12px}
+.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi:nth-child(4){border-left:0}.kpi:nth-child(n+4){border-top:1px solid var(--line)}.kpi{padding:8px 10px}.kpi b{font-size:16px}.kpi b span{font-size:12px}
 .ev{grid-template-columns:auto auto minmax(0,1fr);gap:2px 12px}.ev>:nth-child(3){grid-column:1/4;grid-row:2;white-space:normal}.ev>:nth-child(4){grid-column:3;grid-row:1;justify-self:end}
 .gt{grid-template-columns:112px minmax(0,1fr)}}
-.pmap{margin:0 0 12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 12px;line-height:1.5;white-space:pre;overflow-x:auto}
+/* [HEADER-SLIM], [HEADER-TOP-BAR]: the step bar and the key stats, on the Plan tab below the graph; the current step carries ◐ as well as its color */
+.slim{display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin:10px 0 4px}
+.stepbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0;padding:0;list-style:none;font-size:12px}
+.stepbar .sb{padding:2px 8px;border:1px solid var(--line);border-radius:4px;color:var(--ink3);white-space:nowrap}
+.stepbar .sb.done{color:var(--ink2)}.stepbar .sb.cur{color:var(--ink);font-weight:600;border-color:var(--run);background:var(--run-b)}
+.stepbar .sb.stop{border-style:dashed}.stepbar .sa{color:var(--ink3)}
+.hstats{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2)}.hstats b{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.la{color:var(--pass)}.lr{color:var(--fail)}.kpi b .la,.kpi b .lr{font-size:inherit;font-weight:inherit}.kpi b .la{color:var(--pass)}.kpi b .lr{color:var(--fail)}
+.pnote{margin:6px 0 0;font-size:12px;color:var(--ink3)}
+.meta.where{margin:0 0 12px}

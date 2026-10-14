@@ -32,6 +32,7 @@ from .common import (
     warn,
     write_atomic,
 )
+from .asks import asks_closed_text, close_answered_asks
 from .gitutil import find_root, git, git_ok, main_worktree, worktree_paths
 from .markdown import first_heading, split_frontmatter
 from .tasks import (
@@ -93,7 +94,9 @@ def cmd_log(args) -> int:
             task.event("amendment", id=args.amend_id, by=args.by, summary=args.summary)
         else:
             task.event("note", text=args.summary, **({"job": args.job} if args.job else {}))
-        emit(args, f"Logged {args.type}.", {"type": args.type})
+        closed = close_answered_asks(task, args.job) if args.by == "human" else []  # [ASK-COMMAND]
+        emit(args, f"Logged {args.type}." + (f" {asks_closed_text(closed)}" if closed else ""),
+             {"type": args.type, "closed_asks": closed})
     return EXIT_OK
 
 
@@ -392,7 +395,9 @@ def register_log(sub, command):
     """Add the `log` command to the parser."""
     p = command(sub, "log", "Record a decision, an amendment or a note.",
                 "Write an amendment into specs.md under ## Amendments first, then log it with its --id.\n"
-                "--by: human | agent | joint (default agent; agent entries appear in the final report).",
+                "--by: human | agent | joint (default agent; agent entries appear in the final report).\n"
+                "A --by human log closes the open asks of its --job (sae ask), or without --job the open asks\n"
+                "without a job.",
                 ['log claims-status decision "Cache status for 60 s" --by agent --class open-tradeoff --job STATUS-API',
                  'log claims-status amendment "Drop CSV export" --id AMEND-1 --by human'], [0, 1], cmd_log)
     p.add_argument("task")

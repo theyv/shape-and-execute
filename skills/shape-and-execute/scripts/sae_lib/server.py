@@ -6,9 +6,11 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
   /<file>.css|.js        the viewer files
   /api/health            pid, port, version (used by `sae view` to reuse a server)
   /api/projects          the known repositories
-  /api/repo?repo=K       tasks with location, findings, backlog, decision drafts
-  /api/task?repo=K&task=ID         one task: files, events, process map, routing, effective
-                                   difficulty, review marks, waits, next
+  /api/repo?repo=K       tasks with location, findings (open; closed with the task that closed them),
+                         backlog, decision drafts
+  /api/task?repo=K&task=ID         one task: files, events, the process-map steps, routing,
+                                   effective difficulty, review marks, waits, next, finish readiness,
+                                   per-phase stats, changed lines
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config,
                                    Codex catalog, known Claude families
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
@@ -36,6 +38,7 @@ import urllib.parse
 from pathlib import Path
 
 from .common import (
+    DEFAULT_MAX_REVIEW_ROUNDS,
     DEFAULT_MAX_VERIFY_FAILURES,
     JOB_ID_RE,
     SKILL_DIR,
@@ -47,6 +50,7 @@ from .common import (
     sae_prefix,
     stamp_time,
 )
+from .config import upgrade_level_names
 from .viewer import (
     VIEWER_ASSETS,
     code_version,
@@ -58,7 +62,9 @@ from .viewer import (
     write_private,
 )
 
-STATIC_FILES = ("app.css", "app.js", "task-views.css", "task-views.js", "settings.css", "settings.js")
+STATIC_FILES = ("app.css", "app.js", "task-views.css", "task-views.js", "settings.css", "settings.js",
+                "favicon.svg", "favicon-wait.svg")
+STATIC_TYPES = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
 TOKEN_META = '<meta name="sae-token" content="">'
 MAX_BODY = 2 * 1024 * 1024
 WRITE_TIMEOUT_S = 120
@@ -123,6 +129,28 @@ def hold_count(info: dict) -> int:
     return 0
 
 
+CLOSED_BY_RE = re.compile(r"^fixed in (\S+?)(?: by (\S+))?$")
+
+
+def closed_findings_list(text: str) -> list[dict]:
+    """The lines of `closed.md` (`- <date> · <stem> · <title> · <outcome>`), newest last, with the
+    task (and job) that closed each one when its outcome says `fixed in <task-id> [by <JOB-ID>]`
+    ([SCOPE-TOGGLE]: the Findings tab shows the findings a task closed)."""
+    out = []
+    for line in text.splitlines():
+        if not line.lstrip().startswith(("-", "*")):
+            continue
+        parts = [p.strip() for p in line.lstrip("-* ").split(" · ")]
+        if len(parts) < 4:
+            out.append({"date": "", "stem": "", "title": " · ".join(parts), "outcome": "", "task": None, "job": None})
+            continue
+        outcome = parts[-1]
+        m = CLOSED_BY_RE.match(outcome)
+        out.append({"date": parts[0], "stem": parts[1], "title": " · ".join(parts[2:-1]), "outcome": outcome,
+                    "task": m.group(1) if m else None, "job": m.group(2) if m else None})
+    return out
+
+
 def repo_data(key: str) -> dict:
     from .markdown import first_heading, split_frontmatter
     from .tasks import locate_tasks, picked_up_items, tasks_dir
@@ -171,9 +199,10 @@ def repo_data(key: str) -> dict:
                        or path.stem, "type": meta.get("type"), "status": meta.get("status"),
                        "source": meta.get("source"), "date": str(meta.get("date") or path.name[:10]), "text": body})
     open_drafts = sum(1 for d in drafts if d["status"] in (None, "proposed"))
+    closed_md = closed_text(root)
     return {"repo": root.name, "root": str(root), "key": key, "sae": sae_prefix(), "tasks": tasks,
             "findings": findings, "backlog": backlog, "drafts": drafts, "open_drafts": open_drafts,
-            "closed_findings": closed_text(root)}
+            "closed_findings": closed_md, "closed_list": closed_findings_list(closed_md)}
 
 
 def load_config_quietly() -> tuple[dict | None, str | None]:
@@ -222,15 +251,13 @@ def prototype_url(key: str, task_id: str, inner: str) -> str:
 def computed(task, config: dict | None) -> dict:
     """What the views need, from the same functions as the CLI (`sae next`)."""
     from .progress import next_data, task_status_data
-    from .reviews import planned_reviews, review_mark
-    from .control import process_map
-    from .routing import job_context, resolve_model
+    from .reviews import finish_readiness, next_review_rounds, planned_reviews, review_mark
+    from .control import map_steps
+    from .routing import PLANNER_ID, job_context, planned_planner, resolve_model
     from .graph import active_holds, waits_for
+    from .asks import owner_wait
     out: dict = {"routing": {}, "review_marks": {}, "planned_reviews": [], "next": None, "status": None,
-                 "waits": {}, "holds_active": [], "map": [], "difficulty": {}}
-    # the process map of `sae status`, in every phase ([VIEWER-PROCESS-MAP])
-    with contextlib.suppress(Exception):
-        out["map"] = process_map(task)["lines"]
+                 "waits": {}, "holds_active": [], "difficulty": {}}
     # readiness for the graph and job panels: the rules of `sae next`, never a copy in app.js
     with contextlib.suppress(Exception):
         out["waits"] = {i: waits_for(task, i) for i, j in task.jobs.items() if j["status"] == "pending"}
@@ -243,18 +270,37 @@ def computed(task, config: dict | None) -> dict:
             out["difficulty"][job_id] = job_context(task, job_id)["difficulty"]
     with contextlib.suppress(Exception):
         out["status"] = task_status_data(task)
+    # the steps of the Shape and Plan cards and the Finish card's readiness ([GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH])
+    out["steps"], out["finish"] = [], None
+    with contextlib.suppress(Exception):
+        out["steps"] = map_steps(task)
+    with contextlib.suppress(Exception):
+        out["finish"] = finish_readiness(task)
+    # open asks and what waits for the owner ([WAIT-FRAMES], [WAIT-TAB-TITLE]); `waiting` is empty outside executing
+    out["asks"], out["waiting"] = [], []
+    with contextlib.suppress(Exception):
+        out.update(owner_wait(task))
     if config is None:
         return out
     try:
-        out["planned_reviews"] = planned_reviews(task, config)
+        # the reviews sae will add, then the next round of a changes-required round while its fixes are open
+        out["planned_reviews"] = planned_reviews(task, config) + next_review_rounds(task, config)
     except Exception as exc:
         out["planned_reviews_error"] = str(exc)
-    for planned in out["planned_reviews"]:
+    # the planner job PLAN before it exists: its routing, and `sae job override <task> PLAN` sets its model
+    out["planned_planner"] = None
+    with contextlib.suppress(Exception):
+        out["planned_planner"] = PLANNER_ID if planned_planner(task) else None
+    # a next round routes as the round before it (`like`); its own ID resolves to nothing yet
+    like = {p["id"]: p.get("like") or p["id"] for p in out["planned_reviews"]}
+    if out["planned_planner"]:
+        like[PLANNER_ID] = PLANNER_ID
+    for job_id, as_id in like.items():
         with contextlib.suppress(Exception):
-            out["difficulty"][planned["id"]] = job_context(task, planned["id"])["difficulty"]
-    for job_id in list(task.jobs) + [p["id"] for p in out["planned_reviews"]]:
+            out["difficulty"][job_id] = job_context(task, as_id)["difficulty"]
+    for job_id, as_id in [(i, i) for i in task.jobs] + list(like.items()):
         try:
-            out["routing"][job_id] = resolve_model(task, job_id, config, exact=False)
+            out["routing"][job_id] = resolve_model(task, as_id, config, exact=False)
         except Exception as exc:  # incomplete routing: the view shows why
             out["routing"][job_id] = {"error": str(exc).splitlines()[0]}
     if task.phase == "executing":
@@ -263,6 +309,69 @@ def computed(task, config: dict | None) -> dict:
         except Exception as exc:
             out["next"] = {"error": str(exc).splitlines()[0]}
     return out
+
+
+SHORTSTAT_RE = re.compile(r"(\d+) (file|insertion|deletion)")
+GIT_LINES_CACHE: dict = {}  # (checkout, from, to) -> counts: two commits always give the same diff
+
+
+def merged_start(checkout: Path, tip: str, base_tip: str, run) -> str:
+    """The merge base of a task branch already merged into its base branch and kept: computed
+    against the base as it stood just before the merge commit that brought the tip in (its first
+    parent), so newer base commits the task took before merging are not counted. "" when no such
+    merge commit exists (a fast-forward, or the base tip is the task tip): the history no longer
+    tells the task's own commits from the base's, so the number is missing, never wrong."""
+    proc = run(["git", "rev-list", "--first-parent", "--ancestry-path", f"{tip}..{base_tip}"], checkout)
+    chain = proc.stdout.split() if proc.returncode == 0 else []
+    if not chain:
+        return ""
+    proc = run(["git", "rev-list", "--parents", "-n", "1", chain[-1]], checkout)
+    parents = proc.stdout.split()[1:] if proc.returncode == 0 else []
+    if len(parents) < 2 or parents[0] == tip:
+        return ""
+    proc = run(["git", "merge-base", parents[0], tip], checkout)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def git_lines(checkout: Path, info: dict) -> dict | None:
+    """The task's changed lines ([GIT-LINES]): `git diff --shortstat` from the merge base of the
+    base branch and the task branch to the task branch tip, as {added, removed, files}. None
+    without a task branch (not started, or deleted after merge) or after a fast-forward merge:
+    missing, never wrong. A task branch still at its start commit gives zeros."""
+    from .gitutil import run
+    branch, base = info.get("branch"), info.get("base") or {}
+    if not info.get("git") or not branch:
+        return None
+
+    def rev(ref: str) -> str | None:
+        proc = run(["git", "rev-parse", "--verify", "--quiet", ref + "^{commit}"], checkout)
+        return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else None
+
+    tip = rev("refs/heads/" + branch)
+    if tip is None:
+        return None
+    # a deleted base branch: the commit the task started from stands in for it
+    base_tip = (rev("refs/heads/" + base["branch"]) if base.get("branch") else None) or (
+        rev(base["commit"]) if base.get("commit") else None)
+    if base_tip is None:
+        return None
+    proc = run(["git", "merge-base", base_tip, tip], checkout)
+    start = proc.stdout.strip() if proc.returncode == 0 else ""
+    if start == tip:
+        # still at the commit the task started from: nothing merged into the task branch yet
+        started = rev(base["commit"]) if base.get("commit") else None
+        start = tip if started == tip else merged_start(checkout, tip, base_tip, run)
+    if not start:
+        return None
+    key = (str(checkout), start, tip)
+    if key not in GIT_LINES_CACHE:
+        proc = run(["git", "diff", "--shortstat", start, tip], checkout)
+        if proc.returncode != 0:
+            return None
+        counts = {kind: int(n) for n, kind in SHORTSTAT_RE.findall(proc.stdout)}
+        GIT_LINES_CACHE[key] = {"added": counts.get("insertion", 0), "removed": counts.get("deletion", 0),
+                                "files": counts.get("file", 0)}
+    return dict(GIT_LINES_CACHE[key])
 
 
 def task_data(key: str, task_id: str | None) -> dict:
@@ -279,14 +388,25 @@ def task_data(key: str, task_id: str | None) -> dict:
                 events.append(json.loads(line))
     settings = None
     with contextlib.suppress(OSError, ValueError):
-        settings = read_json(folder / "settings.json")
+        settings = upgrade_level_names(read_json(folder / "settings.json"))
     state = read_json(folder / "state.json")
     location, where = task_location(copy, state["task"])
     data = {"state": state, "settings": settings, "settings_default_max_verify_failures": DEFAULT_MAX_VERIFY_FAILURES,
+            "settings_default_max_review_rounds": DEFAULT_MAX_REVIEW_ROUNDS,
             "events": events, "files": task_files(folder), "folder": str(folder), "location": location,
             "location_path": where, "worktree": state["task"].get("worktree"),
             "overrides": state["task"].get("overrides") or {},
             "prototypes": prototype_files(folder, key, copy.task_id)}
+    # the Overview's numbers, computed here so the page only draws them ([OVERVIEW-PHASE-STATS], [GIT-LINES])
+    data["phase_stats"], data["git_lines"] = None, None
+    with contextlib.suppress(Exception):
+        from .session_tokens import phase_stats
+        data["phase_stats"] = phase_stats(state, events)
+        for row in data["phase_stats"]:  # a running phase's wall time grows each second: the page counts it
+            if row["running"]:            # from `started`, so the answer's version stays put between changes
+                row["wall_s"] = None
+    with contextlib.suppress(Exception):
+        data["git_lines"] = git_lines(copy.checkout, state["task"])
     task = Task(copy.checkout, copy.task_id, folder)
     try:
         task.load()  # read only: nothing is saved
@@ -341,7 +461,7 @@ def settings_data(key: str, task_id: str | None) -> dict:
         if copy is None:
             raise RequestError(404, f"No task {task_id!r} in {root}.")
         with contextlib.suppress(OSError, ValueError):
-            task_settings = read_json(copy.folder / "settings.json")
+            task_settings = upgrade_level_names(read_json(copy.folder / "settings.json"))
     routing = {}
     if config:
         layers = routing_layers(config, root, task_settings, project=project)
@@ -550,8 +670,7 @@ class ViewerHandler(http.server.BaseHTTPRequestHandler):
                 return self.send(200, html.encode(), "text/html; charset=utf-8", {"Content-Security-Policy": PAGE_CSP})
             if path.lstrip("/") in STATIC_FILES:
                 name = path.lstrip("/")
-                kind = "text/css" if name.endswith(".css") else "text/javascript"
-                return self.send(200, (VIEWER_ASSETS / name).read_bytes(), f"{kind}; charset=utf-8")
+                return self.send(200, (VIEWER_ASSETS / name).read_bytes(), STATIC_TYPES[Path(name).suffix])
             if path == "/api/health":
                 return self.send_json(200, {"ok": True, "pid": os.getpid(), "port": self.server.port,
                                             "version": self.server.version, "started": self.server.started})

@@ -22,7 +22,7 @@ from .common import (
     read_text,
     write_atomic,
 )
-from .config import cfg, load_config, max_verify_failures
+from .config import cfg, load_config, max_review_rounds, max_verify_failures
 from .findings import close_resolved, resolution_notes
 from .gitutil import find_root, git, run
 from .graph import (
@@ -35,7 +35,9 @@ from .graph import (
     review_rounds,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .routing import resolve_model
+from .prompts import review_output_file, review_output_tokens
+from .routing import override_key, resolve_model
+from .session_tokens import record_session_snapshot
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
 from .workspaces import (
     job_branch,
@@ -164,6 +166,49 @@ def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
         if writers:
             finals = [i for i, j in jobs.items() if j["final"]]
             plan("REVIEW-INTEGRATION", "integration", writers, finals)
+    return planned
+
+
+def next_review_rounds(task: Task, config: dict | None = None) -> list[dict]:
+    """The next review round of a changes-required round while its fix jobs are open: sae adds it
+    when they are done (a job review, `after_writer_done`) or merged (the integration review,
+    `materialize_integration_review`). Entries as in `planned_reviews`, plus `key` (the override
+    key of every round) and `like` (the last round: the next one routes as it does, with the same
+    target difficulty, or the difficulty that carries over). For the viewer; never stored."""
+    if task.phase != "executing":
+        return []
+    jobs = task.jobs
+    planned: list[dict] = []
+
+    def plan(review_id: str, target: str, number: int, last: str, needs: list[str], needed_by: list[str]) -> None:
+        if review_id in jobs:
+            return
+        entry = {"id": review_id, "target": target, "round": number, "needs": needs, "needed_by": needed_by,
+                 "key": override_key(task, last), "like": last, "harness": None, "model": None, "effort": None}
+        if config is not None:
+            try:
+                model = resolve_model(task, last, config, exact=False)
+                entry.update({"harness": model.get("harness"), "model": model.get("model"),
+                              "effort": model.get("effort")})
+            except SaeError:
+                pass  # incomplete routing: the round is still planned, without a model
+        planned.append(entry)
+
+    for job_id, job in jobs.items():
+        rounds = review_rounds(task, job_id)
+        if job["kind"] not in WRITER_KINDS or job["merged"] or not rounds or not requires_changes(jobs[rounds[-1]]):
+            continue
+        fixes = [i for i in jobs if fix_target(task, i) == job_id]
+        if any(jobs[i]["status"] != "done" for i in fixes):
+            number = (job.get("review_rounds") or 0) + 1
+            plan(f"REVIEW-{job_id}-{number}", job_id, number, rounds[-1], [job_id] + fixes, [])
+    rounds = review_rounds(task, "integration")
+    if "integration" in task.settings["review"]["points"] and rounds and requires_changes(jobs[rounds[-1]]):
+        fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+        if any(not jobs[i]["merged"] for i in fixes):
+            number = (jobs[rounds[-1]].get("round") or len(rounds)) + 1
+            plan(f"REVIEW-INTEGRATION-{number}", "integration", number, rounds[-1],
+                 [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS], [i for i, j in jobs.items() if j["final"]])
     return planned
 
 
@@ -494,6 +539,22 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
     return overridden
 
 
+def finish_readiness(task: Task) -> dict:
+    """The Finish card of the viewer ([GRAPH-PLACEHOLDER-FINISH]): `state` waiting | ready | blocked |
+    done | abandoned and the `reason` `sae finish` would refuse with. The same gates as `sae finish`,
+    without --with-open or --override and without side effects; blocked only once every job is done."""
+    if task.phase in ("done", "abandoned"):
+        return {"state": task.phase, "reason": None}
+    if task.phase != "executing":
+        return {"state": "waiting", "reason": None}
+    try:
+        check_finish_gates(task, False, None)
+    except SaeError as exc:
+        done = all(j["status"] == "done" for j in task.jobs.values())
+        return {"state": "blocked" if done else "waiting", "reason": str(exc)}
+    return {"state": "ready", "reason": None}
+
+
 def cmd_collect(args) -> int:
     root, _ = find_root()
     config = load_config(required=False)
@@ -517,6 +578,13 @@ def cmd_collect(args) -> int:
         for key, value in (("tokens", args.tokens), ("duration_s", args.duration_s), ("agent_ref", args.agent_ref)):
             if value is not None:
                 attempt[key] = value
+        harness = attempt.get("harness")
+        if (args.tokens is None and job["kind"] == "review" and harness in ("codex", "claude")
+                and harness != task.info.get("orchestrator_harness")):
+            # [REVIEW-TOKENS]: a review in the other harness ran the COMMAND, which kept its output.
+            tokens = review_output_tokens(review_output_file(task, job_id, harness), harness)
+            if tokens is not None:
+                attempt["tokens"] = tokens
         job["summary"] = summary
         job.update(fields)
         task.touch(job)
@@ -527,6 +595,8 @@ def cmd_collect(args) -> int:
         code = EXIT_OK
         task.event("job.collected", job=job_id, attempt=attempt.get("n"), status=status, summary=summary,
                    tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"), disputed=disputed)
+        if task.phase == "executing":
+            record_session_snapshot(task, "collect", "executing")  # [MAIN-TOKENS], [AMEND-1]
         if status == "done" and job.get("stale"):
             # [NO-STALE-CHECKS]: a writer merged while this final validation ran.
             reason = job.pop("stale")
@@ -623,12 +693,18 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         return merge_job(task, target, config, out)
     subject["review_rounds"] += 1
     task.touch(subject)
-    if subject["review_rounds"] >= 2:
+    limit = max_review_rounds(task.settings)
+    if subject["review_rounds"] >= limit:
         subject["status"] = "parked"
-        subject["summary"] = f"{review_id}: changes required after two review rounds — human decision"
-        out.append("\n".join([f"{target} parked: the second review round still requires changes. Ask the user. "
-                               "Accept with:",
+        subject["summary"] = (f"{review_id}: changes required after {subject['review_rounds']} review rounds "
+                              f"(max-review-rounds {limit}) — human decision")
+        out.append("\n".join([f"{target} parked: {subject['review_rounds']} review rounds required changes "
+                               f"(max-review-rounds is {limit}). Ask the user. Accept with:",
                                f"  sae merge {task.id} {target} --accept-review \"<why>\"",
+                               "Or add another fix job (the next round follows it):",
+                               f"  sae job add {task.id} {target}-FIX-<n> --kind implementation --fix-of {target} "
+                               f"--reason \"<why>\"",
+                               *raise_limit_hint(task, limit),
                                "Or adapt the graph."]))
     else:
         out.append("\n".join([f"{target}: changes required. Add fix jobs:",
@@ -639,6 +715,14 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
     return EXIT_OK
 
 
+def raise_limit_hint(task: Task, limit: int) -> list[str]:
+    """How the owner allows more changes-required rounds before the next park ([REVIEW-ROUNDS-LIMIT])."""
+    if limit >= 10:
+        return []
+    return ["More rounds before the next park, on the user's word:",
+            f"  sae set {task.id} max-review-rounds={limit + 1}"]
+
+
 def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
     verdict = task.jobs[review_id].get("verdict")
     if verdict in POSITIVE_VERDICTS:
@@ -646,10 +730,12 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
         return EXIT_OK
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
-        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round. "
-                               "Ask the owner:",
+        limit = max_review_rounds(task.settings)
+        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round "
+                               f"(max-review-rounds is {limit}). Ask the owner:",
                                "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
-                               "  - or close anyway:", f"    {forward}"]))
+                               "  - or close anyway:", f"    {forward}",
+                               *raise_limit_hint(task, limit)]))
     else:
         out.append("\n".join([f"{review_id}: changes required. Add fix jobs (sae adds the next round when "
                                "they are merged):", f"  {fix_job_command(task, review_id)}",
@@ -691,8 +777,9 @@ def cmd_merge(args) -> int:
 def register_collect(sub, command):
     """Add the `collect` command to the parser."""
     p = command(sub, "collect", "Read a job's result file, re-run verify, then merge or add its review.",
-                "Add --tokens, --duration-s and --agent-ref when your harness reports them. Exit 5: resume the same\n"
-                "worker with --reason verify-failed; after the task's limit the job is failed instead (exit 0).\n"
+                "Add --tokens, --duration-s and --agent-ref when your harness reports them. A review run through\n"
+                "the printed COMMAND records its tokens itself. Exit 5: resume the same worker with --reason\n"
+                "verify-failed; after the task's limit the job is failed instead (exit 0).\n"
                 "Exit 4: merge conflict, sae added INTEGRATE-<ID>.",
                 ["collect claims-status STATUS-API --tokens 48210 --duration-s 312 --agent-ref a1b2c3"],
                 [0, 1, 2, 4, 5], cmd_collect)

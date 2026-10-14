@@ -133,7 +133,7 @@ class ShapingAndPlanningTests(SaeTestCase):
         self.assertTrue(any("[CLAIM-STATUS] has no acceptance" in w for w in data["warnings"]))
         self.assertIn("REVIEW-SPEC is pending", sb.sae("approve", "spec-work", "spec", code=3).stderr)
         prompt = sb.json("dispatch", "spec-work", "REVIEW-SPEC")
-        self.assertEqual(prompt["model"], "c-big")  # review level max → L3
+        self.assertEqual(prompt["model"], "c-big")  # review level premium → L3
         self.assertIn("reviewer.md", prompt["prompt"])
         self.assertIn("specs.md", prompt["prompt"])
         sb.sae("collect", "spec-work", "REVIEW-SPEC", code=1)  # no result file yet
@@ -352,6 +352,7 @@ class ExecutionTests(SaeTestCase):
     def test_review_rounds_fix_jobs_and_accept(self):
         sb = self.sandbox(points=["all-jobs"])
         task = self.planned(sb, "rounds", [("CORE", "implementation", "", [], {})])
+        sb.sae("set", "rounds", "max-review-rounds=2")  # park after the second round
         sb.sae("start", "rounds")
         self.assertEqual(sb.json("status", "rounds")["layout"], "chain")
         ws = dispatch_workspace(sb, task, "CORE")
@@ -462,9 +463,9 @@ class ViewerAndSetupTests(SaeTestCase):
     def test_setup_save_validates_and_backs_up(self):
         sb = self.sandbox()
         bad = config_for(sb.worktrees)
-        bad["routing"]["claude"]["tables"]["execution"]["max"]["hard"] = {"tier": "L9"}
+        bad["routing"]["claude"]["tables"]["execution"]["premium"]["hard"] = {"tier": "L9"}
         out = sb.sae("setup", "save", stdin=json.dumps(bad), code=1).stderr
-        self.assertIn("routing.claude.tables.execution.max.hard", out)
+        self.assertIn("routing.claude.tables.execution.premium.hard", out)
         good = config_for(sb.worktrees)
         good["parallel"]["max_writers"] = 2
         sb.sae("setup", "save", stdin=json.dumps(good))

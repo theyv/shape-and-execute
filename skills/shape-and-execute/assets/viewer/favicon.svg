@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<!-- The owner's icon (Shape and Execute). Its dark half turns light on a dark tab bar ([FAVICON]). -->
+<style>.d{fill:#17252B}@media (prefers-color-scheme:dark){.d{fill:#C9D6DB}}</style>
+<path fill="#18B995" d="M33 33H109L141 65V100H106V80L94 68H68V94H33Z"/>
+<path class="d" d="M141 165H65L33 133V98H68V118L80 130H106V104H141Z"/>
+<path fill="#18B995" d="M104 87L160 100L104 113Z"/>
+</svg>

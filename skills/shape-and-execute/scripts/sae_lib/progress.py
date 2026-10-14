@@ -28,7 +28,8 @@ from .common import (
     stamp_time,
     table,
 )
-from .config import cfg, load_config, settings_card
+from .asks import ask_reminder_line, open_asks
+from .config import ask_signal, cfg, load_config, settings_card
 from .gitutil import find_root, git
 from .control import (
     hold_notices,
@@ -56,6 +57,7 @@ from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import model_text, resolve_model, routing_text, short_text
+from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
     job_file,
@@ -122,7 +124,8 @@ def task_status_data(task: Task) -> dict:
             "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
-            "holds": holds_data(task), "map": process_map(task)["lines"], "next": next_command(task)}
+            "holds": holds_data(task), "asks": open_asks(task), "ask_signal": ask_signal(task.settings),
+            "map": process_map(task)["lines"], "next": next_command(task)}
 
 
 def cmd_status(args) -> int:
@@ -152,6 +155,11 @@ def cmd_status(args) -> int:
                     lines.append(f"    {r['model']}")
         if data["parked"]:
             lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+        if data["asks"]:
+            # "waiting" only in executing, like owner_wait()
+            heading = "Open asks (waiting for the owner):" if data["phase"] == "executing" else "Open asks:"
+            lines += ["", heading] + [
+                f"  {a['n']}." + (f" {a['job']}:" if a["job"] else "") + f" {a['question']}" for a in data["asks"]]
         if data["integration"]:
             lines += ["", data["integration"]]
         if notices:
@@ -204,18 +212,21 @@ def cmd_status(args) -> int:
     return EXIT_OK
 
 
-def reminder_lines(task: Task) -> list[str]:
-    """The mode with the classes to ask on, then the hard stops."""
-    return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
+def reminder_lines(task: Task, ask_reminder: bool = False) -> list[str]:
+    """The mode with the classes to ask on, the hard stops, then, for `sae next` only
+    (`ask_reminder`), the sae ask line when it is due ([ASK-REMINDER])."""
+    ask = ask_reminder_line(task) if ask_reminder else None
+    return [mode_line(task.settings["interaction"]), HARD_STOPS_LINE] + ([ask] if ask else [])
 
 
-def next_text(task: Task, config: dict | None, data: dict | None = None) -> str:
+def next_text(task: Task, config: dict | None, data: dict | None = None, ask_reminder: bool = False) -> str:
     """The `sae next` text. On a writable task (sae start) the start next-step card it prints
-    is recorded; `sae next` itself is read-only and only prints it."""
+    is recorded; `sae next` itself is read-only and only prints it. `ask_reminder`: `sae next`
+    passes True; `sae start` leaves the sae ask line out ([ASK-REMINDER])."""
     data = data or next_data(task, config)
     if task.writable and data["card"] is not None and data["card"].get("start"):
         record_card(task, data["card"])
-    lines = ["\n".join(data["map"]), ""] + reminder_lines(task) + [""]
+    lines = ["\n".join(data["map"]), ""] + reminder_lines(task, ask_reminder) + [""]
     notices = hold_notices(task)
     if data["integration"]:
         notices.append(data["integration"])
@@ -339,12 +350,12 @@ def cmd_next(args) -> int:
         with open_task(root, args.task) as task:
             materialize_integration_review(task, out)
             data = next_data(task, config)
-            text = next_text(task, config, data)
+            text = next_text(task, config, data, ask_reminder=True)
     else:
         with open_task(root, args.task, write=False) as task:
             data = next_data(task, config)
-            text = next_text(task, config, data)
-    data["reminder"] = [mode_line(task.settings["interaction"]), HARD_STOPS_LINE]
+            text = next_text(task, config, data, ask_reminder=True)
+    data["reminder"] = reminder_lines(task, ask_reminder=True)
     emit(args, ("\n".join(out) + "\n" if out else "") + text, data)
     return EXIT_OK
 
@@ -407,6 +418,8 @@ def cmd_dispatch(args) -> int:
                    model=model["model"], effort=model["effort"], source=model["source"], tier=model["tier"],
                    workspace=rel(workdir, task.root) or ".",
                    reason=args.reason)
+        if task.phase == "executing":
+            record_session_snapshot(task, "dispatch", "executing")  # [MAIN-TOKENS], [AMEND-1]
         external = job["kind"] == "review" and model["harness"] != task.info.get("orchestrator_harness")
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
         if args.resume:
@@ -443,7 +456,7 @@ def register_status(sub, command):
     p = command(sub, "status", "Where things are. The first command after any context reset. Read-only.",
                 "Without a task: every task, the backlog and the number of open findings.\n"
                 "With a task: the process map, settings card, phase, branch, holds, jobs, parked jobs with reasons,\n"
-                "ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
+                "open asks (sae ask), ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
     p.add_argument("task", nargs="?")
 
 
@@ -472,8 +485,8 @@ def register_dispatch(sub, command):
                 "with --reason, or reopens a done research or planning job (a follow-up question; the planner\n"
                 "after a plan review); sae collect then reads the updated report or result. The message also\n"
                 "works for a fresh agent. A due spec or plan review is added first. Exit 3: an active hold (the\n"
-                "message names the release command), or the task is parked after a second changes-required\n"
-                "integration round.",
+                "message names the release command), or the task is parked after max-review-rounds (default 3)\n"
+                "changes-required integration rounds.",
                 ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed",
                  'dispatch claims-status PLAN --resume --reason "REVIEW-PLAN: changes required"'],
                 [0, 1, 2, 3, 4], cmd_dispatch)

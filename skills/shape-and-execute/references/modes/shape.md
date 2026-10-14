@@ -118,7 +118,7 @@ When grilling is done: `sae check <task>`. A clean check makes `REVIEW-SPEC` due
 skip turns the `spec` review point off with `sae set`). Then `sae dispatch <task> REVIEW-SPEC`
 and spawn a subagent with the printed prompt, model and effort. When the printed output is a
 COMMAND (review in the other harness), run it in the background; when it fails, run the
-IF IT FAILS line printed with it. Collect it.
+IF IT FAILS line printed with it. Collect it; `sae` reads the COMMAND's tokens itself.
 
 Turn its findings into the last grill round: for each, say whether you would change the spec
 and why. The user decides. Update `specs.md` and `intent.md`. The verdict never blocks the

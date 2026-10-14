@@ -106,6 +106,7 @@ class IntegrationRoundTests(ReviewFlowCase):
     def test_two_integration_rounds_then_park(self):
         sb = self.sandbox()
         task = self.integration_task(sb, "rounds2")
+        sb.sae("set", "rounds2", "max-review-rounds=2")  # the second round parks
         self.review(sb, task, "rounds2", "REVIEW-INTEGRATION", "integration", "changes-required")
         sb.sae("job", "add", "rounds2", "INTEGRATION-FIX-1", "--kind", "implementation",
                "--fix-of", "REVIEW-INTEGRATION", "--reason", "finding 1")

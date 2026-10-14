@@ -34,7 +34,8 @@ Repeat until `sae next` reports that all jobs are done.
    in the other harness), run it in the background; when it fails, run the IF IT FAILS line
    printed with it.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
-   `--agent-ref` when your harness reports them. Then act on the outcome:
+   `--agent-ref` when your harness reports them. A COMMAND review needs no `--tokens`: `sae` reads
+   them from the output the COMMAND kept. Then act on the outcome:
    - `done` → nothing to do; `sae` merges the job or adds its review.
    - exit 5 (re-run verify failed) → resume the same worker:
      `sae dispatch <task> <ID> --resume --reason verify-failed`, send the printed message.
@@ -50,11 +51,12 @@ Repeat until `sae next` reports that all jobs are done.
    - job review `changes-required` → add fix jobs
      (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID> --reason "<review>: changes required"`),
      or accept it when the mode lets you decide: `sae merge <task> <ID> --accept-review "<why>"`.
-     After a second `changes-required`, the job parks for the user.
+     After `max-review-rounds` changes-required rounds (default 3), the job parks for the user.
    - integration review `changes-required` → add fix jobs
      (`sae job add <task> INTEGRATION-FIX-1 --kind implementation --fix-of <round ID> --reason "<why>"`).
-     When they are merged, `sae` adds the next round. After a second `changes-required`, the
-     task parks: ask the user in every mode — more fix jobs, or finish with an override.
+     When they are merged, `sae` adds the next round. After `max-review-rounds` changes-required
+     rounds (default 3), the task parks: ask the user in every mode — more fix jobs, or finish
+     with an override.
 4. While anything waits for the user, keep dispatching independent jobs.
 
 **Holds and changes.** On the user's word: a hold after any job (`sae hold <task> <ID>`,

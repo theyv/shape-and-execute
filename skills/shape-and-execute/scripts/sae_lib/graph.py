@@ -14,7 +14,7 @@ from .common import (
     WRITER_KINDS,
     read_text,
 )
-from .config import cfg
+from .config import cfg, max_review_rounds
 from .findings import resolves_errors
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 from .tasks import Task, as_list, is_generated, job_file, job_meta, new_job, tasks_dir
@@ -97,12 +97,12 @@ def fix_target(task: Task, job_id: str) -> str | None:
 
 
 def integration_parked(task: Task) -> str | None:
-    """The integration review round that parks the task, or None: its second (or later)
-    changes-required round while no fix job of that round exists."""
+    """The integration review round that parks the task, or None: its `max-review-rounds`-th (or
+    later) changes-required round while no fix job of that round exists."""
     rounds = review_rounds(task, "integration")
     if not rounds or not requires_changes(task.jobs[rounds[-1]]):
         return None
-    if sum(1 for i in rounds if requires_changes(task.jobs[i])) < 2:
+    if sum(1 for i in rounds if requires_changes(task.jobs[i])) < max_review_rounds(task.settings):
         return None
     if any(j.get("fix_of") == rounds[-1] for j in task.jobs.values()):
         return None

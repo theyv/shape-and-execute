@@ -55,6 +55,6 @@ Inside its own worktree a job may delete and rewrite freely: git can restore eve
 
 Nothing reaches the base branch without the user. Every `[agent]` decision, settled disputed
 finding and amendment appears in the final report, so the user reviews them before merging.
-Two stops hold in every mode: a hold the user set after a job, and a second
-`changes-required` round of a review (it parks the job, or the task for the integration
-review).
+Two stops hold in every mode: a hold the user set after a job, and a review that still says
+`changes-required` after `max-review-rounds` changes-required rounds (default 3; it parks the
+job, or the task for the integration review).
