@@ -6,9 +6,8 @@ import re
 import unittest
 from pathlib import Path
 
-from saetest import SKILL_DIR, SaeTestCase
+from saetest import REPO_ROOT, SaeTestCase
 
-REPO_ROOT = SKILL_DIR.parents[1]
 LINK = re.compile(r"^- \[[^\]]+\]\(([^)]+\.md)\)")
 
 
@@ -27,10 +26,20 @@ def index_problems(folder: Path) -> list[str]:
     return problems
 
 
+def profile_adr_folders(root: Path) -> list[Path]:
+    """The ADR folders that the repo profile of `root` names: its adr_rules targets and adr_folder."""
+    text = (root / ".tasks" / "repo" / "profile.md").read_text()
+    front = text.split("---\n")[1] if text.startswith("---\n") else ""
+    names = re.findall(r"^\s*-\s*\S+\s*(?:->|→)\s*(\S+?)/?\s*$", front, re.M)
+    names += re.findall(r"^adr_folder:\s*(\S+?)/?\s*$", front, re.M)
+    return sorted({root / name for name in names})
+
+
 class AdrIndexCheckTests(unittest.TestCase):
     def test_this_repository_indexes_every_adr_file(self):
-        folders = sorted(p for p in (REPO_ROOT / "docs" / "adr").iterdir() if p.is_dir())
+        folders = profile_adr_folders(REPO_ROOT)
         self.assertTrue(folders)
+        self.assertEqual([f for f in folders if not f.is_dir()], [])
         for folder in folders:
             self.assertEqual(index_problems(folder), [], folder.name)
 

@@ -136,7 +136,8 @@ class GraphCardsCase(ViewerServerCase, ReviewFlowCase):
 
     def copy_done(self, sb, *names: str) -> list[str]:
         """Copies of finished tasks of this repository into the sandbox's .tasks/done/."""
-        found = [n for n in names if (DONE / n).is_dir()] if names else sorted(p.name for p in DONE.iterdir() if p.is_dir())
+        found = ([n for n in names if (DONE / n).is_dir()] if names
+                 else sorted(p.name for p in DONE.iterdir() if p.is_dir()) if DONE.is_dir() else [])
         if not found:
             self.skipTest("no finished task records in .tasks/done/")
         for name in found:
