@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 from pathlib import Path
 from typing import Callable
 
-from .common import ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, in_scope, read_text, sae_prefix
+from .common import (ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, glob_regex, in_scope, read_text,
+                     sae_prefix)
 from .config import cfg
 from .findings import ADR_INDEX, adr_folders, adr_pointer_records
 from .gitutil import git
@@ -73,12 +75,63 @@ INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
 
 
 def path_tokens(text: str) -> list[str]:
-    """The relative paths a text names word for word: words with a `/`, never `..`."""
-    tokens = (t.rstrip(".") for t in re.findall(r"(?<![\w./-])[\w.-]+(?:/[\w.-]+)+/?", text))
-    return [t for t in tokens if ".." not in t.split("/")]
+    """The relative paths a text names word for word: words with a `/` inside, or one folder name
+    ending in `/` (`src/`); never `..`."""
+    tokens = (t.rstrip(".") for t in re.findall(r"(?<![\w./-])[\w.-]+(?:(?:/[\w.-]+)+/?|/)(?![\w.-])", text))
+    return [t for t in tokens if t.strip("/") and ".." not in t.split("/")]
 
 
-def guarded_paths(task: Task, job_id: str) -> tuple[list[str], Callable[[str], bool]]:
+def is_glob(pattern: str) -> bool:
+    return bool(re.search(r"[*?]", pattern))
+
+
+def glob_covers(pattern: str, folder: str) -> bool:
+    """True when the glob `pattern` can match a path inside `folder` (`a/**/*.py` covers `a/b`;
+    `a/*.py` does not). Component by component, with the semantics of `glob_regex`."""
+    parts = [p for p in pattern.strip("/").split("/") if p]
+
+    def closure(states: set[int]) -> set[int]:
+        out = set(states)
+        for i in states:  # `**` also matches zero folders
+            while i < len(parts) and parts[i] == "**":
+                i += 1
+                out.add(i)
+        return out
+
+    states = closure({0})
+    for name in folder.strip("/").split("/"):
+        following = set()
+        for i in states:
+            if i >= len(parts):
+                continue
+            if parts[i] == "**":
+                following.add(i)
+            elif "**" in parts[i]:  # `x**y` crosses folders: once `x` matches, anything below can match
+                if re.match(glob_regex(parts[i].split("**")[0]).pattern[:-1], name):
+                    return True
+            elif glob_regex(parts[i]).match(name):
+                following.add(i + 1)
+        states = closure(following)
+        if not states:
+            return False
+    return any(i < len(parts) for i in states)
+
+
+def glob_folders(checkout: Path, pattern: str) -> list[str]:
+    """The folders of the checkout inside the literal start of a glob that the glob covers, top down."""
+    parts = pattern.strip("/").split("/")
+    literal = "/".join(parts[:next(i for i, part in enumerate(parts) if is_glob(part))])
+    start = checkout / literal if literal else checkout
+    found = []
+    for here, subdirs, _ in os.walk(start):
+        rel_here = Path(here).relative_to(checkout).as_posix()
+        subdirs[:] = sorted(d for d in subdirs if d != ".git"
+                            and glob_covers(pattern, d if rel_here == "." else f"{rel_here}/{d}"))
+        found += [d if rel_here == "." else f"{rel_here}/{d}" for d in subdirs]
+    return found
+
+
+def guarded_paths(task: Task, job_id: str, checkout: Path) -> tuple[list[str], Callable[[str], bool]]:
     """The paths a job works on and the test of a record's path entry against them
     ([DECISION-MATCH]): a review on the diff, a worker on `scope`, else on its job file."""
     job = task.jobs[job_id]
@@ -91,11 +144,15 @@ def guarded_paths(task: Task, job_id: str) -> tuple[list[str], Callable[[str], b
             span = diff_span(task, target)
         changed = []
         if span and task.info.get("git"):
-            changed = git(task.root, "diff", "--name-only", f"{span[0]}..{span[1]}", check=False).splitlines()
+            # --no-renames: a rename lists its source too, so the source's records still match
+            changed = git(task.root, "diff", "--name-only", "--no-renames", f"{span[0]}..{span[1]}",
+                          check=False).splitlines()
         return changed, lambda entry: any(in_scope(f, [entry]) for f in changed)
     scope = [str(s).strip("`").strip() for s in as_list(job_meta(task, job_id).get("scope"))]
-    if scope:  # an entry inside the scope, or the scope inside a folder entry
-        return scope, lambda entry: any(in_scope(entry, [s]) or in_scope(s, [entry]) for s in scope)
+    if scope:  # an entry inside the scope, the scope inside a folder entry, or a glob covering a folder entry
+        return scope, lambda entry: any(
+            in_scope(entry, [s]) or in_scope(s, [entry])
+            or (is_glob(s) and not (checkout / entry).is_file() and glob_covers(s, entry)) for s in scope)
     named = path_tokens(read_text(job_file(task, job_id), "") or "")
     # the job file names the entry, a path inside a folder entry, or the entry's folder
     return named, lambda entry: any(in_scope(t, [entry]) or t.rstrip("/") == entry.rpartition("/")[0]
@@ -108,7 +165,7 @@ def guard_lines(task: Task, job_id: str, checkout: Path) -> list[str]:
     folders of those paths below the repository root. Links open from `checkout`."""
     if task.jobs[job_id]["kind"] not in ("implementation", "integration", "validation", "review"):
         return []
-    paths, guards = guarded_paths(task, job_id)
+    paths, guards = guarded_paths(task, job_id, checkout)
     if not paths:
         return []
     hits = [(folder, line) for folder, line, entries in adr_pointer_records(checkout, profile_meta(task))
@@ -124,8 +181,10 @@ def guard_lines(task: Task, job_id: str, checkout: Path) -> list[str]:
     folders = []
     for path in paths:
         parts = path.strip("/").split("/")
-        literal = next((i for i, part in enumerate(parts) if re.search(r"[*?\[]", part)), len(parts))
+        literal = next((i for i, part in enumerate(parts) if is_glob(part)), len(parts))
         folders += ["/".join(parts[:i]) for i in range(1, literal + 1)]
+        if literal < len(parts):  # a glob: also the folders below its literal start that it covers
+            folders += glob_folders(checkout, path)
     files = [f"{folder}/{name}" for folder in dict.fromkeys(folders) for name in INSTRUCTION_FILES
              if (checkout / folder / name).is_file()]
     if files:

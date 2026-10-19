@@ -83,6 +83,41 @@ class WorkerPointerTests(PointerCase):
         self.assertIn("\n- [Record named](docs/adr/named.md) — Decision of named.\n", prompt)
         self.assertNotIn("unnamed", prompt)
 
+    def test_glob_scope_matches_the_folders_it_covers(self):
+        sb = self.sandbox()
+        write_record(sb, "a-lib", "skills/x/scripts/lib/")
+        write_record(sb, "b-file", "skills/x/scripts/lib/deep/c.py")
+        write_record(sb, "c-text", "skills/x/scripts/notes.txt")
+        write_record(sb, "d-assets", "skills/x/assets/")
+        write_file(sb, "skills/x/scripts/notes.txt")
+        write_file(sb, "skills/x/scripts/lib/deep/c.py")
+        write_file(sb, "skills/x/assets/a.py")
+        write_index(sb, ["a-lib", "b-file", "c-text", "d-assets"])
+        commit(sb)
+        self.started(sb, "globs", {"ONE": {"scope": ["skills/x/scripts/**/*.py"]},
+                                   "TWO": {"scope": ["skills/x/scripts/*.py"]}})
+        prompt = self.prompt(sb, "globs", "ONE")["prompt"]
+        self.assertIn("- [Record a-lib](docs/adr/a-lib.md)", prompt)
+        self.assertIn("- [Record b-file](docs/adr/b-file.md)", prompt)
+        self.assertNotIn("Record c-text", prompt)  # a file the glob does not match
+        self.assertNotIn("Record d-assets", prompt)
+        self.assertNotIn("Record a-lib", self.prompt(sb, "globs", "TWO")["prompt"])  # `*` stays in one folder
+
+    def test_job_file_names_a_top_level_folder(self):
+        sb = self.sandbox()
+        write_record(sb, "main", "src/main.py")
+        write_record(sb, "other", "lib/main.py")
+        write_file(sb, "src/AGENTS.md")
+        write_file(sb, "lib/AGENTS.md")
+        write_index(sb, ["main", "other"])
+        commit(sb)
+        self.started(sb, "top", {"ONE": {"objective": "Change `src/`."}})
+        prompt = self.prompt(sb, "top", "ONE")["prompt"]
+        self.assertIn("- [Record main](docs/adr/main.md)", prompt)
+        self.assertIn("\n- src/AGENTS.md\n", prompt)
+        self.assertNotIn("Record other", prompt)
+        self.assertNotIn("lib/AGENTS.md", prompt)
+
     def test_code_names_never_match(self):
         sb = self.sandbox()
         write_record(sb, "names", "cmd_set, settings.json, viewer")
@@ -126,6 +161,24 @@ class DirectoryPointerTests(PointerCase):
         self.assertNotIn("- CLAUDE.md", lines)
         self.assertNotIn("- skills/x/scripts/AGENTS.md", lines)
         self.assertNotIn(RECORDS, "\n".join(lines))
+
+    def test_glob_scope_gets_the_files_of_the_folders_it_covers(self):
+        sb = self.sandbox()
+        write_file(sb, "skills/x/scripts/AGENTS.md")
+        write_file(sb, "skills/x/scripts/lib/AGENTS.md")
+        write_file(sb, "skills/x/scripts/lib/deep/CLAUDE.md")
+        write_file(sb, "skills/x/assets/AGENTS.md")
+        commit(sb)
+        self.started(sb, "dirglob", {"ONE": {"scope": ["skills/x/scripts/**/*.py"]},
+                                     "TWO": {"scope": ["skills/x/scripts/*.py"]}})
+        lines = self.prompt(sb, "dirglob", "ONE")["prompt"].splitlines()
+        at = lines.index(DIRS + " — read them:")
+        self.assertEqual(lines[at + 1:at + 4], ["- skills/x/scripts/AGENTS.md", "- skills/x/scripts/lib/AGENTS.md",
+                                                "- skills/x/scripts/lib/deep/CLAUDE.md"])
+        self.assertNotIn("- skills/x/assets/AGENTS.md", lines)
+        two = self.prompt(sb, "dirglob", "TWO")["prompt"]
+        self.assertIn("\n- skills/x/scripts/AGENTS.md\n", two)
+        self.assertNotIn("scripts/lib/AGENTS.md", two)
 
     def test_ten_records_and_a_directory_file_give_eleven_lines(self):
         sb = self.sandbox()
@@ -179,16 +232,23 @@ class LimitTests(PointerCase):
 
 
 class ReviewPointerTests(PointerCase):
-    def reviewed(self, changed: str) -> tuple[Sandbox, str]:
+    def reviewed(self, changed: str, rename: bool = False) -> tuple[Sandbox, str]:
+        """A collected job ONE that changed `changed`, or (`rename`) moved prompts.py there unchanged."""
         sb = self.sandbox(points=["all-jobs"])
         write_record(sb, "prompts", "skills/x/scripts/prompts.py")
         write_record(sb, "assets", "skills/x/assets/")
         write_index(sb, ["prompts", "assets"])
+        write_file(sb, "skills/x/scripts/prompts.py", "".join(f"line {i}\n" for i in range(40)))
+        write_file(sb, "skills/x/scripts/AGENTS.md")
         commit(sb)
         task = self.started(sb, "rev", {"ONE": {}})
         ws = Path(self.prompt(sb, "rev", "ONE")["workspace"])
         (ws / changed).parent.mkdir(parents=True, exist_ok=True)
-        sb.work(ws, changed, "changed\n", "ONE: work")
+        if rename:
+            sb.git("mv", "skills/x/scripts/prompts.py", changed, cwd=ws)
+            sb.git("commit", "-q", "-m", "ONE: move", cwd=ws)
+        else:
+            sb.work(ws, changed, "changed\n", "ONE: work")
         sb.result(task, "jobs/ONE.result.md", status="done", summary="s", validation="pass", changes="made")
         sb.sae("collect", "rev", "ONE")
         return sb, task
@@ -208,6 +268,12 @@ class ReviewPointerTests(PointerCase):
         prompt = self.prompt(sb, "rev", "REVIEW-ONE", "--provider", "claude")["prompt"]
         self.assertNotIn(RECORDS, prompt)
         self.assertNotIn(DIRS, prompt)
+
+    def test_job_review_of_a_rename_matches_its_source(self):
+        sb, _ = self.reviewed("moved/prompts.py", rename=True)
+        prompt = self.prompt(sb, "rev", "REVIEW-ONE", "--provider", "claude")["prompt"]
+        self.assertIn("- [Record prompts](docs/adr/prompts.md)", prompt)
+        self.assertIn("\n- skills/x/scripts/AGENTS.md\n", prompt)
 
     def test_integration_review_matches_the_whole_task_diff(self):
         sb = self.sandbox()
@@ -233,6 +299,30 @@ class ReviewPointerTests(PointerCase):
         self.assertIn("- [Record left](docs/adr/left.md)", prompt)
         self.assertIn("- [Record right](docs/adr/right.md)", prompt)
         self.assertNotIn("Record none", prompt)
+
+
+    def test_integration_review_of_a_rename_matches_its_source(self):
+        sb = self.sandbox()
+        write_record(sb, "old", "old/a.txt")
+        write_index(sb, ["old"])
+        write_file(sb, "old/a.txt", "".join(f"line {i}\n" for i in range(40)))
+        write_file(sb, "old/AGENTS.md")
+        commit(sb)
+        task = sb.new_task("moved", "moved")
+        sb.sae("set", "moved", "review=integration")
+        sb.sae("job", "add", "moved", "MOVE", "--kind", "implementation")
+        sb.job_file(task, "MOVE")
+        sb.approve_plan("moved")
+        sb.sae("start", "moved")
+        ws = Path(self.prompt(sb, "moved", "MOVE")["workspace"])
+        (ws / "new").mkdir()
+        sb.git("mv", "old/a.txt", "new/a.txt", cwd=ws)
+        sb.git("commit", "-q", "-m", "MOVE: move", cwd=ws)
+        sb.result(task, "jobs/MOVE.result.md", status="done", summary="s", validation="pass", changes="made")
+        sb.sae("collect", "moved", "MOVE")
+        prompt = self.prompt(sb, "moved", "REVIEW-INTEGRATION", "--provider", "claude")["prompt"]
+        self.assertIn("- [Record old](docs/adr/old.md)", prompt)
+        self.assertIn("\n- old/AGENTS.md\n", prompt)
 
 
 class IndexPointerTests(PointerCase):
