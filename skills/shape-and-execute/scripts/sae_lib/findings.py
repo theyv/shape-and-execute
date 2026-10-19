@@ -603,6 +603,39 @@ def add_to_adr_index(folder: Path, name: str, text: str) -> Path:
     return index
 
 
+def adr_folders(checkout: Path, meta: dict) -> list[str]:
+    """The ADR folders of a checkout that exist, relative: the flat folder (the `adr_folder` pin,
+    else the first existing ADR folder), then every `adr_rules` folder ([EDGE-MANY-FOLDERS])."""
+    flat = str(meta.get("adr_folder") or "").strip("/")
+    flat = flat or next((name for name in ADR_FOLDERS if (checkout / name).is_dir()), "")
+    folders = [flat] + [folder for _, folder in adr_rules(meta)[0]]
+    return [f for f in dict.fromkeys(folders) if f and (checkout / f).is_dir()]
+
+
+def adr_pointer_records(checkout: Path, meta: dict) -> list[tuple[str, str, list[str]]]:
+    """Each record with path entries ([DECISION-PATH-ENTRIES]: `applies-to` items with a `/`), in
+    index.md order: (folder, its index line linked from the checkout, path entries). A record
+    without an index line comes last, with a line built as `sae adr accept` builds one."""
+    out = []
+    for folder in adr_folders(checkout, meta):
+        records = {}
+        for path in sorted((checkout / folder).glob("*.md")):
+            text = read_text(path, "")
+            entries = [_norm_path(e) for e in as_list(split_frontmatter(text)[0].get("applies-to")) if "/" in str(e)]
+            if path.name not in (ADR_INDEX, "_intent.md") and entries:
+                records[path.name] = (text, entries)
+        indexed = {}
+        for line in read_text(checkout / folder / ADR_INDEX, "").splitlines():
+            match = re.match(r"- \[.*?\]\((?:\./)?([^)/\s]+\.md)\)", line)
+            if match and match.group(1) in records:
+                indexed.setdefault(match.group(1), line)
+        for name in [*indexed, *(n for n in records if n not in indexed)]:
+            line = indexed.get(name) or adr_index_line(name, records[name][0])
+            line = re.sub(rf"\]\((?:\./)?{re.escape(name)}\)", f"]({folder}/{name})", line, count=1)
+            out.append((folder, line, records[name][1]))
+    return out
+
+
 def cmd_adr_accept(args) -> int:
     root, _ = find_root()
     draft = find_draft(root, args.draft)

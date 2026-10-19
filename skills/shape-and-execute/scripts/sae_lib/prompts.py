@@ -6,20 +6,26 @@ import json
 import re
 import shlex
 from pathlib import Path
+from typing import Callable
 
-from .common import ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, read_text, sae_prefix
+from .common import ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, in_scope, read_text, sae_prefix
 from .config import cfg
+from .findings import ADR_INDEX, adr_folders, adr_pointer_records
+from .gitutil import git
 from .graph import fix_target, review_rounds
 from .markdown import split_frontmatter
 from .routing import job_context
-from .tasks import Task, job_file, result_file, tasks_dir
+from .tasks import Task, as_list, job_file, job_meta, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
 
 
-def artifact_language(task: Task, config: dict) -> str:
+def profile_meta(task: Task) -> dict:
     profile = read_text(tasks_dir(task.root) / "repo" / "profile.md")
-    pin = split_frontmatter(profile)[0].get("artifact_language") if profile else None
-    return pin or cfg(config, "language.artifacts")
+    return split_frontmatter(profile)[0] if profile else {}
+
+
+def artifact_language(task: Task, config: dict) -> str:
+    return profile_meta(task).get("artifact_language") or cfg(config, "language.artifacts")
 
 
 def interaction_lines(mode: str) -> list[str]:
@@ -40,7 +46,8 @@ def pointer(label: str, path: Path) -> str | None:
     return f"{label}{path}" if path.exists() else None
 
 
-def diff_command(task: Task, job_id: str, config: dict | None) -> str | None:
+def diff_span(task: Task, job_id: str) -> tuple[str, str] | None:
+    """The start and end of a job's diff: its first attempt's head and its branch (or last commit)."""
     job = task.jobs[job_id]
     if not task.info.get("git") or not job["attempts"]:
         return None
@@ -53,9 +60,83 @@ def diff_command(task: Task, job_id: str, config: dict | None) -> str | None:
             if fix_target(task, other_id) == job_id:
                 commits += other["commits"]
         end = commits[-1] if commits else None
-    if not start or not end:
-        return None
-    return f"git -C {shlex.quote(str(task.root))} diff {start}..{end}"
+    return (start, end) if start and end else None
+
+
+def diff_command(task: Task, job_id: str, config: dict | None) -> str | None:
+    span = diff_span(task, job_id)
+    return f"git -C {shlex.quote(str(task.root))} diff {span[0]}..{span[1]}" if span else None
+
+
+POINTER_LIMIT = 10  # [POINTER-LIMIT] record lines; directory lines do not count
+INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
+
+
+def path_tokens(text: str) -> list[str]:
+    """The relative paths a text names word for word: words with a `/`, never `..`."""
+    tokens = (t.rstrip(".") for t in re.findall(r"(?<![\w./-])[\w.-]+(?:/[\w.-]+)+/?", text))
+    return [t for t in tokens if ".." not in t.split("/")]
+
+
+def guarded_paths(task: Task, job_id: str) -> tuple[list[str], Callable[[str], bool]]:
+    """The paths a job works on and the test of a record's path entry against them
+    ([DECISION-MATCH]): a review on the diff, a worker on `scope`, else on its job file."""
+    job = task.jobs[job_id]
+    if job["kind"] == "review":
+        target, span = job.get("target"), None
+        if target == "integration":  # the whole task diff
+            base, branch = (task.info.get("base") or {}).get("commit"), task.info.get("branch")
+            span = (base, branch) if base and branch else None
+        elif target in task.jobs:
+            span = diff_span(task, target)
+        changed = []
+        if span and task.info.get("git"):
+            changed = git(task.root, "diff", "--name-only", f"{span[0]}..{span[1]}", check=False).splitlines()
+        return changed, lambda entry: any(in_scope(f, [entry]) for f in changed)
+    scope = [str(s).strip("`").strip() for s in as_list(job_meta(task, job_id).get("scope"))]
+    if scope:  # an entry inside the scope, or the scope inside a folder entry
+        return scope, lambda entry: any(in_scope(entry, [s]) or in_scope(s, [entry]) for s in scope)
+    named = path_tokens(read_text(job_file(task, job_id), "") or "")
+    # the job file names the entry, a path inside a folder entry, or the entry's folder
+    return named, lambda entry: any(in_scope(t, [entry]) or t.rstrip("/") == entry.rpartition("/")[0]
+                                    for t in named)
+
+
+def guard_lines(task: Task, job_id: str, checkout: Path) -> list[str]:
+    """[WORKER-POINTERS], [REVIEW-POINTERS], [DIR-POINTERS]: the index lines of the records that
+    guard the job's paths, at most POINTER_LIMIT, then the AGENTS.md / CLAUDE.md files in the
+    folders of those paths below the repository root. Links open from `checkout`."""
+    if task.jobs[job_id]["kind"] not in ("implementation", "integration", "validation", "review"):
+        return []
+    paths, guards = guarded_paths(task, job_id)
+    if not paths:
+        return []
+    hits = [(folder, line) for folder, line, entries in adr_pointer_records(checkout, profile_meta(task))
+            if any(guards(entry) for entry in entries)]
+    lines = []
+    if hits:
+        lines += ["Decision records that guard these paths — open the ones your work touches:",
+                  *(line for _, line in hits[:POINTER_LIMIT])]
+        rest = hits[POINTER_LIMIT:]
+        if rest:
+            indexes = dict.fromkeys(f"{folder}/{ADR_INDEX}" for folder, _ in rest)
+            lines.append(f"+{len(rest)} more, see {', '.join(indexes)}")
+    folders = []
+    for path in paths:
+        parts = path.strip("/").split("/")
+        literal = next((i for i, part in enumerate(parts) if re.search(r"[*?\[]", part)), len(parts))
+        folders += ["/".join(parts[:i]) for i in range(1, literal + 1)]
+    files = [f"{folder}/{name}" for folder in dict.fromkeys(folders) for name in INSTRUCTION_FILES
+             if (checkout / folder / name).is_file()]
+    if files:
+        lines += ["Directory instructions for these paths — read them:", *(f"- {f}" for f in files)]
+    return lines
+
+
+def index_lines(task: Task) -> list[str]:
+    """[INDEX-POINTER]: the index.md of each ADR folder that has one (planner, decision worker)."""
+    return [f"Decision-record index:                 {task.root / folder / ADR_INDEX}"
+            for folder in adr_folders(task.root, profile_meta(task)) if (task.root / folder / ADR_INDEX).is_file()]
 
 
 def earlier_round(task: Task, review_id: str) -> str | None:
@@ -126,6 +207,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
             pointer("Repo profile:                          ", profile),
         ]
         if kind == "planning":
+            lines += index_lines(task)
             lines += [f"Task folder — write the brief, the plan and job files only here: {d}",
                       f"Register jobs and lint with sae: {sae_prefix()} job add | check {task.id}"]
         lines += ["Workdir — read-only; run every command here:", f"  {task.root}"]
@@ -185,8 +267,9 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         if target in task.jobs:
             lines.append(pointer("Decision request (section \"Decision request\"): ", result_file(task, target)))
         lines += [spec_pointer, pointer("Brief:                                 ", d / "brief.md"),
-                  "Workdir — read-only; run every command here:", f"  {task.root}"]
+                  *index_lines(task), "Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "decision.md"
+    lines += guard_lines(task, job_id, task.root if kind == "review" else workdir)
     if kind != "review":
         lines += interaction_lines(task.settings["interaction"])
         lines += hard_stop_lines()
