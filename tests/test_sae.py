@@ -477,6 +477,12 @@ class ViewerAndSetupTests(SaeTestCase):
         self.assertIn(f'"{sb.worktrees}" = "write"', snippets)
         self.assertIn("max_threads = 10", snippets)
         self.assertIn(f"Edit(/{sb.worktrees}/**)", snippets)
+        # Claude Code reads its user settings from CLAUDE_CONFIG_DIR when it is set
+        self.assertIn(str(Path.home() / ".claude" / "settings.json"), snippets)
+        sb.env["CLAUDE_CONFIG_DIR"] = str(sb.tmp / "claude-profile")
+        snippets = sb.sae("setup", "snippets").stdout
+        self.assertIn(f"Merge into {sb.tmp / 'claude-profile' / 'settings.json'}:", snippets)
+        self.assertNotIn("~/.claude/settings.json", snippets)
 
     def test_codex_subagent_cap_check(self):
         sb = self.sandbox()
