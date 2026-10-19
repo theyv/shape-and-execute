@@ -161,6 +161,30 @@ def slugify(text: str) -> str:
     return slug[:40].rstrip("-") or "task"
 
 
+def glob_regex(pattern: str) -> re.Pattern:
+    out, i = "", 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out, i = out + "(?:.*/)?", i + 3
+        elif pattern.startswith("**", i):
+            out, i = out + ".*", i + 2
+        elif pattern[i] == "*":
+            out, i = out + "[^/]*", i + 1
+        elif pattern[i] == "?":
+            out, i = out + "[^/]", i + 1
+        else:
+            out, i = out + re.escape(pattern[i]), i + 1
+    return re.compile(out + "$")
+
+
+def in_scope(path: str, patterns: list[str]) -> bool:
+    for pattern in patterns:
+        plain = pattern.rstrip("/")
+        if path == plain or path.startswith(plain + "/") or glob_regex(pattern).match(path):
+            return True
+    return False
+
+
 def read_text(path: Path, default: str | None = None) -> str | None:
     try:
         return path.read_text(encoding="utf-8")

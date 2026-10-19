@@ -20,6 +20,7 @@ from .common import (
     emit,
     fail,
     file_stamp,
+    in_scope,
     iso,
     read_text,
     rel,
@@ -33,7 +34,7 @@ from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
 from .findings import finding_stem, open_findings_everywhere
-from .reviews import check_finish_gates, finish_merges, in_scope, merge_job
+from .reviews import check_finish_gates, finish_merges, merge_job
 from .routing import resolve_model
 from .session_tokens import record_session_snapshot, snapshot_event
 from .tasks import (

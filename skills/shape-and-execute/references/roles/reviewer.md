@@ -41,7 +41,8 @@ Look for:
 - architectural drift; changes broader than needed;
 - inconsistencies between components or between jobs;
 - tests that give false confidence; regressions that validation would not catch;
-- needless complexity; requirements or tests weakened without saying so.
+- needless complexity; requirements or tests weakened without saying so;
+- a change that breaks a decision record your prompt points to: open each one the diff touches.
 
 For a plan, also: requirement coverage, decomposition, hot files, missing validation, risky
 assumptions.

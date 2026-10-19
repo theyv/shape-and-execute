@@ -8,6 +8,8 @@ orchestrator may adapt it during execution.
 
 - `intent.md` and `specs.md`: the contract.
 - Repository instructions (AGENTS.md, CLAUDE.md) and `.tasks/repo/profile.md`.
+- The decision-record index (`index.md`) in your prompt: read it, then only the records you
+  need.
 - The code base: read what you need to plan, no more.
 - Research reports only when the spec points to them for a decision you must understand.
 
@@ -27,7 +29,8 @@ orchestrator may adapt it during execution.
   It merges before the fan-out.
 - Hot files (lockfile, route registry, migrations, barrel exports, translations; see the repo
   profile): give each one an owner job, or move those edits into one later job, or accept a
-  trivial conflict (an append-only list). Declare `scope` on parallel writer jobs.
+  trivial conflict (an append-only list).
+- Give a writer job a `scope` when you can: it also brings the records that guard those paths.
 - Read-only work (research, review, audits) parallelizes well. Many writers on shared files
   do not.
 - Set a difficulty per job: `mechanical`, `normal` or `hard`. It selects the model.
@@ -46,7 +49,7 @@ orchestrator may adapt it during execution.
    IDs are semantic UPPER-KEBAB (`STATUS-CONTRACT`, `STATUS-API`), without ordering numbers.
 2. Fill each `jobs/<ID>.md` that `sae` scaffolded: objective (one sentence), inputs (pointers
    to spec sections, brief sections, files), scope, boundaries, expected output, validation;
-   frontmatter `covers`, `verify` (deterministic commands) and, for parallel writers, `scope`.
+   frontmatter `covers`, `verify` (deterministic commands) and `scope` when you can.
    A writer job's `verify` runs the tests of what it changes plus the profile's smoke command.
    Describe the outcome and the limits. Leave implementation choices to the worker. Point to
    brief sections; do not restate them. A job that fixes findings names their files in
