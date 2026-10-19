@@ -4,12 +4,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from saetest import SKILL_DIR, SaeTestCase
+from saetest import REPO_ROOT, SKILL_DIR, SaeTestCase
 
-REPO_ROOT = SKILL_DIR.parents[1]
-RULES = ("---\nadr_rules:\n  - skills/shape-and-execute/ -> docs/adr/\n"
-         "  - skills/shape-and-execute/scripts/ -> docs/adr/sae-scripts/\n"
-         "  - skills/other-skill/ -> docs/adr/other-skill/\n---\n")
+RULES = ("---\nadr_rules:\n  - skills/alpha/ -> docs/adr/alpha/\n"
+         "  - skills/alpha/scripts/ -> docs/adr/alpha-scripts/\n"
+         "  - skills/beta/ -> docs/adr/beta/\n---\n")
+
+
+def skill_adr_folder() -> Path:
+    """The folder of this repository that holds the skill's _intent.md: its decision records."""
+    intents = [p for p in sorted((REPO_ROOT / "docs").rglob("_intent.md"))
+               if p.read_text().startswith("# Intent: shape-and-execute\n")]
+    assert len(intents) == 1, intents
+    return intents[0].parent.relative_to(REPO_ROOT)
 
 
 class AdrRulesTests(SaeTestCase):
@@ -32,20 +39,18 @@ class AdrRulesTests(SaeTestCase):
     def test_this_repository_routes_sae_paths_to_its_folder(self):
         self.profile((REPO_ROOT / ".tasks" / "repo" / "profile.md").read_text())
         data = self.accept(self.draft("skills/shape-and-execute/scripts/sae.py"))
-        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "shape-and-execute")
-        data = self.accept(self.draft("skills/other-skill/SKILL.md,LifeCycle", "Other"))
-        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "other-skill")
+        self.assertEqual(Path(data["file"]).parent, self.sb.repo / skill_adr_folder())
 
     def test_longest_prefix_wins_and_prefixes_match_whole_segments(self):
         self.profile(RULES)
-        data = self.accept(self.draft("./skills/shape-and-execute/scripts/sae_lib/findings.py"))
-        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "sae-scripts")
+        data = self.accept(self.draft("./skills/alpha/scripts/lib/findings.py"))
+        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "alpha-scripts")
         # both paths fall under rules of one folder; a name that is no path is ignored
-        data = self.accept(self.draft("skills/other-skill,skills/other-skill/SKILL.md,Term", "Two"))
-        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "other-skill")
-        # skills/shape-and-execute-extra/ is not under skills/shape-and-execute/: the flat folder
+        data = self.accept(self.draft("skills/beta,skills/beta/SKILL.md,Term", "Two"))
+        self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr" / "beta")
+        # skills/alpha-extra/ is not under skills/alpha/: the flat folder
         # (here the existing docs/adr/ that the rules above created)
-        data = self.accept(self.draft("skills/shape-and-execute-extra/x.py", "Three"))
+        data = self.accept(self.draft("skills/alpha-extra/x.py", "Three"))
         self.assertEqual(Path(data["file"]).parent, self.sb.repo / "docs" / "adr")
 
     def test_no_match_falls_back_to_the_flat_folder(self):
@@ -58,9 +63,9 @@ class AdrRulesTests(SaeTestCase):
     def test_a_draft_under_two_folders_is_refused_with_both_named(self):
         """[EDGE-ADR-TWO-RULES]"""
         self.profile(RULES)
-        draft = self.draft("skills/shape-and-execute/SKILL.md,skills/other-skill/SKILL.md")
+        draft = self.draft("skills/alpha/SKILL.md,skills/beta/SKILL.md")
         err = " ".join(self.accept(draft, code=1).stderr.split())
-        self.assertIn("docs/adr, docs/adr/other-skill", err)
+        self.assertIn("docs/adr/alpha, docs/adr/beta", err)
         self.assertIn("Narrow applies-to or split the draft", err)
         self.assertTrue(draft.exists())
         self.assertFalse((self.sb.repo / "docs").exists())

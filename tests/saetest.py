@@ -17,7 +17,19 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True  # importing sae must not leave __pycache__ inside the skill's scripts/
 
-SKILL_DIR = Path(__file__).resolve().parents[2] / "skills" / "shape-and-execute"
+
+
+def _repo_root() -> Path:
+    """The nearest folder above this file that holds skills/shape-and-execute/SKILL.md: the tests
+    work wherever their folder sits below the repository root."""
+    for folder in Path(__file__).resolve().parents:
+        if (folder / "skills" / "shape-and-execute" / "SKILL.md").is_file():
+            return folder
+    raise RuntimeError(f"no skills/shape-and-execute/SKILL.md above {Path(__file__).resolve().parent}")
+
+
+REPO_ROOT = _repo_root()
+SKILL_DIR = REPO_ROOT / "skills" / "shape-and-execute"
 SCRIPTS = SKILL_DIR / "scripts"
 SAE = SCRIPTS / "sae.py"
 
