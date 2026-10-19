@@ -70,6 +70,12 @@ def codex_home() -> Path:
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
 
 
+def claude_settings_file() -> Path:
+    """The user settings Claude Code reads: `$CLAUDE_CONFIG_DIR/settings.json`, else ~/.claude/settings.json."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR")
+    return (Path(base).expanduser() if base else Path.home() / ".claude") / "settings.json"
+
+
 def read_toml(path: Path) -> dict | None:
     text = read_text(path)
     if text is None:
@@ -538,12 +544,13 @@ max_threads = {CODEX_RECOMMENDED_SUBAGENTS}
         "",
         "## Claude Code",
         "The worktree root must be an additional directory. The allow rules are for users who do not run with "
-        "bypassed permissions. Merge into ~/.claude/settings.json:",
+        f"bypassed permissions. Merge into {claude_settings_file()}:",
         "",
         json.dumps(claude, indent=2),
     ]
     emit(args, "\n".join(lines), {"codex_profile_file": str(profile_file), "codex_profile": codex_profile,
-                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude})
+                                  "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude,
+                                  "claude_settings_file": str(claude_settings_file())})
     return EXIT_OK
 
 
