@@ -130,8 +130,10 @@ When `sae next` reports that all jobs are done:
    `amendment` lines in `events.jsonl`, `## Amendments` in `specs.md`), as
    [plan.md](plan.md) "Decision-record drafts" says: only durable ones, often none.
 2. Quote review (SKILL.md, "Quote review at approvals"): list the user's quotes written since
-   the plan approval, these drafts included, and apply the user's changes. Then
-   `sae finish <task>`. Add `--with-open` only when the user accepts open items. When it
+   the plan approval, these drafts included, with the file of each. When there are new quotes,
+   wait for the user to accept, reword or remove them, in every interaction mode; apply the
+   changes to the files, and only then run `sae finish <task>`. With no new quotes, run it
+   at once. Add `--with-open` only when the user accepts open items. When it
    refuses because a review's last round says `changes-required`, or a check is stale: add fix
    jobs, or, only on the user's word, `--override "<reason>"`.
 3. Report to the user from the printed final report: what was delivered, what to check before
