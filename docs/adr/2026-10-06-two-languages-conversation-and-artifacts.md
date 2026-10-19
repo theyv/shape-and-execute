@@ -19,6 +19,8 @@ artifacts (task files, code comments, commit messages, documentation). A reposit
 the artifact language in `.tasks/repo/profile.md`. For code comments the repository's existing
 convention wins. When a translation would lose a nuance of the owner's words, agents quote the
 original.
+[human] 2026-10-19, superseded for quotes in files: they are smoothed into the artifact
+language (SKILL.md, "Smooth every quote").
 
 ## Why
 - Each person talks in their own language, while the repository keeps one language for its
