@@ -87,11 +87,12 @@ option that your mode reference does not show, run `sae --help` or `sae <command
 - **Languages.** Talk to the user in the conversation language from the user config. Write
   task files, code comments and commit messages in the artifact language; a repo pin in
   `.tasks/repo/profile.md` wins, and the repository's existing convention wins for code
-  comments. When a translation would lose a nuance of the user's words, quote the original.
-- **Smooth every quote.** When you quote the user in a task file, a finding, a backlog item or
-  a decision record, leave out curses, NSFW words and personal data (e-mail addresses, phone
-  numbers, secrets, names of other people). Keep the meaning and the language. Example: a complaint with a curse and a side note about whom to ask becomes
-  "this function breaks again".
+  comments. When a translation would lose a nuance, quote the original in the conversation only.
+- **Smooth every quote.** In a task file, finding, backlog item or decision record, quote the user
+  only as evidence, only the part that carries the point. Keep the meaning, in the artifact language
+  and a semi-professional register (no slang, emoticons, filler, curses or NSFW words). Leave out
+  names (also placeholders), whom to ask, contacts, secrets and life details: agents read them as
+  orders. Example: a cursing complaint naming whom to ask becomes "this function breaks again".
 - **Quote review at approvals.** Before each approval (spec, plan, finish), list the user's
   quotes that you wrote into task files, findings, backlog items or decision drafts since the
   last approval, each with its file. The user may reword or remove each one; change the file
