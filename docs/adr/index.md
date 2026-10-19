@@ -38,7 +38,7 @@ decision in one sentence. Whoever writes a record adds its line here.
 - [Worktrees live in a persistent user cache](2026-10-06-worktrees-live-in-a-persistent-user-cach.md) — Worktrees live in a configurable per-user cache folder.
 - [A dark viewer in the style of Supabase](2026-10-07-a-dark-viewer-in-the-style-of-supabase.md) — The viewer is dark by default in a Supabase style, with a light theme only as a second token set.
 - [Codex detection by its thread ID variable](2026-10-07-codex-detection-by-its-thread-id-variabl.md) — `sae` detects a Codex shell by `CODEX_THREAD_ID` or `CODEX_SESSION_ID`.
-- [Evals after dogfood and before the public release](2026-10-07-evals-after-dogfood-and-before-the-publi.md) — Dogfood first; evals that show the skill's problems come before the public release.
+- [Evals after dogfood and before the public release](2026-10-07-evals-after-dogfood-and-before-the-publi.md) — Superseded by the 2026-10-19 record below: dogfood first; evals that show the skill's problems come before the public release.
 - [Jobs merge into the task branch and the owner merges the task](2026-10-07-jobs-merge-into-the-task-branch-and-the.md) — Each job merges into the task branch once done and reviewed, and the owner merges the task branch.
 - [No fits-one-session prompt at intake](2026-10-07-no-fits-one-session-prompt-at-intake.md) — Intake does not ask whether a task fits one session; a small task gets a short spec and one worker.
 - [One list of hard stops for every mode](2026-10-07-one-list-of-hard-stops-for-every-mode.md) — Hard stops hold in every mode and live only in `references/interaction-modes.md`.
@@ -106,6 +106,7 @@ decision in one sentence. Whoever writes a record adds its line here.
 - [The sae help is the CLI reference](2026-10-12-the-sae-help-is-the-cli-reference.md) — `sae --help` and `sae <command> --help` are the CLI reference, and no CLI spec is kept beside the code.
 - [Tiers L1 to L4 with tiers in cells on by default](2026-10-12-tiers-l1-to-l4-with-tiers-in-cells-on-by.md) — A tier (L1–L4) is a named model · effort that cells use by default.
 - [Two review rounds, then park](2026-10-12-two-review-rounds-then-park.md) — After a second `changes-required` round the job parks for the owner, and a later passing round ends the park.
+- [Release without evals, evals come after it](2026-10-19-release-without-evals-evals-come-after-i.md) — The skill is released as an early version without evals, and evals come after the release.
 
 ## Research notes
 

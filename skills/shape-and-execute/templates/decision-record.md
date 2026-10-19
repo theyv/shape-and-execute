@@ -15,7 +15,7 @@ applies-to: []            # paths and code names, so a search in the code finds 
 ## Decision
 
 ## Why
-<!-- Quote the owner's words when they carry the reason. -->
+<!-- Quote the owner's words when they carry the reason, smoothed (SKILL.md, "Smooth every quote"). -->
 
 ## Rejected options
 

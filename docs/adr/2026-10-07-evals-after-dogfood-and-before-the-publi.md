@@ -1,7 +1,7 @@
 ---
 title: Evals after dogfood and before the public release
 type: business
-status: accepted
+status: superseded
 date: 2026-10-07
 source: DL-80, genesis review 2026-10-07 (G3)
 applies-to: [skills/shape-and-execute, tests, evals]

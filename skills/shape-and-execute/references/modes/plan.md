@@ -54,6 +54,7 @@ disputed finding to the plan gate with your view; the user settles it. Log the o
    - the settings card with its current values: "ok, or change something?";
    - holds: the user may stop execution after any job to look at its result
      (`sae hold <task> <ID>`, or the viewer);
+   - the quote review (SKILL.md, "Quote review at approvals");
    - where execution should run: a fresh session after deep shaping or a long conversation,
      in either harness; this session for a small task.
 3. Apply changes: settings with `sae set`; plan changes through the planner, or yourself
@@ -66,7 +67,7 @@ disputed finding to the plan gate with your view; the user settles it. Log the o
 Draft a record only for a durable decision: one a later agent could not rebuild from the code
 (why the product works this way, why an option was rejected). Usually zero to three per task.
 Sources: this conversation, `intent.md`, the spec's decisions, the research reports. Quote the
-user's words where they carry the "why".
+user's words where they carry the "why", smoothed (SKILL.md, "Smooth every quote").
 
 For each: `sae adr new <task> "<title>" --type architecture|business --applies-to <paths>`,
 then write the draft that it prints the path of. Drafts wait in `.tasks/adr/` for triage; they

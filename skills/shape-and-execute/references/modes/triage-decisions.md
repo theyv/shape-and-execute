@@ -10,7 +10,8 @@ the repository.
 3. Say briefly which drafts belong in the docs and which do not, with one reason each. Ask in
    the grill format ([grill.md](../grill.md)).
 4. For each draft the user keeps: write the final text together with the user, in the draft
-   file. Keep the user's quoted words where they carry the "why", and the "applies to" paths
+   file. Keep the user's quoted words where they carry the "why", smoothed
+   (SKILL.md, "Smooth every quote"), and the "applies to" paths
    and code names, so that a code search finds the record.
 5. `sae adr accept <draft>` moves it into the ADR folder and prints where.
    `sae adr reject <draft> --reason "<why>"` closes a rejected one with its reason.
