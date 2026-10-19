@@ -64,8 +64,14 @@ disputed finding to the plan gate with your view; the user settles it. Log the o
 
 ## 5. Decision-record drafts
 
-Draft a record only for a durable decision: one a later agent could not rebuild from the code
-(why the product works this way, why an option was rejected). Usually zero to three per task.
+Put each piece of "why" knowledge in the place that fits its reach:
+
+- one file → a short comment in that file;
+- one directory → that directory's `AGENTS.md`;
+- cross-cutting, or a rejected option that someone will propose again → a decision record.
+
+A record must pass the test: without it, an agent would "fix" something on purpose, or bring
+back a rejected option. Usually zero to three per task.
 Sources: this conversation, `intent.md`, the spec's decisions, the research reports. Quote the
 user's words where they carry the "why", smoothed (SKILL.md, "Smooth every quote").
 
