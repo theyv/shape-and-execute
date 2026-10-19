@@ -43,6 +43,8 @@ LEVELS = ("economy", "balanced", "premium")
 OLD_LEVEL_NAMES = {"max": "premium"}
 LEVEL_PHASES = ("research", "planning", "execution", "review")
 INTERACTION_MODES = ("full-auto", "auto", "critical-only", "collaborative", "interactive")
+# Keep `selected-jobs` and `all-jobs` (the viewer shows one `jobs` box): one `jobs` value would
+# need a migration of existing tasks.
 REVIEW_POINTS = ("spec", "plan", "selected-jobs", "all-jobs", "integration")
 HARNESSES = ("claude", "codex")
 DECISION_CLASSES = ("routine", "clear-choice", "open-tradeoff", "consequential", "spec-clarification", "spec-change")
@@ -68,7 +70,7 @@ ASK_CLASSES = {
 PARK_CLASSES = {"auto": ("spec-change",)}
 HARD_STOPS_LINE = ("Hard stops: no push/deploy, no secrets, no CI/permission changes outside the plan, "
                    "no destroying what a job did not create.")
-# The limit of failed verify re-runs per job (record 2026-10-07-sae-re-runs-verify-up-to-a-per-task-limi.md).
+# The limit of failed verify re-runs per job.
 # A settings.json without the key uses it;
 # `sae new` writes it into every new task unless config.defaults.max_verify_failures says otherwise.
 DEFAULT_MAX_VERIFY_FAILURES = 3
@@ -223,7 +225,8 @@ def rel(path: Path, root: Path) -> str:
 
 def emit(args, text: str, data=None) -> None:
     """Print owner text as written ([OUT-NO-PROSE-WRAP]): the terminal wraps prose, so no word,
-    command or path is split. With --json, print `data` instead."""
+    command or path is split. Do not bring wrapping back here: wrapping prose to 72 columns
+    failed three fix rounds. With --json, print `data` instead."""
     if getattr(args, "json", False):
         print(json.dumps(data if data is not None else {"text": text}, indent=2, ensure_ascii=False))
     elif text:

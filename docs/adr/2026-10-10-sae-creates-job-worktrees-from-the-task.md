@@ -3,8 +3,9 @@ title: sae creates job worktrees from the task branch
 type: architecture
 status: accepted
 date: 2026-10-10
-source: DL-49, DL-50, design interview 2026-10-06 (D17); refined by DL-110, task 2026-10-08-1733--sae-dogfood-fixes
+source: task 2026-10-08-1733--sae-dogfood-fixes
 applies-to: [skills/shape-and-execute/scripts/sae_lib/workspaces.py, prepare_workspace, job_branch, setup_worktree, task_worktrees_dir]
+revisit-when: Claude Code bases subagent worktrees on the parent's HEAD and Codex gets per-subagent worktrees
 ---
 
 # sae creates job worktrees from the task branch

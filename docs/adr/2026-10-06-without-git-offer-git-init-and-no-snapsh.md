@@ -3,7 +3,6 @@ title: Without git, offer git init and no snapshots
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-54, design interview 2026-10-06 (Q18)
 applies-to: [skills/shape-and-execute/references/modes/execute.md, skills/shape-and-execute/references/interaction-modes.md]
 ---
 

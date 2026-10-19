@@ -3,7 +3,7 @@ title: Jobs never update design docs
 type: architecture
 status: accepted
 date: 2026-10-12
-source: task 2026-10-12-1846--sae-findings-docs [DECISION-NO-DOCS-PER-JOB], [NO-DOCS-JOB]
+source: task 2026-10-12-1846--sae-findings-docs
 applies-to: [skills/shape-and-execute/references/roles/planner.md, skills/shape-and-execute/references/modes/plan.md, skills/shape-and-execute/references/modes/shape.md, skills/shape-and-execute/references/roles/worker.md]
 ---
 
@@ -20,7 +20,7 @@ docs-sync job. The contract before the code is the task's `specs.md`; decisions 
 `docs/adr/` as decision records through triage.
 
 ## Why
-The owner: "This biases the context toward confirming the implementation.". A job would write the
+The owner: "This biases the context toward confirming the implementation." A job would write the
 document it is checked against.
 
 ## Rejected options

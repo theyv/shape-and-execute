@@ -3,8 +3,8 @@ title: Relations between tasks are prose
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-65, second design interview 2026-10-06 (S2-Q5, S2-Q6, S2-Q13)
 applies-to: [skills/shape-and-execute/templates/intent.md, skills/shape-and-execute/references/modes/shape.md, Related tasks]
+revisit-when: a GUI needs task relations
 ---
 
 # Relations between tasks are prose
@@ -19,7 +19,7 @@ on <id> — start after it is merged", "Spun off from <id>, because …". No `or
 fields, no computed series, no order checks.
 
 ## Why
-- The owner: "These tasks may be peers rather than a parent and its children.". Structure can wait until a GUI needs it.
+- The owner: "These tasks may be peers rather than a parent and its children." Structure can wait until a GUI needs it.
 - Most backlog items are neighbours, not parts of a series. A computed series would make
   shaping read earlier tasks it does not need. The shaping agent follows a pointer when it
   helps.

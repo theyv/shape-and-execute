@@ -3,8 +3,8 @@ title: Docs keep only the why
 type: architecture
 status: accepted
 date: 2026-10-12
-source: task 2026-10-12-1846--sae-findings-docs [DECISION-WHY-ONLY], [WHY-ONLY-DOCS]
-applies-to: [docs/adr, docs/adr/_intent.md, skills/shape-and-execute, wip-docs]
+source: task 2026-10-12-1846--sae-findings-docs
+applies-to: [docs/adr]
 ---
 
 # Docs keep only the why
@@ -27,11 +27,11 @@ exit codes) lives in the code, `--help` and the tests. Before the code, a task's
 the contract.
 
 ## Why
-- The owner's question: "Is it useful to maintain this documentation alongside the code?".
-- The owner: "The documentation helped build the tool, but I am unsure whether it needs to be maintained with it." Accepted: "I agree with option B.".
-- What the docs-first flow did well: "We first wrote down what we wanted, then gave it to the job as context so it could check its work.". A task's `specs.md` already
+- The owner's question: "Is it useful to maintain this documentation alongside the code?"
+- The owner: "The documentation helped build the tool, but I am unsure whether it needs to be maintained with it." Accepted: "I agree with option B."
+- What the docs-first flow did well: "We first wrote down what we wanted, then gave it to the job as context so it could check its work." A task's `specs.md` already
   does that: a contract written before the code, approved by the owner, given to every job.
-- On `_intent.md`: "Explain why first, then how. The spec already defines what is required.".
+- On `_intent.md`: "Explain why first, then how. The spec already defines what is required."
 
 ## Rejected options
 - Design docs kept in step with the code beside it: four copies of one contract drift.
@@ -41,4 +41,4 @@ the contract.
 - The decision log became these records on 2026-10-12. The area docs, the CLI and viewer specs,
   the parking lot and the genesis review were deleted; git keeps them. Open parked items became
   follow-up findings.
-- The glossary is replaced by a retired-terms test (see [A retired-terms test instead of a glossary](2026-10-12-a-retired-terms-test-instead-of-a-glossa.md)).
+- The glossary is replaced by a retired-terms test ([tests/test_retired_terms.py](../../tests/test_retired_terms.py)).

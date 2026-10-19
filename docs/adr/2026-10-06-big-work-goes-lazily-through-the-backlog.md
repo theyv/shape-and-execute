@@ -3,7 +3,6 @@ title: Big work goes lazily through the backlog
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-62, second design interview 2026-10-06 (S2-Q1, S2-Q3)
 applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/modes/shape.md, skills/shape-and-execute/scripts/sae_lib/lifecycle.py, new_backlog_item]
 ---
 

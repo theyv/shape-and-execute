@@ -3,7 +3,7 @@ title: Model names only in the setup proposal and the Claude family list
 type: architecture
 status: accepted
 date: 2026-10-12
-source: DL-105, task 2026-10-08-1733--sae-dogfood-fixes (planner, [MODEL-LISTS]); task 2026-10-12-1846--sae-findings-docs [SETTINGS-CLAUDE-FAMILIES]
+source: task 2026-10-08-1733--sae-dogfood-fixes, task 2026-10-12-1846--sae-findings-docs
 applies-to: [skills/shape-and-execute/references/modes/setup.md, skills/shape-and-execute/scripts/sae_lib/setup_mode.py, skills/shape-and-execute/scripts/sae_lib/server.py, skills/shape-and-execute/assets/viewer/settings.js, settings_data]
 ---
 

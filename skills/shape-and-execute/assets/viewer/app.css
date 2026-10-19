@@ -1,4 +1,6 @@
 /* sae viewer: tokens (dark, light), layout, shared components, the fixed palette */
+/* Dark is the designed theme, in a Supabase style. Light is only a second token set: no two
+   equal themes switched by prefers-color-scheme. */
 :root{--bg:#121212;--s1:#171717;--s2:#1c1c1c;--s3:#262626;--line:#2a2a2a;--line2:#3a3a3a;--ink:#ededed;--ink2:#a1a1a1;--ink3:#7c7c7c;--hl:rgba(255,255,255,.035);
 --acc:#3ecf8e;--acc-bg:#006239;--acc-bd:rgba(62,207,142,.45);--acc-ink:#fafafa;--scrim:rgba(0,0,0,.6);
 --run:#72adff;--run-b:rgba(72,140,255,.15);--done:#b4a8ff;--done-b:rgba(140,122,255,.15);--park:#f0b35a;--park-b:rgba(240,168,70,.15);

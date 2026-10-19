@@ -3,8 +3,8 @@ title: Follow PROSE without ceremony
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-06, DL-30, DL-31, DL-32, design interview 2026-10-06 (D24, D28, D29, D30)
-applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/roles, skills/shape-and-execute/references/modes/execute.md, skills/shape-and-execute/templates/brief.md, skills/shape-and-execute/templates/job.md, skills/shape-and-execute/scripts/sae_lib/prompts.py, BRIEF_MAX_LINES]
+applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/roles/planner.md, skills/shape-and-execute/references/modes/execute.md, skills/shape-and-execute/templates/brief.md, skills/shape-and-execute/templates/job.md, skills/shape-and-execute/scripts/sae_lib/prompts.py, BRIEF_MAX_LINES]
+revisit-when: workers overstep their authority
 ---
 
 # Follow PROSE without ceremony
@@ -23,12 +23,12 @@ boundaries, explicit hierarchy. A research subagent evaluated the design against
 - A role authority table, kept small: the owner asked that safety not take much space
   [agent].
 - Hard stops hold in every mode (see [One list of hard stops for every mode](2026-10-07-one-list-of-hard-stops-for-every-mode.md)); `sae` re-runs
-  `verify` (see [sae re-runs verify, up to a per-task limit](2026-10-07-sae-re-runs-verify-up-to-a-per-task-limi.md)).
+  `verify`.
 - Precedence: repository instructions > spec > brief > job file. A lower level may refine a
   higher one, never silently override it [agent].
 
 ## Why
-The owner wants the skill to follow PROSE, filtered through [Light in its complexity](2026-10-06-light-in-its-complexity.md): an idea
+The owner wants the skill to follow PROSE, filtered through "Light in its complexity" ([the intent's Principles](_intent.md)): an idea
 is kept when it adds no step to a run.
 
 ## Rejected options

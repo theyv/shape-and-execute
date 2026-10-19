@@ -284,8 +284,8 @@ def after_writer_done(task: Task, job_id: str, config: dict | None, out: list[st
         if rounds >= 1:
             review_id = f"REVIEW-{target}-{rounds + 1}"
             if review_id not in task.jobs:
-                # Done is enough for the target and its fix jobs: they merge after this round
-                # (record 2026-10-10-a-review-waits-for-its-target-to-be-done.md).
+                # Done is enough for the target and its fix jobs: they merge after this round,
+                # so waiting for their merge would deadlock.
                 add_generated_job(task, review_id, "review", [target] + fixes, None, target,
                                   f"round {rounds + 1} after {', '.join(fixes)}", round_=rounds + 1)
                 out.append(f"Added {review_id}: dispatch it.")

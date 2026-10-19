@@ -3,7 +3,7 @@ title: Every subagent gets an explicit effort
 type: architecture
 status: accepted
 date: 2026-10-10
-source: DL-100, task 2026-10-08-1733--sae-dogfood-fixes (D8, items 20, 23; [EFFORT-EVERY-DISPATCH])
+source: task 2026-10-08-1733--sae-dogfood-fixes
 applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/scripts/sae_lib/prompts.py, skills/shape-and-execute/scripts/sae_lib/progress.py, build_prompt, external_review_command, cmd_dispatch]
 ---
 

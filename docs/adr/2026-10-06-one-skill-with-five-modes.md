@@ -3,8 +3,8 @@ title: One skill with five modes
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-01, design interview 2026-10-06 (Q20, D1, Q32)
-applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/modes]
+applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/modes/setup.md]
+revisit-when: the fast-lane backlog item (2026-10-14-2150) is shaped
 ---
 
 # One skill with five modes

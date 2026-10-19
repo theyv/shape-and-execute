@@ -110,9 +110,8 @@ def pattern_matches_in(source: Path, pattern: str) -> bool:
 
 
 def copy_worktree_includes(live: Path, worktree: Path) -> tuple[list[str], list[str]]:
-    """Copies the ignored files listed for worktrees into a new worktree ([SETUP-SOURCE],
-    record 2026-10-10-setup-files-come-from-the-main-worktree.md): from the main worktree, and a
-    file missing there from the checkout that runs sae.
+    """Copies the ignored files listed for worktrees into a new worktree ([SETUP-SOURCE]):
+    from the main worktree, and a file missing there from the checkout that runs sae.
     Returns (copied paths, patterns that match nothing in either place)."""
     sources = []
     for source in (main_worktree(live), running_checkout()):

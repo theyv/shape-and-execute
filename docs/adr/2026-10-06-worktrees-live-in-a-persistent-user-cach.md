@@ -3,7 +3,6 @@ title: Worktrees live in a persistent user cache
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-51, design interview 2026-10-06 (Q27)
 applies-to: [skills/shape-and-execute/scripts/sae_lib/setup_mode.py, skills/shape-and-execute/scripts/sae_lib/config.py, skills/shape-and-execute/scripts/sae_lib/workspaces.py, default_worktree_root, worktree_root, task_worktrees_dir]
 ---
 

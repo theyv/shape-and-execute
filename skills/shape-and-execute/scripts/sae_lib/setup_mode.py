@@ -223,6 +223,7 @@ def config_skeleton(facts: dict) -> dict:
         tables = {phase: {lvl: {d: {"tier": "<L1-L4>", "model": "<model, used when tiers are off>",
                                     "effort": "<effort>"} for d in PHASE_DIFFICULTIES[phase]}
                           for lvl in LEVELS} for phase in LEVEL_PHASES}
+        # tiers in cells stays on by default, although the owner works with it off
         return {"tiers_in_cells": True, "tiers": {t: {"model": "<model>", "effort": "<effort>"} for t in TIERS},
                 "tables": tables}
 

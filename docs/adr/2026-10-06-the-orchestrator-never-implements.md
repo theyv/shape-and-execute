@@ -3,8 +3,8 @@ title: The orchestrator never implements
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-37, design interview 2026-10-06 (D9)
 applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/references/modes/execute.md, skills/shape-and-execute/references/modes/plan.md]
+revisit-when: the fast-lane backlog item (2026-10-14-2150) is shaped
 ---
 
 # The orchestrator never implements

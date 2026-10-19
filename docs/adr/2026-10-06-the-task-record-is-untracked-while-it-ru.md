@@ -3,8 +3,8 @@ title: The task record is untracked while it runs and committed whole at finish
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-46, DL-47, design interview 2026-10-06 (Q4, Q21)
 applies-to: [skills/shape-and-execute/scripts/sae_lib/lifecycle.py, commit_task_record, cmd_finish]
+revisit-when: committing the whole record turns out too heavy
 ---
 
 # The task record is untracked while it runs and committed whole at finish
@@ -27,5 +27,5 @@ which hold tracked files only.
 
 ## Rejected options
 - A compact task record (the agent's proposal). The owner keeps the idea open if committing
-  everything turns out too heavy: "We can reconsider if this approach does not work well.".
-- Committing the task folder at `sae start` (see [Backlog files go into git like findings](2026-10-06-backlog-files-go-into-git-like-findings.md)).
+  everything turns out too heavy: "We can reconsider if this approach does not work well."
+- Committing the task folder at `sae start`.

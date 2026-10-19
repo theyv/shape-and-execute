@@ -3,7 +3,6 @@ title: Jobs merge into the task branch and the owner merges the task
 type: architecture
 status: accepted
 date: 2026-10-07
-source: DL-45, design interview 2026-10-06 (Q19, D11); DL-72, genesis review 2026-10-07 (stop A)
 applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/scripts/sae_lib/reviews.py, skills/shape-and-execute/scripts/sae_lib/lifecycle.py, merge_job, cmd_merge, cmd_finish]
 ---
 
@@ -22,7 +21,7 @@ review proposed gates between waves of jobs.
 ## Why
 - Nothing reaches the base branch without the owner, so even `full-auto` has a safety net: the
   task branch and the final report.
-- The owner first wanted stops outside the auto modes, then: "If the changes go to the task branch, keep the existing behavior.".
+- The owner first wanted stops outside the auto modes, then: "If the changes go to the task branch, keep the existing behavior."
 
 ## Rejected options
 - Genesis A5 WAVE EXECUTION: a gate between waves.

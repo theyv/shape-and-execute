@@ -16,9 +16,9 @@ Retrieved 2026-10-06. Purpose: give a skill-design agent the PROSE rules, how th
 
 **Sources**
 
-- `ch13` = Daniel Meppiel, "The PROSE Constraints", The Agentic SDLC Handbook, chapter 13 (slug `ch13-the-prose-specification`). https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch13-the-prose-specification.html . Licence CC BY-NC-ND 4.0, so quotes here are short fragments; everything else is paraphrase.
+- `ch13` = Daniel Meppiel, "The PROSE Constraints", The Agentic SDLC Handbook, chapter 13 (slug `ch13-the-prose-specification`). https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch13-the-prose-specification.html . Licence CC BY-NC-ND 4.0, so the chapter is paraphrased here, with at most a few short terms.
 - `G` = local Genesis skill v0.4.0, resolved commit `18e73c35e5cefaf431fbe4e080e8f125ebfece33`, at `apm_modules/danielmeppiel/genesis/`. Paths are relative to `skills/genesis/` unless they start with `site/` or `README`.
-- `L` = other local file: `~/.claude/skills/apm-primitives/SKILL.md` (the user's APM rules).
+- `L` = a local note on APM usage (not kept).
 - `D` = the design summary in the task brief. The real SKILL.md was not available, so "absent" means "absent from the summary".
 - Secondary, checked once: https://danielmeppiel.github.io/awesome-ai-native/ . It defines nothing itself and points to the handbook as its in-depth reference for PROSE (paraphrase of the fetch result; page text not saved).
 
@@ -39,9 +39,9 @@ Retrieved 2026-10-06. Purpose: give a skill-design agent the PROSE rules, how th
 ## 1. Bottom line
 
 1. PROSE = Progressive Disclosure, Reduced Scope, Orchestrated Composition, Safety Boundaries, Explicit Hierarchy [S 13.1; G SKILL.md:295-297 agrees].
-2. It is a discipline, not a standard. The chapter says it is "not a standards body or a published spec" [S intro] yet ends "The five constraints are the specification" [S 13.9]. There is no MUST/SHOULD language. The normative core is five definitions plus an 11-question yes/no checklist [S 13.9].
+2. It is a discipline, not a standard. The chapter says it is no standards body and no published spec [S intro], yet it ends by calling the five constraints the specification [S 13.9]. There is no MUST/SHOULD language. The normative core is five definitions plus an 11-question yes/no checklist [S 13.9].
 3. ch13 says little that is skill-specific. It names skill frontmatter a "capability index" [S 13.2.1] and lists SKILL.md as one primitive type [S 13.4.1]. It says nothing about SKILL.md size, scripts, CLIs, worktrees or "subagents" by name. Those rules come from Genesis and agentskills.io, not from PROSE. Genesis itself says the handbook is not authoritative for the SKILL.md container surface [G site/src/content/docs/resources/external-corpus.md:49-92].
-4. ch13's own priority rule: fix S1-S3 first "regardless of your total score", then E1-E2, then P/R/O by the symptom you see [S 13.9].
+4. ch13's own priority rule: fix S1-S3 first, whatever the total score, then E1-E2, then P/R/O by the symptom you see [S 13.9].
 5. Genesis grades PROSE as five one-line PASS rows [G SKILL.md:291-298; examples/04-pr-review-advisory.md:300-304] and never uses the 11 questions. Its examples read "Explicit Hierarchy" as a delegation chain, not as instruction-scope inheritance [G examples/04-pr-review-advisory.md:304]. A Genesis-style PASS is not ch13 compliance.
 6. Verdict on the design: structurally strong on P, R and O and on deterministic truth anchoring (A1-A4 below), but the checklist-level status of P1, P2, R1, R2 and O2 is partial or unknown from the summary. Exposed on S (the axis ch13 ranks first) and on E semantics. See section 8.
 
@@ -57,7 +57,7 @@ Retrieved 2026-10-06. Purpose: give a skill-design agent the PROSE rules, how th
 | Safety Boundaries | Unbounded autonomy | Reliability, verifiability |
 | Explicit Hierarchy | Flat guidance | Modularity, domain adaptation |
 
-Each constraint answers a model property: finite context, stateless reasoning, probabilistic output. They are "independent in definition and interdependent in practice" [S 13.1].
+Each constraint answers a model property: finite context, stateless reasoning, probabilistic output. They are separate as definitions but depend on each other in practice [S 13.1].
 
 ### 2.2 Interdependence and the three failure stories [S 13.7]
 
@@ -69,25 +69,25 @@ The chapter marks the stories as fictional composites. Each shows one constraint
 2. R without O. Disciplined single-task sessions, but standards were pasted into prompt templates. After an error-format change, four stale copies produced two formats for two weeks.
 3. S without R. Strict tool whitelists and gates, but one huge OAuth2 session. A security rule loaded at session start sat under about 40,000 tokens of context, and the agent later violated it.
 
-Takeaway in the chapter: "each partner constraint catches the failures the first one cannot see".
+Takeaway in the chapter: each constraint's partner catches the failures the first one misses.
 
 ## 3. The five constraints, precisely
 
 ### P - Progressive Disclosure [S 13.2]
 
 - **Definition.** Reveal complexity progressively. Context arrives "just-in-time" rather than "just-in-case" [S 13.2].
-- **Why.** The issue is attention, not capacity; "The signal-to-noise ratio determines quality" [S 13.2].
+- **Why.** The issue is attention, not capacity: the signal-to-noise ratio sets the quality [S 13.2].
 - **Patterns** [S 13.2.1]:
   1. Markdown links as lazy-loading pointers. A link declares that deeper context exists, with a path.
   2. Descriptive labels. The link text states what the target contains so relevance can be judged without following it. Bad: a bare link labelled "docs". Good: link text that names the content and when it applies.
   3. Skill frontmatter as a capability index. The description says what the skill does and when to activate; the full body loads only when the task matches.
-- **Anti-pattern: context dumping** [S 13.2.2]. One file inlines standards, API reference, auth guide, error taxonomy (the example totals 6,100 words). Fix: a file of labelled pointers. "Same information. Fraction of the context cost per task."
+- **Anti-pattern: context dumping** [S 13.2.2]. One file inlines standards, API reference, auth guide, error taxonomy (the example totals 6,100 words). Fix: a file of labelled pointers, with the same information at a fraction of the context cost.
 - **Checklist:** ch13/P1, ch13/P2.
 
 ### R - Reduced Scope [S 13.3]
 
-- **Definition.** "Match task size to context capacity." Each sub-task "operates with fresh context and focused scope" [S 13.3].
-- **Sizing heuristic.** "The best-sized task is one the agent can complete without asking a follow-up question." If the agent must ask, the task is too large or the context is missing: "Both are scope problems". Adding context mid-session means "the scope was wrong from the start" [S 13.3].
+- **Definition.** Fit the task size to the context capacity. Each sub-task runs with a fresh context and a narrow scope [S 13.3].
+- **Sizing heuristic.** The best task is one the agent finishes without a follow-up question. If the agent must ask, the task is too large or the context is missing; both are scope problems. Adding context mid-session shows the scope was wrong from the start [S 13.3].
 - **Three split examples** [S 13.3]: JWT auth into five sessions with one deliverable each; fixing the login bug and updating the session tests into two sessions with the fix committed first; payment-service refactor split by call site with only the old-to-new mapping and the target module in context.
 - **Patterns** [S 13.3.1]: phase decomposition (diagnose, implement, validate; each phase gets a clean window and only its inputs); session splitting across domains (frontend, backend, database).
 - **Anti-pattern: scope creep** [S 13.3.2]. Requests pile up mid-session and the newest task gets the worst output. Fix: each request becomes its own session.
@@ -95,12 +95,12 @@ Takeaway in the chapter: "each partner constraint catches the failures the first
 
 ### O - Orchestrated Composition [S 13.4]
 
-- **Definition.** "Favor small, chainable primitives over monolithic frameworks" [S 13.4].
-- **Why.** In a mega-prompt "Small changes to any section produce unexpected changes in behavior across all sections". Composed primitives are each "small enough to understand, test, and debug independently" [S 13.4].
+- **Definition.** Prefer small primitives that chain to monolithic frameworks [S 13.4].
+- **Why.** In a mega-prompt, a small change in one section changes behavior in all the others. Each composed primitive is small enough to understand, test and debug on its own [S 13.4].
 - **Patterns** [S 13.4.1]:
   1. Primitive types as atomic units: instruction files, skills, agents, prompts, specifications; one purpose each. The example tree has scoped instruction files, a planning mode that "cannot execute", an implementation mode with scoped tools, a workflow prompt and a SKILL.md "Auto-activated by relevance".
-  2. Workflows as compositions. A prompt sequences existing files, "does not restate the coding standards", and ends in a STOP for human review.
-- **Anti-pattern: monolithic prompt** [S 13.4.2]. You cannot tell which instruction failed or which rules conflict. Fix: one concern per primitive file, each "independently testable, independently debuggable, and independently versioned".
+  2. Workflows as compositions. A prompt sequences existing files, does not repeat the coding standards, and ends in a STOP for human review.
+- **Anti-pattern: monolithic prompt** [S 13.4.2]. You cannot tell which instruction failed or which rules conflict. Fix: one concern per primitive file, each testable, debuggable and versioned on its own.
 - **Checklist:** ch13/O1, ch13/O2.
 
 ### S - Safety Boundaries [S 13.5]
@@ -116,44 +116,44 @@ Takeaway in the chapter: "each partner constraint catches the failures the first
 | Test runner | run commands, read, test runner | test files and source under test; no deploy config, secrets, CI | deleting fixtures, changing shared test infra, skipping tests |
 | Deployer | deploy scripts only, read | manifests, env config, release notes; no source write | every deployment action; a human approves each environment promotion |
 
-- **Planning agent special case** [S 13.5.1]. Read and search only, "no write tools at all". "Its output is a plan, not code." A separate session implements.
+- **Planning agent special case** [S 13.5.1]. Read and search only, with no write tools; it produces a plan, not code. A separate session implements.
 - **Patterns** [S 13.5.2]:
   1. Per-agent tool whitelists in the agent's frontmatter.
-  2. Validation gates: present the change with rationale, "STOP", wait for explicit approval. The chapter notes the gate "is part of the instruction, not an external enforcement mechanism", so ch13's own gates are prose-level.
+  2. Validation gates: present the change with rationale, "STOP", wait for explicit approval. The chapter notes the gate lives in the instruction, not in an external enforcement mechanism, so ch13's own gates are prose-level.
   3. Knowledge scoping: instructions load only for matching files; `applyTo` doubles as a knowledge boundary.
   4. Deterministic tools as truth anchors: an agent claiming a test passes must actually run it and report the deterministic result.
-- **Anti-pattern: unbounded agent** [S 13.5.3]. `tools: ["*"]`, no approvals; blast radius is the whole repository. Fix: copy the closest role row and tighten; "The minimum set of tools is always fewer than you think."
+- **Anti-pattern: unbounded agent** [S 13.5.3]. `tools: ["*"]`, no approvals; blast radius is the whole repository. Fix: copy the closest role row and tighten it; the minimum tool set is always smaller than one expects.
 - **Checklist:** ch13/S1, S2, S3.
 - **Internal inconsistency in ch13.** The role table says a code writer cannot see infra or CI config [S 13.5.1]. The worked example lets the backend agent read any file and restricts only writes [S 13.8.2]. Only a write-path boundary is checklist-mandatory (ch13/S3).
 
 ### E - Explicit Hierarchy [S 13.6]
 
-- **Definition.** Instructions form a hierarchy "from global to local. Local context inherits from and may override global context." Agents resolve context from the most specific scope to the most general [S 13.6].
+- **Definition.** Instructions form a hierarchy from global to local; local context inherits global context and may override it. Agents resolve context from the most specific scope to the most general [S 13.6].
 - **Why.** Global rules give consistency (naming, commits, docs); local rules give specialisation [S 13.6].
 - **Patterns** [S 13.6.1]:
   1. Directory-scoped context files (AGENTS.md at root, `frontend/`, `backend/auth/` and so on). An agent editing a file walks up and loads each level.
   2. Pattern-scoped instruction files (`applyTo` globs); more specific patterns override or extend less specific ones.
-  3. Compilation for portability. Author in tool-specific formats and compile to hierarchical AGENTS.md. "The source of truth is the authored instructions." Package managers such as APM automate this.
+  3. Compilation for portability. Author in tool-specific formats and compile to hierarchical AGENTS.md. The authored instructions stay the source of truth. Package managers such as APM automate this.
 - **Anti-pattern: flat instructions** [S 13.6.2]. One root file with every domain's rules; all agents load all of it and unrelated rules interfere. Fix: split by scope.
 - **Checklist:** ch13/E1, ch13/E2.
 
 ## 4. Compliance checklist [S 13.9]
 
-All eleven questions are yes/no. Wording is the chapter's.
+All eleven questions are yes/no. Paraphrased.
 
 | ID | Question |
 |---|---|
-| P1 | "Does every instruction file over 100 lines use links (not inline content) for subsidiary topics?" |
-| P2 | "Does every cross-reference link include a description of what the target contains (not just a filename)?" |
-| R1 | "Can you state each agent task in one sentence with a single deliverable?" |
-| R2 | "Do multi-step workflows start each phase with a fresh context (no accumulated session state)?" |
-| O1 | "Does each instruction file address exactly one concern (check: could you name the file after its single topic)?" |
-| O2 | "Do workflow prompts reference shared instruction files by link rather than pasting their content?" |
-| S1 | "Does every agent configuration have an explicit tools list (no wildcards)?" |
-| S2 | "Is there a STOP gate before every operation that modifies auth, database schemas, or production config?" |
-| S3 | "Does every agent have a file-path boundary (explicit list of directories it may modify)?" |
-| E1 | "Do instructions exist at three or more specificity levels (e.g., root → domain → module)?" |
-| E2 | "Can you add module-specific rules without editing any file above that module's scope?" |
+| P1 | Does each instruction file over 100 lines link out to side topics instead of inlining them? |
+| P2 | Does each cross-reference say what its target holds, not only its file name? |
+| R1 | Is each agent task one sentence with one deliverable? |
+| R2 | Does each phase of a multi-step workflow start with a fresh context? |
+| O1 | Does each instruction file cover one concern, so its name can be that topic? |
+| O2 | Do workflow prompts link shared instruction files instead of pasting them? |
+| S1 | Does each agent configuration list its tools, with no wildcard? |
+| S2 | Is there a STOP gate before each change to auth, database schemas or production config? |
+| S3 | Does each agent have a list of the directories it may change? |
+| E1 | Do instructions exist at three or more levels, such as root, domain and module? |
+| E2 | Can module rules be added without editing a file above that module? |
 
 Prioritisation [S 13.9]: S1-S3 first (highest blast radius, fastest to close, "one YAML change per agent"); then E1-E2 (hierarchy is the fastest architectural change); then P/R/O by symptom: scope creep, fix R1/R2; context dilution, fix P1/P2; debugging nightmares, fix O1/O2.
 
@@ -201,7 +201,7 @@ ch13's examples use a `.github/` layout with `instructions`, `chatmodes`, `promp
 
 **Context loading and instruction hierarchy**
 - [S 13.2, 13.6, 13.8.1] Directory-scoped or pattern-scoped files load only for matching work; labelled links defer detail.
-- [L] APM compiles `.apm/skills/<name>/` and `.apm/agents/<name>.agent.md` to `.claude/`, `.agents/skills/` and `.codex/agents/`; harness directories are generated output and are never edited by hand [L apm-primitives SKILL.md sections 2 and 4]. This is the "compilation for portability" idea in practice [S 13.6.1].
+- [L] APM compiles `.apm/skills/<name>/` and `.apm/agents/<name>.agent.md` to `.claude/`, `.agents/skills/` and `.codex/agents/`; harness directories are generated output and are never edited by hand [L]. This is the "compilation for portability" idea in practice [S 13.6.1].
 - [L] The repo's `apm.yml` currently lists `targets: - claude` only; Codex output needs `codex` added [I].
 
 **Orchestration, plans and state**
@@ -239,7 +239,7 @@ Examples 03, 04 and 05 give one PASS or OK line per axis [G examples/03-release-
 
 - Truth count is inconsistent: "seven durable LLM truths" [G SKILL.md:297], "Eight durable truths" [G agents/genesis-architect.agent.md:98], "the five durable truths" [G agents/genesis-architect.agent.md:329].
 - Genesis pattern IDs collide with ch13 checklist IDs (see ID convention).
-- Per-harness adapters are dated "Verified on: 2025-11-14" [G assets/runtime-affordances/per-harness/claude-code.md:125; assets/runtime-affordances/per-harness/codex.md:107]. The Codex adapter says Codex has "No first-class child-thread primitive" [G assets/runtime-affordances/per-harness/codex.md:43]. The user's APM note now lists `.codex/agents/*.toml` as an agent location [L], so that adapter claim is probably stale [I].
+- Per-harness adapters are dated "Verified on: 2025-11-14" [G assets/runtime-affordances/per-harness/claude-code.md:125; assets/runtime-affordances/per-harness/codex.md:107]. The Codex adapter says Codex has "No first-class child-thread primitive" [G assets/runtime-affordances/per-harness/codex.md:43]. A local APM note now lists `.codex/agents/*.toml` as an agent location [L], so that adapter claim is probably stale [I].
 - Chapter numbers drift. awesome-ai-native links PROSE as `ch12-the-prose-specification`; Genesis docs cite ch11, ch12, ch14 [G site/src/content/docs/resources/external-corpus.md:74-76]. ch13 is the current PROSE chapter. The chapter footnote pins Genesis commit `613f2a64...`; the local copy is `18e73c35...` and the step-5 wording matches.
 
 ## 8. Evaluation of the "shape-and-execute" design
@@ -271,14 +271,14 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 - **A5. Explicit authority, and publishing removed.** A decision-class table per interaction mode, "never push", worktrees for parallel writers [D]. Matches the authority dimension [S 13.5]. The deployer role needs a STOP before every deployment action [S 13.5.1]; removing the capability is stronger than gating it [I]. Merging at dependency boundaries resembles Genesis's A5 gate between waves [G assets/architectural-patterns.md:221-263] [I].
 - **A6. Reviewers are fresh, separate agents.** Adversarial review at three points, optionally cross-model [D]. Reviewer is commentary-only [S 13.5.1], fresh context [S 13.3], one concern per primitive [S 13.4]. Genesis A7 asks the same and bans handing the producer's reasoning to cold readers [G assets/architectural-patterns.md:311-378].
 - **A7. A real hierarchy exists.** Repo-level instructions, skill, `brief.md` (task scope), `jobs/<ID>.md` (unit scope) [D, I]. Matches global-to-local with inheritance [S 13.6] and ch13/E1 [S 13.9].
-- **A8. Shaping supplies missing context.** The shape phase (intent, optional research, grilled spec) exists so workers need no follow-up question. That is the "the context is insufficient (add the missing information)" half of the sizing heuristic [S 13.3] [I].
+- **A8. Shaping supplies missing context.** The shape phase (intent, optional research, grilled spec) exists so workers need no follow-up question. That is the missing-context half of the sizing heuristic [S 13.3] [I].
 
 ### 8.2 (b) Tensions or violations, each with a fix
 
 **B1. Roles with no bounded agent definitions (ch13/S1, ch13/S3).**
 - Design: protocols for workers and fresh subagents, per-phase model levels, and `codex exec` or `claude -p` for cross-model review. No tool lists or write paths [D].
 - Rule: every agent config has an explicit tools list with no wildcards and an explicit list of directories it may modify [S 13.9, 13.5.3, 13.8.2].
-- Why it matters: a headless `codex exec` or `claude -p` reviewer is a full agent with whatever tools and sandbox its CLI grants. Worktrees stop concurrent clobbering, not scope violations [I]. The user's own APM note says not to treat Codex `sandbox_mode` as a guardrail (no reason given there) [L], so a deterministic check is safer than relying on agent settings [I].
+- Why it matters: a headless `codex exec` or `claude -p` reviewer is a full agent with whatever tools and sandbox its CLI grants. Worktrees stop concurrent clobbering, not scope violations [I]. A local APM note says not to treat Codex `sandbox_mode` as a guardrail (no reason given there) [L], so a deterministic check is safer than relying on agent settings [I].
 - Fix:
   1. Write a Role/Tools/Knowledge/Authority table [S 13.5.1] for researcher, planner, worker, integrator and reviewer, in-session and headless.
   2. Author each role once as `.apm/agents/<role>.agent.md` and let APM emit Claude and Codex files [L; S 13.6.1].
@@ -293,7 +293,7 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 
 **B3. Agent-asserted results (ch13/S truth anchors).**
 - Design: each worker "returns a result file with frontmatter"; the orchestrator updates state through `sae` [D].
-- Rule: the system "requires the agent to actually run the test and report the deterministic result" [S 13.5.2].
+- Rule: the agent must really run the test and report its deterministic result [S 13.5.2].
 - Why it matters: if `sae` records `status: done` from agent-written frontmatter, single-writer protects file integrity, not the truth of the claim [I]. Genesis names this VERIFY-WITH-LLM-ONLY [G assets/architectural-patterns.md:530].
 - Fix: the job template declares acceptance commands; `sae verify <job>` runs them in the worktree and records exit codes and a diff summary in `events.jsonl`. Frontmatter is a claim, not a fact.
 
@@ -304,7 +304,7 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 
 **B5. Precedence, overrides and duplicated instructions (ch13/E1, E2).**
 - Design: a "repo profile" goes to every worker; the mode ladder is defined by a table [D]. No stated precedence among job file, brief, protocol and repo rules.
-- Rule: "Local context inherits from and may override global context" [S 13.6]. Add module rules without editing upstream files (ch13/E2) [S 13.9]. Flat instructions let unrelated rules interfere [S 13.6.2], and pasted duplicates drift [S 13.7, story 2].
+- Rule: local context inherits global context and may override it [S 13.6]. Add module rules without editing upstream files (ch13/E2) [S 13.9]. Flat instructions let unrelated rules interfere [S 13.6.2], and pasted duplicates drift [S 13.7, story 2].
 - Why it matters: both harnesses already load repo-level AGENTS.md or CLAUDE.md by directory [G assets/runtime-affordances/per-harness/claude-code.md:40-50; assets/runtime-affordances/per-harness/codex.md:30-41, dated]. A generated profile can duplicate or contradict them [I].
 - Fix: one precedence line in the job protocol and brief template: more specific wins, except hard-stop classes (B2) which no layer may lower. Add `conflicts:` to result frontmatter instead of silent resolution. Make the repo profile facts-only (commands, layout) plus labelled links to instruction files. Let a task or repo override mode and decision classes through `intent.md` or `brief.md` frontmatter so no skill file is edited. Compile roles once for both harnesses via APM, adding `codex` to `targets` [L; I].
 
@@ -315,7 +315,7 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 
 **B7. No path for missing information, mid-run requests, or a too-big review (ch13/R).**
 - Design: jobs and results exist; nothing says what a worker does when it lacks information; the whole-system review is a single review point [D].
-- Rule: a good task completes "without asking a follow-up question"; adding context mid-session means the scope was wrong; each new request becomes its own session [S 13.3, 13.3.2]. Big tasks are split, for example by call site [S 13.3].
+- Rule: a good task completes without a follow-up question; adding context mid-session means the scope was wrong; each new request becomes its own session [S 13.3, 13.3.2]. Big tasks are split, for example by call site [S 13.3].
 - Fix: the job protocol forbids mid-job context additions. A worker lacking information returns `status: blocked` with the question; the orchestrator amends the job or brief through `sae` and re-dispatches fresh, or escalates per decision class. A mid-run user request becomes an amendment to `intent.md` or `specs.md`, re-runs the requirement-coverage lint, and creates new jobs. Slice the whole-system review by requirement or area with fresh reviewers, then synthesise (Genesis B1 [G assets/design-patterns.md:460-490]) [I].
 
 **B8. Paste risk (ch13/O2).**
@@ -326,7 +326,7 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 
 **B9. Loading granularity (ch13/P1, P2).**
 - Design: `brief.md` and the repo profile go to every worker; "References load per phase" [D].
-- Rule: context loads "when the agent needs it for the current task" [S 13.2]; links carry descriptive labels [S 13.2.1].
+- Rule: context loads only when the current task needs it [S 13.2]; links carry descriptive labels [S 13.2.1].
 - Fix: cap `brief.md` to invariants plus an index. Give each job a `context:` list of brief headings or paths with descriptive labels. Split phase references by branch (research, spec, decision-analysis, integration, review) so an unused branch never loads. Put a descriptive label and load condition on every SKILL.md link. Add a mechanical P1/P2 check (every markdown file over 100 lines has links; no bare-filename link text); the checklist is yes/no, so it is lintable [I].
 
 **B10. One skill spans shape, plan, execute, review, git and viewer (ch13/O1).**
@@ -342,7 +342,7 @@ Order follows ch13's own priority rule: S first, then E, then R, O, P [S 13.9].
 - **C2. ch13/S3:** explicit write-path boundary per agent.
 - **C3. ch13/S2:** unconditional STOP classes (auth, schema, prod config).
 - **C4. The role table** (Role, Tools, Knowledge, Authority) [S 13.5.1] as an artifact.
-- **C5. ch13/R1 and the sizing heuristic:** one sentence and one deliverable per task; the "without asking a follow-up question" test; the scope-creep rule [S 13.3, 13.3.2].
+- **C5. ch13/R1 and the sizing heuristic:** one sentence and one deliverable per task; the no-follow-up-question test; the scope-creep rule [S 13.3, 13.3.2].
 - **C6. ch13/R2:** fresh context at phase boundaries for the main thread.
 - **C7. ch13/E:** inheritance and override semantics; extension without editing upstream files (ch13/E2); author once and compile for both harnesses [S 13.6.1].
 - **C8. ch13/P1 and P2:** the 100-line rule and descriptive link labels.

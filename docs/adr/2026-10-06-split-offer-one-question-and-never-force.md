@@ -3,7 +3,6 @@ title: Split offer, one question and never forced
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-66, second design interview 2026-10-06 (S2-Q7, S2-Q11, S2-D8)
 applies-to: [skills/shape-and-execute/references/modes/shape.md, skills/shape-and-execute/references/roles/planner.md]
 ---
 
@@ -20,7 +19,7 @@ the backlog; the owner decides. After spec approval nothing is split, and the pl
 flag size.
 
 ## Why
-- The owner: "A well-defined spec should avoid the need to remove scope during planning."; "I do not want to require the user to create many separate tasks.".
+- The owner: "A well-defined spec should avoid the need to remove scope during planning."; "I do not want to require the user to create many separate tasks."
 - The owner found lists of signals non-deterministic ("authentication" can mean one outcome or several).
   One question separates the cases: auth has nothing to guess, so it stays one task; in a whole
   application, billing would guess the data model, so a split pays off. A wrong judgment costs

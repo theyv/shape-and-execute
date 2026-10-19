@@ -3,7 +3,6 @@ title: One list of hard stops for every mode
 type: architecture
 status: accepted
 date: 2026-10-07
-source: DL-29, design interview 2026-10-06 (D25); DL-74, genesis review 2026-10-07 (G2)
 applies-to: [skills/shape-and-execute/references/interaction-modes.md, skills/shape-and-execute/references/roles/worker.md, skills/shape-and-execute/scripts/sae_lib/prompts.py, hard_stop_lines]
 ---
 

@@ -216,6 +216,8 @@ def record_card(task: Task, card: dict) -> None:
 MAP_LAYOUT = (("💡 SHAPE", (("intake", "research", "spec"), ("spec-review", "spec approval"))),
               ("📐 PLAN", (("planner", "plan-review", "plan approval"),)),
               ("🔨 EXECUTE", (("jobs", "job-reviews"), ("integration-review", "final-validation"), ("finish",))))
+# The `↓` line stays: a relaying agent drops blank lines, not this one. `⬥` for a pending gate
+# read as done, so a pending gate is `□`.
 MAP_ARROW = "        ↓"
 
 

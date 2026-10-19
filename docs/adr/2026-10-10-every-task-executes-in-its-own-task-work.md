@@ -3,7 +3,7 @@ title: Every task executes in its own task worktree
 type: architecture
 status: accepted
 date: 2026-10-10
-source: DL-110, DL-112, DL-140, task 2026-10-08-1733--sae-dogfood-fixes (R1 Q2, item 8, [TASK-WORKTREE], [DECISION-TASK-WORKTREE], [DECISION-AGENT-DEFAULTS], DESIGN-DOCS); DL-86, implementation 2026-10-07
+source: task 2026-10-08-1733--sae-dogfood-fixes
 applies-to: [skills/shape-and-execute/scripts/sae_lib/lifecycle.py, skills/shape-and-execute/scripts/sae_lib/tasks.py, skills/shape-and-execute/scripts/sae_lib/workspaces.py, cmd_start, start_task_worktree, source_items, cmd_abandon, move_back_home, locate_tasks, task_checkouts, live_checkout, task_worktree_path]
 ---
 
