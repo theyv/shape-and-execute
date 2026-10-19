@@ -4,7 +4,8 @@ type: architecture        # architecture | business
 status: proposed          # proposed | accepted | rejected | superseded
 date: <date>
 source: <task-id>
-applies-to: []            # paths and code names, so a search in the code finds this record
+applies-to: []            # paths and code names; path entries bring this record to agents that change them
+revisit-when:             # optional: when this decision stops holding
 ---
 
 # <title>

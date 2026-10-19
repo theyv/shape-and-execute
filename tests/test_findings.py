@@ -42,7 +42,8 @@ class FindingBodyTests(SaeTestCase):
 class DecisionDraftTests(SaeTestCase):
     def test_template_has_the_record_fields(self):
         front, body = split_frontmatter((SKILL_DIR / "templates" / "decision-record.md").read_text())
-        self.assertEqual(set(front), {"title", "type", "status", "date", "source", "applies-to"})
+        self.assertEqual(set(front), {"title", "type", "status", "date", "source", "applies-to",
+                                      "revisit-when"})
         self.assertEqual(front["status"], "proposed")
         for section in ("Context", "Decision", "Why", "Rejected options", "Consequences"):
             self.assertIn(f"## {section}\n", body)

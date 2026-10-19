@@ -5,8 +5,9 @@ reject them. A record explains why something is the way it is; only durable ones
 the repository.
 
 1. Read every draft (all files except `closed.md`).
-2. Check each against the repository: does it still hold? Is it durable, so that a later
-   agent could not rebuild it from the code? Does it repeat a record already in the ADR folder?
+2. Check each against the repository: does it still hold? Does it pass the test, and does its
+   reach call for a record, not a code comment or a directory `AGENTS.md` ([plan.md](plan.md)
+   "Decision-record drafts")? Does it repeat a record already in the ADR folder?
 3. Say briefly which drafts belong in the docs and which do not, with one reason each. Ask in
    the grill format ([grill.md](../grill.md)).
 4. For each draft the user keeps: write the final text together with the user, in the draft

@@ -107,6 +107,23 @@ class AdrAcceptIndexTests(SaeTestCase):
         self.assertEqual(lines[-1], "- [Note](research/note.md) — n")
         self.assertEqual(index_problems(folder), [])
 
+    def test_new_and_accept_work_with_and_without_revisit_when(self):
+        """[REVISIT-WHEN]: the optional field passes through `adr new` and `adr accept` as written."""
+        empty = self.draft("Keep one worker")
+        self.assertIn("\nrevisit-when:", empty.read_text())
+        filled = self.draft("Cache for 60 s")
+        filled.write_text(re.sub(r"(?m)^revisit-when:.*$", "revisit-when: the API gets push events",
+                                 filled.read_text()))
+        bare = self.draft("No retries")
+        bare.write_text(re.sub(r"(?m)^revisit-when:.*\n", "", bare.read_text()))
+        folder = self.sb.repo / "docs" / "decisions"
+        for draft in (empty, filled, bare):
+            self.sb.json("adr", "accept", str(draft))
+            self.assertIn("status: accepted", (folder / draft.name).read_text())
+        self.assertIn("revisit-when: the API gets push events\n", (folder / filled.name).read_text())
+        self.assertNotIn("revisit-when", (folder / bare.name).read_text())
+        self.assertEqual(index_problems(folder), [])
+
 
 if __name__ == "__main__":
     unittest.main()

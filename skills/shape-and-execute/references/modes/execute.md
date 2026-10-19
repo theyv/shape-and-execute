@@ -128,7 +128,8 @@ When `sae next` reports that all jobs are done:
 
 1. Draft decision records from the logged decisions and amendments (`decision` and
    `amendment` lines in `events.jsonl`, `## Amendments` in `specs.md`), as
-   [plan.md](plan.md) "Decision-record drafts" says: only durable ones, often none.
+   [plan.md](plan.md) "Decision-record drafts" says: the three places by reach, and a record
+   only when it passes the test; often none.
 2. Quote review (SKILL.md, "Quote review at approvals"): list the user's quotes written since
    the plan approval, these drafts included, with the file of each. When there are new quotes,
    wait for the user to accept, reword or remove them, in every interaction mode; apply the
