@@ -35,7 +35,8 @@ Repeat until `sae next` reports that all jobs are done.
    printed with it.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
    `--agent-ref` when your harness reports them. A COMMAND review needs no `--tokens`: `sae` reads
-   them from the output the COMMAND kept. Then act on the outcome:
+   them from the output the COMMAND kept, then deletes that output. When you run a harness
+   yourself, keep its output outside `.tasks/`. Then act on the outcome:
    - `done` → nothing to do; `sae` merges the job or adds its review.
    - exit 5 (re-run verify failed) → resume the same worker:
      `sae dispatch <task> <ID> --resume --reason verify-failed`, send the printed message.

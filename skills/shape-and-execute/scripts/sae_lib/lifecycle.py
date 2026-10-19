@@ -5,7 +5,9 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import shutil
+import subprocess
 from pathlib import Path
 
 from .common import (
@@ -33,6 +35,7 @@ from .gitutil import find_root, git, git_ok, git_user, run
 from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
+from .prompts import REVIEW_OUTPUT_SUFFIX
 from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, merge_job
 from .routing import resolve_model
@@ -523,8 +526,69 @@ def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
     return moved
 
 
+# [RECORD-PRIVACY]: the home folder as a whole path prefix, not inside a longer path or name;
+# a JSON escape (`\n` in events.jsonl) may come before or after it.
+HOME_BEFORE = r"(?:(?<![\w.\-/~])|(?<=\\[bfnrt]))"
+HOME_AFTER = r"(?=[/\\\s\"'`)\],:;>]|$)"
+
+
+def tilde_home(text: str) -> str:
+    """[RECORD-PRIVACY]: `~` in place of the user's home folder, so a committed path names no user."""
+    homes = {str(Path.home()).rstrip("/"), str(Path.home().resolve()).rstrip("/")}
+    for home in sorted((h for h in homes if h), key=len, reverse=True):
+        text = re.sub(HOME_BEFORE + re.escape(home) + HOME_AFTER, "~", text)
+    return text
+
+
+def tilde_home_bytes(data: bytes) -> bytes:
+    try:
+        return tilde_home(data.decode("utf-8")).encode("utf-8")
+    except UnicodeDecodeError:
+        return data  # binary: as it is
+
+
+def remove_harness_logs(record: Path) -> None:
+    """[RECORD-PRIVACY]: harness output logs left beside job or review files (`jobs/<stem>.codex.jsonl`,
+    `reviews/<stem>.claude.json`, …) never reach git; same-named files elsewhere in the record stay."""
+    for folder in (record / "jobs", record / "reviews"):
+        if folder.is_symlink() or not folder.is_dir():
+            continue
+        for path in folder.iterdir():
+            if path.name.endswith(tuple(REVIEW_OUTPUT_SUFFIX.values())) and not path.is_dir():
+                path.unlink()
+
+
+def tilde_home_applies(path: str) -> bool:
+    """`.tasks/repo/` stays as it is: its scripts and commands run, and `~` in quotes does not expand."""
+    return path != ".tasks/repo" and not path.startswith(".tasks/repo/")
+
+
+def tilde_home_files(root: Path, paths: list[str]) -> None:
+    """[RECORD-PRIVACY]: `~` for the home folder in every text file `finish` stages (`tilde_home_applies`),
+    mode kept. Readers of a record expand `~` again (`Path.expanduser`)."""
+    for path in paths:
+        if not tilde_home_applies(path):
+            continue
+        full = root / path
+        files = sorted(full.rglob("*")) if full.is_dir() and not full.is_symlink() else [full]
+        for file in files:
+            if file.is_symlink() or not file.is_file():
+                continue
+            try:
+                data = file.read_bytes()
+            except OSError:
+                continue  # unreadable: committed as it is
+            private = tilde_home_bytes(data)
+            if private != data:
+                mode = file.stat().st_mode
+                write_atomic(file, private.decode("utf-8"))
+                os.chmod(file, mode & 0o7777)
+
+
 def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list[str]) -> None:
     root = task.root
+    for record in [task.dir] + [root / new for _, new, _ in moved]:
+        remove_harness_logs(record)
     paths = [f".tasks/done/{task.id}"] + [rel(p, root) for p in sourced_items(task)]
     paths += sorted({e["closed"] for e in task.events() if e["type"] == "adr.rejected"
                      and (root / e["closed"]).is_file()})
@@ -532,6 +596,7 @@ def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list
         if (root / extra).exists():
             paths.append(extra)
     paths += [new for _, new, _ in moved]
+    tilde_home_files(root, paths)
     git(root, "add", "--", *paths)
     paths += [old for old, _, in_git in moved if in_git]  # an untracked old path is unknown to git
     staged = git(root, "diff", "--cached", "--name-only", "--", *paths)
@@ -552,10 +617,21 @@ def commit_task_record(task: Task, moved: list[tuple[str, str, bool]], out: list
                        + ", ".join(differing))
 
 
+def tilde_blob(home: Path, copy: Path) -> str:
+    """The blob id of `copy` after the [RECORD-PRIVACY] `~` rewrite; "" when git fails."""
+    with contextlib.suppress(OSError):
+        proc = subprocess.run(["git", "hash-object", "--no-filters", "--stdin"], cwd=str(home),
+                              input=tilde_home_bytes(copy.read_bytes()), capture_output=True)
+        if proc.returncode == 0:
+            return proc.stdout.decode().strip()
+    return ""
+
+
 def remove_identical_home_copies(root: Path, home: Path) -> tuple[list[str], list[str]]:
     """[OWNER-MERGE-FIRST-TASK], [DECISION-MERGE-CLEANUP]: untracked `.tasks/` files in the home
-    checkout block the owner's merge of the task record (HEAD of the task branch). A byte-identical
-    copy is deleted (nothing is lost); a differing one stays. Returns (removed, differing)."""
+    checkout block the owner's merge of the task record (HEAD of the task branch). A copy identical
+    to the committed file, or identical once `~` replaces the home folder in a file `finish` rewrites
+    ([RECORD-PRIVACY]), is deleted (nothing is lost); a differing one stays. Returns (removed, differing)."""
     committed = git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD", check=False).splitlines()
     removed, differing = [], []
     for path in committed:
@@ -564,7 +640,8 @@ def remove_identical_home_copies(root: Path, home: Path) -> tuple[list[str], lis
             continue
         blob = git(root, "rev-parse", f"HEAD:{path}", check=False)
         if (path.startswith(".tasks/") and not copy.is_symlink() and blob
-                and git(home, "hash-object", "--no-filters", "--", str(copy), check=False) == blob):
+                and (git(home, "hash-object", "--no-filters", "--", str(copy), check=False) == blob
+                     or tilde_home_applies(path) and tilde_blob(home, copy) == blob)):
             copy.unlink()
             removed.append(path)
         else:
@@ -646,7 +723,9 @@ def register_finish(sub, command):
                 "no stale checks (a round or final validation after a late merge has not run, or a done writer\n"
                 "that the checks would not cover is still unmerged); the final validation and the integration\n"
                 "review done. --override passes the verdict and stale-check gates with the owner's reason; it is\n"
-                "logged and listed in the final report. Never pushes.",
+                "logged and listed in the final report. Before the commit, harness output logs (*.codex.jsonl,\n"
+                "*.claude.json) in the record's jobs/ and reviews/ go, and the committed files outside\n"
+                ".tasks/repo/ get ~ for your home folder. Never pushes.",
                 ["finish claims-status", "finish claims-status --with-open",
                  'finish claims-status --override "owner accepts the remaining finding"'],
                 [0, 1, 3, 4], cmd_finish)

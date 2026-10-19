@@ -115,9 +115,9 @@ def task_location(copy, info: dict) -> tuple[str, str]:
     path = str(copy.checkout)
     if copy.folder.parent.name == "done":
         return "done", str(copy.folder.parent)
-    if info.get("worktree") and Path(info["worktree"]).resolve() == copy.checkout.resolve():
+    if info.get("worktree") and Path(info["worktree"]).expanduser().resolve() == copy.checkout.resolve():
         return "task worktree", path
-    if info.get("home") and Path(info["home"]).resolve() == copy.checkout.resolve():
+    if info.get("home") and Path(info["home"]).expanduser().resolve() == copy.checkout.resolve():
         return "home checkout", path
     return "checkout", path
 

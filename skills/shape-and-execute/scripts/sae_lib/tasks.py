@@ -186,7 +186,7 @@ class Task:
     def worktree(self) -> Path | None:
         """The task worktree, or None (not started, no git, or an old task executing in place)."""
         path = self.info.get("worktree")
-        return Path(path) if path else None
+        return Path(path).expanduser() if path else None  # a committed record says `~` ([RECORD-PRIVACY])
 
     def move_to(self, root: Path) -> None:
         self.root = root

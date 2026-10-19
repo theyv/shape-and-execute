@@ -347,7 +347,8 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
     return "\n".join(line for line in lines if line)
 
 
-# [REVIEW-TOKENS]: the COMMAND keeps the harness's machine-readable output here, next to the result file.
+# [REVIEW-TOKENS]: the COMMAND keeps the harness's machine-readable output here, next to the result file;
+# `sae collect` reads its tokens and deletes it ([RECORD-PRIVACY]).
 REVIEW_OUTPUT_SUFFIX = {"codex": ".codex.jsonl", "claude": ".claude.json"}
 # The Claude COMMAND writes the review text (`result` of the JSON output) to the result file.
 CLAUDE_RESULT_TEXT = ("import json, sys; text = json.load(open(sys.argv[1]))['result']; "
@@ -358,6 +359,13 @@ def review_output_file(task: Task, job_id: str, harness: str) -> Path:
     """Where the external review COMMAND for `harness` keeps the harness's JSON output."""
     result = result_file(task, job_id)
     return result.with_name(result.stem + REVIEW_OUTPUT_SUFFIX[harness])
+
+
+def harness_output_files(task: Task, job_id: str) -> list[Path]:
+    """[RECORD-PRIVACY] Harness output logs a job may leave: the COMMAND's next to the result file,
+    and one an orchestrator kept next to the job file when it ran a harness itself."""
+    return [path.with_name(path.stem + suffix) for path in (result_file(task, job_id), job_file(task, job_id))
+            for suffix in REVIEW_OUTPUT_SUFFIX.values()]
 
 
 def review_output_tokens(path: Path, harness: str) -> int | None:

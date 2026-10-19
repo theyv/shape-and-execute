@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 import subprocess
 from pathlib import Path
@@ -36,7 +37,7 @@ from .graph import (
     review_rounds,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .prompts import review_output_file, review_output_tokens
+from .prompts import harness_output_files, review_output_file, review_output_tokens
 from .routing import override_key, resolve_model
 from .session_tokens import record_session_snapshot
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
@@ -562,6 +563,11 @@ def cmd_collect(args) -> int:
             tokens = review_output_tokens(review_output_file(task, job_id, harness), harness)
             if tokens is not None:
                 attempt["tokens"] = tokens
+        record = task.dir.resolve()
+        for output in harness_output_files(task, job_id):  # [RECORD-PRIVACY]: a full log; never committed
+            if output.parent.resolve().is_relative_to(record):  # a symlinked jobs/ or reviews/ leads out
+                with contextlib.suppress(FileNotFoundError, PermissionError):
+                    output.unlink()
         job["summary"] = summary
         job.update(fields)
         task.touch(job)

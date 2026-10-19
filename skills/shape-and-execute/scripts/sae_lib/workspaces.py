@@ -269,7 +269,7 @@ def remove_clean_worktree(repo: Path, path: Path, copies_from: list[Path] | tupl
 
 def task_copy_sources(task_info: dict, repo: Path) -> list[Path]:
     """Where the task worktree's untracked copies came from: the home checkout, the main worktree."""
-    sources = [Path(task_info["home"])] if task_info.get("home") else []
+    sources = [Path(task_info["home"]).expanduser()] if task_info.get("home") else []  # `~` once committed
     return sources + [main_worktree(repo)]
 
 

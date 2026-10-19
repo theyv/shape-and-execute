@@ -211,8 +211,8 @@ def task_worktrees(root: Path) -> list[Path]:
             continue
         with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
             path = read_json(copy.folder / "state.json")["task"].get("worktree")
-            if path and Path(path).resolve() in existing:
-                found.append(Path(path))
+            if path and Path(path).expanduser().resolve() in existing:  # `~` in a committed record
+                found.append(Path(path).expanduser())
     return found
 
 

@@ -1,4 +1,5 @@
 """Tests of [REVIEW-TOKENS]: a review run through the printed COMMAND records its tokens at collect.
+[RECORD-PRIVACY]: collect then deletes the harness output, usage or not.
 
 Run from the repository root:  /usr/bin/python3 -m unittest discover -s tests
 The fake `codex` and `claude` print small hand-made outputs in the shapes the harnesses use.
@@ -8,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -89,6 +91,7 @@ class ExternalReviewTokenTests(SaeTestCase):
         self.assertTrue((reviews / "REVIEW-ONE.codex.jsonl").exists())
         attempt = self.collected_attempt(sb, task)
         self.assertEqual((attempt["harness"], attempt["tokens"]), ("codex", CODEX_TOKENS))
+        self.assertFalse((reviews / "REVIEW-ONE.codex.jsonl").exists())
         event = [e for e in sb.events(task) if e["type"] == "job.collected"][-1]
         self.assertEqual(event["tokens"], CODEX_TOKENS)
 
@@ -100,6 +103,7 @@ class ExternalReviewTokenTests(SaeTestCase):
         self.assertEqual(json.loads((reviews / "REVIEW-ONE.claude.json").read_text())["result"], REVIEW_TEXT)
         attempt = self.collected_attempt(sb, task)
         self.assertEqual((attempt["harness"], attempt["tokens"]), ("claude", CLAUDE_TOKENS))
+        self.assertFalse((reviews / "REVIEW-ONE.claude.json").exists())
 
     def test_review_without_captured_output_is_collected_without_tokens(self):
         for orchestrator, output in (("claude", "REVIEW-ONE.codex.jsonl"), ("codex", "REVIEW-ONE.claude.json")):
@@ -111,6 +115,7 @@ class ExternalReviewTokenTests(SaeTestCase):
                 if orchestrator == "codex":  # unreadable output counts as missing
                     (reviews / output).write_text("not json\n")
                 self.assertIsNone(self.collected_attempt(sb, task)["tokens"])
+                self.assertFalse((reviews / output).exists())
 
     def test_unreadable_output_is_collected_without_tokens(self):
         # invalid UTF-8 and a permission error count as unavailable usage, not as a failed collect
@@ -135,11 +140,26 @@ class ExternalReviewTokenTests(SaeTestCase):
                     if capture.exists():  # let the sandbox be removed
                         capture.chmod(0o644)
 
+    def test_collect_deletes_no_output_outside_the_record(self):
+        """[RECORD-PRIVACY]: a symlinked reviews/ folder leads out of the record; its files stay."""
+        sb, task, _, _ = self.review_dispatched("claude")
+        reviews = sb.task_dir(task) / "reviews"
+        if reviews.exists():
+            shutil.rmtree(reviews)
+        outside = sb.tmp / "outside"
+        outside.mkdir()
+        reviews.symlink_to(outside)
+        (outside / "REVIEW-ONE.md").write_text(REVIEW_TEXT)
+        (outside / "REVIEW-ONE.codex.jsonl").write_text(json.dumps(CODEX_EVENTS[3]) + "\n")
+        self.collected_attempt(sb, task)
+        self.assertTrue((outside / "REVIEW-ONE.codex.jsonl").exists())
+
     def test_tokens_given_at_collect_win(self):
         sb, task, command, env = self.review_dispatched("claude")
         self.run_command(sb, command, env)
         sb.sae("collect", "tokens", "REVIEW-ONE", "--tokens", "77")
         self.assertEqual(sb.state(task)["jobs"]["REVIEW-ONE"]["attempts"][-1]["tokens"], 77)
+        self.assertFalse((sb.task_dir(task) / "reviews" / "REVIEW-ONE.codex.jsonl").exists())
 
 
 if __name__ == "__main__":
