@@ -320,6 +320,8 @@ def viewer_link(root: Path, task_id: str) -> tuple[str | None, str]:
 # ---------------------------------------------------------------- the command
 
 def cmd_view(args) -> int:
+    # Without sockets there is no `file://` fallback: a second viewer would be a second code path
+    # for a rare case. `sae` prints the command for the owner's own terminal instead.
     if args.serve:
         from .server import serve
         return serve()

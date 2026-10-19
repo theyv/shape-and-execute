@@ -3,7 +3,6 @@ title: No configuration in the skill and sae fails loudly
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-57, DL-60, design interview 2026-10-06 (Q32)
 applies-to: [skills/shape-and-execute/scripts/sae_lib/config.py, skills/shape-and-execute/references/modes/setup.md, skills/shape-and-execute/SKILL.md, config_path, load_config, validate_config]
 ---
 

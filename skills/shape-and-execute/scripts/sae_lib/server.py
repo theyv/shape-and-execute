@@ -581,6 +581,8 @@ WRITE_ROUTES = {
 
 
 def run_write(route: str, body: dict) -> tuple[int, dict]:
+    # `sae` runs as a subprocess, not the command functions in-process: they rely on the working
+    # folder and process state, and `sae` stays the only writer.
     builder = WRITE_ROUTES.get(route)
     if builder is None:
         raise RequestError(404, f"No write route {route!r}.")

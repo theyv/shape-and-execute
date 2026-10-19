@@ -491,7 +491,7 @@ def sourced_items(task: Task, folders=("findings", "backlog", "adr")) -> list[Pa
 
 
 def move_finished_tasks(task: Task) -> list[tuple[str, str, bool]]:
-    """`sae finish` ([DONE-FOLDER], record 2026-10-10-finished-tasks-live-in-the-done-folder.md):
+    """`sae finish` ([DONE-FOLDER]):
     moves this task's folder into `.tasks/done/`, and every
     other task at the top of `.tasks/` whose phase is done or abandoned, tracked or not, from this
     checkout and from the home checkout. Tasks in any other phase are live and stay. Returns

@@ -32,7 +32,7 @@ Consequences for the design:
   from files and runs research in parallel, so no decision map was added
   ([Big work goes lazily through the backlog](../2026-10-06-big-work-goes-lazily-through-the-backlog.md)).
 - Its lazy rule supports giving deferred work a spec only when someone picks it up
-  ([A backlog item is an intent file](../2026-10-10-a-backlog-item-is-an-intent-file.md)). The
+  (a backlog item is an intent file, [templates/intent.md](../../../skills/shape-and-execute/templates/intent.md)). The
   stale map argues against specifying a whole series up front and against a hand-kept map
   ([Relations between tasks are prose](../2026-10-06-relations-between-tasks-are-prose.md)).
 - "Out-of-scope work never graduates" differs on purpose: here work the owner defers becomes a

@@ -11,8 +11,7 @@ from pathlib import Path
 from .common import EXIT_GIT, TASK_ID_RE, fail
 
 
-# sae's own git operations run without the owner's hooks ([GIT-HOOKS-OFF-FOR-SAE],
-# record 2026-10-10-sae-s-git-plumbing-skips-hooks.md):
+# sae's own git operations run without the owner's hooks ([GIT-HOOKS-OFF-FOR-SAE]):
 # a hook that rewrites a tracked file would dirty the task worktree after every merge.
 # Workers commit with their hooks; they never go through this module.
 HOOKS_OFF = ["-c", "core.hooksPath=/dev/null"]

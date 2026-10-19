@@ -25,6 +25,7 @@ var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draf
  sxStr=(k,v)=>k==="review"?(v&&v.length?v.join(","):"off"):String(v);
 
 /* ---------- texts behind every [?] ---------- */
+/* Every setting gets a [?] for itself and for each option; the tabs go Task, Project, Global. */
 var SXMODE={
  "full-auto":"The agent decides everything, spec changes included; nothing waits for you. You review every agent decision in the final report before merging. Two stops still hold: a hold you set after a job, and the last changes-required round of a review that Max review rounds allows.",
  auto:"The agent decides everything inside the spec, risky choices included, and lists each decision in the final report. A change to the spec is never decided: the affected jobs wait for you, and the rest of the work continues.",

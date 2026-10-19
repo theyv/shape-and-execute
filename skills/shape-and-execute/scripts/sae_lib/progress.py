@@ -237,6 +237,8 @@ def next_text(task: Task, config: dict | None, data: dict | None = None, ask_rem
     if data["card"] is not None:
         lines += [data["card"]["text"], ""]
     if data["running"]:
+        # "last change", never "running for", and no "interrupted" status: a dead worker
+        # still shows `running`; only the age of its last change tells the owner.
         lines += ["Running:"] + [f"  {r['id']} — last change {age_text(r['last_change'])}" for r in data["running"]]
     if data["parked"]:
         lines += ["Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]

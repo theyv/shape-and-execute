@@ -23,8 +23,7 @@ Collected 2026-10-06 by research subagents from the local `codex-cli 0.160.0` (h
     `send_input`, `resume_agent`, `wait_agent`, `close_agent`;
   - v2: `spawn_agent{task_name, message, fork_turns, model, reasoning_effort}`,
     `followup_task`, `send_message`, `wait_agent`, `list_agents`, `interrupt_agent`.
-- Parallel cap `agents.max_threads` (v1 default 6, v2 default 4 including the root; the owner
-  has 8).
+- Parallel cap `agents.max_threads` (v1 default 6, v2 default 4 including the root).
 - Model and reasoning effort can be set per spawn.
 - The v1 spawn tool text says: do not spawn unless the user, AGENTS.md or a skill asks, and do
   not set `model` unless asked. **The skill must authorize both explicitly.**
@@ -49,9 +48,9 @@ codex exec -m <model> -c model_reasoning_effort="high" -s read-only -C /abs/repo
 
 ## Models
 
-`codex debug models [--bundled]` prints the catalog as JSON. Seen on the owner's machine:
+`codex debug models [--bundled]` prints the catalog as JSON. Seen in a local catalog:
 gpt-6.1-sol (default), gpt-6-astra, gpt-6-sol, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra,
-gpt-5.6-luna. The "luna" models are the light ones the owner excludes.
+gpt-5.6-luna. The "luna" models are the light ones.
 
 ## Sandbox and git
 
@@ -110,15 +109,15 @@ Nothing in `~/.codex` was modified. Probe dirs were deleted.
 - Bundled catalog (`codex debug models --bundled`): `v2` for gpt-6-astra, gpt-6.1-sol, gpt-6-sol,
   gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra (and hidden gpt-daybreak-*); `v1` for gpt-5.6-luna and
   codex-auto-review; none for gpt-5.5 (falls back to V1 via the `multi_agent` feature).
-  The owner's live catalog (`codex debug models`, account-specific) also lists `gpt-reserve` as `v1`.
-  So the owner's default `gpt-6.1-sol` runs V2.
+  A live catalog (`codex debug models`, account-specific) may also list `gpt-reserve` as `v1`.
+  So the default `gpt-6.1-sol` runs V2.
 - Defaults (`core/src/config/mod.rs:254-255`):
   - V1: `DEFAULT_AGENT_MAX_THREADS = Some(6)` spawned agents. Used when `agents.max_threads` is unset
     (`effective_agent_max_threads`, `mod.rs:1615-1629`).
   - V2: `DEFAULT_MULTI_AGENT_V2_MAX_CONCURRENT_THREADS_PER_SESSION = 4`, which includes the root.
     So the default is 3 subagents. The V2 cap is `total - 1` (`mod.rs:1620-1624`).
 - V2 off-by-one trap. `agents.max_threads = N` is converted to a V2 total of `N + 1`
-  (`mod.rs:2762-2771`), so N subagents plus the root. The owner's `max_threads = 8` gives 8 subagents
+  (`mod.rs:2762-2771`), so N subagents plus the root. `max_threads = 8` gives 8 subagents
   on V2. But `features.multi_agent_v2.max_concurrent_threads_per_session` (the same name, different
   meaning: it counts the root) takes precedence when set (`mod.rs:2763`,
   test `config_tests.rs:12110-12125`: features=5 and agents=9 gives 4 subagents).
@@ -148,13 +147,13 @@ Nothing in `~/.codex` was modified. Probe dirs were deleted.
   (`mod.rs:264`). A child at depth 2 cannot spawn. Other `[agents]` keys: `enabled`,
   `default_subagent_model`, `default_subagent_reasoning_effort`, `interrupt_message`.
 - Is 10 reasonable for 3 writers plus several read-only agents? Yes.
-  - V2 (owner's default models): 10 means 10 concurrent subagents. Idle finished ones are evicted, so
+  - V2 (the default models): 10 means 10 concurrent subagents. Idle finished ones are evicted, so
     it is a ceiling on concurrent work, not on total spawned.
   - V1: 10 counts all unclosed agents. The orchestrator prompt must tell the model to call
     `close_agent` when an agent is done, or finished agents eat slots.
   - Cost note: the TUI warns for Ultra reasoning when the V2 total is 8 or more
     (`tui/src/chatwidget/model_popups.rs:9, 757-768`). That is a hint, not a limit.
-  - The owner already has 8; 10 leaves headroom for 3 writers + 7 readers.
+  - 10 leaves headroom for 3 writers + 7 readers.
 
 ### 2. Env vars set in commands run by the shell tool
 
@@ -222,12 +221,12 @@ section 5), `--add-dir <DIR>`, `--json`, `--output-schema`, `--skip-git-repo-che
   `display_name`, `visibility` (`list` or `hide`), `default_reasoning_level`,
   `supported_reasoning_levels[{effort,description}]`, `multi_agent_version` (`v1`/`v2`/absent),
   `multi_agent_reasoning_effort`, `context_window`, `priority`, `supported_in_api`, `tool_mode`, and more.
-  Parsed with Python: bundled 11 models; the owner's live catalog 10 (includes `gpt-reserve`).
+  Parsed with Python: bundled 11 models; a live catalog 10 (includes `gpt-reserve`).
 - `--bundled` is fully local: it reads the catalog compiled into the binary (`models-manager/models.json`).
 - Without `--bundled` it uses `RefreshStrategy::OnlineIfUncached`: a fresh `models_cache.json`
   (TTL 300 s, `models-manager/src/manager.rs:35`) is used; otherwise it fetches. If fetching fails it
   logs an error and still prints the in-memory catalog with exit 0 (`manager.rs:494-508`).
-  Probes: with a bogus proxy and the owner's fresh cache it printed the 10-model cache, exit 0; with an
+  Probes: with a bogus proxy and a fresh local cache it printed the 10-model cache, exit 0; with an
   empty `CODEX_HOME` it printed the 11 bundled models, exit 0. The stale-cache plus offline plus
   logged-in case was not run (UNKNOWN beyond the source reading).
 - sae should prefer the live call and fall back to `--bundled`; the live list is account-specific.
@@ -281,7 +280,7 @@ section 5), `--add-dir <DIR>`, `--json`, `--output-schema`, `--skip-git-repo-che
     (`core/src/config/mod.rs:3496-3506`; skipped only when a layer sets legacy `sandbox_mode`). So do not
     put profile definitions in the base `config.toml` without also selecting one; keep them in the
     `-p` file or pass them inline.
-  - The owner's `~/.codex/config.toml` sets neither `sandbox_mode` nor `default_permissions`
-    (checked with grep), so either approach is safe there.
+  - A local config that sets neither `sandbox_mode` nor `default_permissions` is safe with
+    either approach.
   - The git protection from the main notes still applies: a writer in a worktree needs
     `<main>/.git` and `<main>/.git/worktrees/<name>` writable too (see "Sandbox and git").

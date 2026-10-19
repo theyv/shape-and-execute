@@ -111,8 +111,8 @@ def integration_parked(task: Task) -> str | None:
 
 def works_on_unmerged(task: Task, job: dict, need: str) -> bool:
     """Reviews and integration jobs work on their unmerged target; a job review also on the
-    target's fix jobs, which merge together with it after the review
-    (record 2026-10-10-a-review-waits-for-its-target-to-be-done.md)."""
+    target's fix jobs, which merge together with it after the review. Waiting for the merge
+    would deadlock: review round 2 would wait for a merge that comes only after round 2."""
     target = job.get("target")
     if need == target:
         return True
@@ -343,6 +343,8 @@ def lint_plan(task: Task) -> tuple[list[str], list[str]]:
             elif job["kind"] != "review":
                 covered.add(req)
         errors.extend(resolves_errors(task, job_id, job["kind"], meta))
+        # A warning, not an error: some jobs are checked only by judgement. The plan gate lists
+        # them; a rule that every job must have `verify` was rejected.
         if job["kind"] in WRITER_KINDS + ("validation",) and not as_list(meta.get("verify")):
             warnings.append(f"{job_id}: no verify commands (only judgement checks this job)")
     cycle = find_cycle(jobs)

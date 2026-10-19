@@ -2,7 +2,8 @@
 
 The skill's files (SKILL.md, references, templates, agents, scripts, viewer assets) never use a
 retired term. A hit fails with the file and the line. When you rename a term, add the old name
-here. A term may be allowed in a named place where it is still correct.
+here. A term may be allowed in a named place where it is still correct. There is no glossary:
+it did not stop drift.
 """
 
 from __future__ import annotations

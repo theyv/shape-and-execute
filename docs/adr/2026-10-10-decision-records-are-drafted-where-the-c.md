@@ -3,7 +3,7 @@ title: Decision records are drafted where the context is fresh and accepted in t
 type: architecture
 status: accepted
 date: 2026-10-10
-source: DL-129, DL-131, task 2026-10-08-1733--sae-dogfood-fixes (item 11; R2, R3, Q8, Q12, Q13; [DECISION-DRAFTS], [DECISION-ADR-INBOX], [TRIAGE-TWO-QUEUES])
+source: task 2026-10-08-1733--sae-dogfood-fixes
 applies-to: [skills/shape-and-execute/scripts/sae_lib/findings.py, skills/shape-and-execute/references/modes/plan.md, skills/shape-and-execute/references/modes/execute.md, skills/shape-and-execute/references/modes/triage.md, skills/shape-and-execute/references/modes/triage-decisions.md, skills/shape-and-execute/references/modes/triage-findings.md, cmd_adr_new, cmd_adr_accept, cmd_adr_reject, cmd_triage, triage_counts]
 ---
 

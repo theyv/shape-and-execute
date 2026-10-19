@@ -3,7 +3,7 @@ title: Research notes follow their decisions
 type: architecture
 status: accepted
 date: 2026-10-12
-source: task 2026-10-12-1846--sae-findings-docs [DECISION-RESEARCH-NOTES]
+source: task 2026-10-12-1846--sae-findings-docs
 applies-to: [docs/adr/research]
 ---
 

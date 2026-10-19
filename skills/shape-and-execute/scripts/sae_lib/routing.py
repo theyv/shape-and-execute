@@ -90,7 +90,9 @@ def job_context(task: Task, job_id: str) -> dict:
     else:
         difficulty = job.get("difficulty") or "normal"
     if difficulty not in PHASE_DIFFICULTIES[phase]:
-        difficulty = "normal"  # a review of a mechanical job; planning is never mechanical
+        # a review of a mechanical job; planning is never mechanical. The owner rejected a
+        # weaker model for review.
+        difficulty = "normal"
     return {"kind": kind, "phase": phase, "level": task.settings["levels"][phase], "difficulty": difficulty,
             "target": job.get("target")}
 
@@ -170,6 +172,8 @@ def resolve_model(task: Task, job_id: str, config: dict, harness: str | None = N
     routed = routed_harness(task, ctx["kind"])
     flag = (provider or harness) if ctx["kind"] == "review" else harness
     natural = (override or {}).get("harness") or routed
+    # An override applies only when the dispatch flag names its harness: a fallback must not
+    # send one harness's model to the other.
     applies = bool(override) and (not flag or flag == natural)
     chosen = flag or (natural if applies else routed)
     result = route(config, layers, chosen, ctx)

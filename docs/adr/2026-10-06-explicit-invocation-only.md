@@ -3,7 +3,6 @@ title: Explicit invocation only
 type: architecture
 status: accepted
 date: 2026-10-06
-source: DL-03, design interview 2026-10-06 (D14)
 applies-to: [skills/shape-and-execute/SKILL.md, skills/shape-and-execute/agents/openai.yaml, disable-model-invocation, allow_implicit_invocation]
 ---
 
