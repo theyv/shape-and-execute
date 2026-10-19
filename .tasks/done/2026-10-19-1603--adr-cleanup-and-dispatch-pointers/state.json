@@ -1,0 +1,475 @@
+{
+  "schema": 1,
+  "task": {
+    "id": "2026-10-19-1603--adr-cleanup-and-dispatch-pointers",
+    "title": "ADR cleanup and dispatch pointers",
+    "created": "2026-10-19T16:03:31+02:00",
+    "author": "theyv",
+    "phase": "done",
+    "git": true,
+    "layout": "worktrees",
+    "orchestrator_harness": "claude",
+    "branch": "task/2026-10-19-1603--adr-cleanup-and-dispatch-pointers",
+    "base": {
+      "branch": "main",
+      "commit": "8d3ac20"
+    },
+    "home": "~/code/shape-and-execute",
+    "approvals": {
+      "spec": {
+        "at": "2026-10-19T16:33:48+02:00",
+        "by": "theyv"
+      },
+      "plan": {
+        "at": "2026-10-19T16:47:18+02:00",
+        "by": "theyv"
+      }
+    },
+    "settings_seen": {
+      "schema": 1,
+      "interaction": "auto",
+      "levels": {
+        "research": "balanced",
+        "planning": "balanced",
+        "execution": "balanced",
+        "review": "balanced"
+      },
+      "review": {
+        "points": [
+          "integration"
+        ],
+        "provider": "codex"
+      },
+      "max_verify_failures": 3,
+      "max_review_rounds": 3,
+      "task_difficulty": "hard"
+    },
+    "last_change": "2026-10-19T19:58:01+02:00",
+    "last_card": {
+      "at": "2026-10-19T19:48:08+02:00",
+      "phase": "executing",
+      "jobs": [
+        "REVIEW-INTEGRATION-2"
+      ],
+      "settings": {
+        "interaction": "auto",
+        "levels.research": "balanced",
+        "levels.planning": "balanced",
+        "levels.execution": "balanced",
+        "levels.review": "balanced",
+        "review.points": [
+          "integration"
+        ],
+        "review.provider": "codex",
+        "max_verify_failures": 3,
+        "max_review_rounds": 3,
+        "task_difficulty": "hard",
+        "ask_signal": "on (mode default)",
+        "routing claude research balanced mechanical": "sonnet · medium",
+        "routing claude research balanced normal": "sonnet · high",
+        "routing claude research balanced hard": "opus · low",
+        "routing claude planning balanced normal": "opus · high",
+        "routing claude planning balanced hard": "opus · xhigh",
+        "routing claude execution balanced mechanical": "sonnet · high",
+        "routing claude execution balanced normal": "opus · medium",
+        "routing claude execution balanced hard": "opus · high",
+        "routing claude review balanced normal": "opus · medium",
+        "routing claude review balanced hard": "opus · high",
+        "routing codex research balanced mechanical": "luna · xhigh",
+        "routing codex research balanced normal": "sol · medium",
+        "routing codex research balanced hard": "sol · high",
+        "routing codex planning balanced normal": "sol · high",
+        "routing codex planning balanced hard": "sol · xhigh",
+        "routing codex execution balanced mechanical": "sol · low",
+        "routing codex execution balanced normal": "sol · medium",
+        "routing codex execution balanced hard": "sol · high",
+        "routing codex review balanced normal": "sol · medium",
+        "routing codex review balanced hard": "sol · high",
+        "override PLAN": "claude · opus · high"
+      }
+    },
+    "overrides": {
+      "PLAN": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-10-19T16:34:46+02:00"
+      }
+    },
+    "holds": {},
+    "worktree": "~/Library/Caches/shape-and-execute/worktrees/shape-and-execute-3f2d3e60/2026-10-19-1603--adr-cleanup-and-dispatch-pointers/task"
+  },
+  "jobs": {
+    "NESTED-AGENTS-MD": {
+      "kind": "research",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T16:24:33+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T16:21:38+02:00",
+          "ended": "2026-10-19T16:24:33+02:00",
+          "tokens": 132312,
+          "duration_s": 165,
+          "agent_ref": "a1823ed2c83088886",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "research done, confidence medium",
+      "research_status": "done",
+      "confidence": "medium"
+    },
+    "PLAN": {
+      "kind": "planning",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T16:39:29+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-10-19T16:35:01+02:00",
+          "ended": "2026-10-19T16:39:29+02:00",
+          "tokens": 97942,
+          "duration_s": 256,
+          "agent_ref": "a7bc30c52e8e3ed7c",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "CLEANUP-LIST (hold) ∥ DISPATCH-POINTERS ∥ WRITING-RULES → CLEANUP-APPLY → VALIDATE-ALL (final)"
+    },
+    "CLEANUP-LIST": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T17:02:09+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T16:52:13+02:00",
+          "ended": "2026-10-19T17:02:08+02:00",
+          "tokens": 210818,
+          "duration_s": 576,
+          "agent_ref": "afb99046679134ff1",
+          "reason": null,
+          "head": "8d3ac20a03bc055fd7ab74a6cd4c7ea6db78dbc3"
+        }
+      ],
+      "commits": [],
+      "summary": "Cleanup list for all 103 records and 8 research notes. Keep 25, code comment 14, directory AGENTS.md 2, remove 62. Notes: keep 5, remove 3."
+    },
+    "DISPATCH-POINTERS": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:16:56+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T16:52:13+02:00",
+          "ended": "2026-10-19T19:16:20+02:00",
+          "tokens": 145109,
+          "duration_s": 829,
+          "agent_ref": "a23ded4d98e186f9c",
+          "reason": null,
+          "head": "8d3ac20a03bc055fd7ab74a6cd4c7ea6db78dbc3"
+        }
+      ],
+      "commits": [
+        "dfd75468ccf179112bdb2d91466bdb4c78650c00"
+      ],
+      "summary": "sae dispatch adds record pointers (scope / job file / diff), directory AGENTS.md / CLAUDE.md lines and the index pointer; protocol lines and tests added"
+    },
+    "WRITING-RULES": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T16:54:30+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T16:52:13+02:00",
+          "ended": "2026-10-19T16:54:19+02:00",
+          "tokens": 55587,
+          "duration_s": 87,
+          "agent_ref": "a6861b9feacee2b32",
+          "reason": null,
+          "head": "8d3ac20a03bc055fd7ab74a6cd4c7ea6db78dbc3"
+        }
+      ],
+      "commits": [
+        "dd5e1519f3b284a6842e1e4ad4d23a7df36cae7a"
+      ],
+      "summary": "Writing rules name three places by reach and the test; template has optional revisit-when; test covers adr new/accept with and without it."
+    },
+    "CLEANUP-APPLY": {
+      "kind": "implementation",
+      "needs": [
+        "CLEANUP-LIST",
+        "DISPATCH-POINTERS",
+        "WRITING-RULES"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:34:33+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T19:26:27+02:00",
+          "ended": "2026-10-19T19:34:22+02:00",
+          "tokens": 122818,
+          "duration_s": 454,
+          "agent_ref": "a0a170874b0012734",
+          "reason": null,
+          "head": "291c88a30a331e78209e5c19a18ba4ef6a682f8f"
+        }
+      ],
+      "commits": [
+        "f5119eb031a585fa364cc66015931693270d37a9"
+      ],
+      "summary": "Applied the approved list. 25 records and 5 notes remain; 14 records moved to code comments and 2 to sae_lib/AGENTS.md; 62 records and 3 notes removed; index current, no DL- source."
+    },
+    "VALIDATE-ALL": {
+      "kind": "validation",
+      "needs": [
+        "CLEANUP-APPLY",
+        "REVIEW-INTEGRATION-2"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": true,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:54:01+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T19:49:18+02:00",
+          "ended": "2026-10-19T19:54:01+02:00",
+          "tokens": 96431,
+          "duration_s": 268,
+          "agent_ref": "a6a43eca9d3bde59b",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated_needs": [
+        "REVIEW-INTEGRATION-2"
+      ],
+      "summary": "Full suite passes (323 OK, 5 skipped); the cleanup matches the approved list; links, index and path entries are clean; pointers work on the real docs/adr; no private data found."
+    },
+    "REVIEW-INTEGRATION": {
+      "kind": "review",
+      "needs": [
+        "CLEANUP-LIST",
+        "DISPATCH-POINTERS",
+        "WRITING-RULES",
+        "CLEANUP-APPLY"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:37:11+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T19:34:37+02:00",
+          "ended": "2026-10-19T19:37:11+02:00",
+          "tokens": 949945,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "e81d6950ce4ab99efc874c21e0b8eb4993c9e544"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "limit": null,
+      "since": null,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "INTEGRATION-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:47:58+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T19:37:39+02:00",
+          "ended": "2026-10-19T19:44:43+02:00",
+          "tokens": 81959,
+          "duration_s": 405,
+          "agent_ref": "a80445971bb4ba493",
+          "reason": null,
+          "head": "e81d6950ce4ab99efc874c21e0b8eb4993c9e544"
+        }
+      ],
+      "commits": [
+        "22f6dd20af719f97ba59f1e2e4e84dc1ee49f871"
+      ],
+      "summary": "Pointer matching handles glob scopes (records and nested AGENTS.md / CLAUDE.md), single top-level folders like `src/` in job files, and both sides of a rename in review diffs; 5 regression tests"
+    },
+    "REVIEW-INTEGRATION-2": {
+      "kind": "review",
+      "needs": [
+        "CLEANUP-LIST",
+        "DISPATCH-POINTERS",
+        "WRITING-RULES",
+        "CLEANUP-APPLY",
+        "INTEGRATION-FIX-1"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-10-19T19:49:14+02:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-10-19T19:48:08+02:00",
+          "ended": "2026-10-19T19:49:14+02:00",
+          "tokens": 187116,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "40c08bfe36b68c846efe4426e79c09d2d666947a"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "limit": "findings",
+      "since": "e81d6950ce4ab99efc874c21e0b8eb4993c9e544",
+      "summary": "verdict: pass",
+      "verdict": "pass"
+    }
+  }
+}
