@@ -1,0 +1,8 @@
+# Python caches (the tests import the scripts)
+__pycache__/
+*.pyc
+
+# Local tools
+.DS_Store
+.vscode/
+.idea/
