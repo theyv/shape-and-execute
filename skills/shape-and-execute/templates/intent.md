@@ -2,7 +2,7 @@
 
 <!-- Keep every detail of the user's note; cut repetition and filler. Short sentences.
      Delete a section when it has no content. Quote the user's own words when a translation
-     would lose a nuance. -->
+     would lose a nuance; smooth each quote (SKILL.md, "Smooth every quote"). -->
 
 ## Problem
 <!-- What problem do we solve, for whom, and why now? -->

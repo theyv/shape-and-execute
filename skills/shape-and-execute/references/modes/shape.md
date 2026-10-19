@@ -72,7 +72,7 @@ Decisions.
 - Describe final behavior, not implementation.
 - Decisions: `### [DECISION-...]` with decision, reason, basis and `[human]`, `[agent]` or
   `[joint]`. Quote the user's words where they carry the "why": decision records are drafted
-  from them later.
+  from them later. Smooth each quote (SKILL.md, "Smooth every quote").
 - Research basis: link the reports that support decisions. Do not copy them.
 - No traceability table: `sae check` computes coverage.
 - Mockups and throwaway prototypes for this task go to `.tasks/<task-id>/prototypes/`, never
@@ -126,6 +126,7 @@ gate, and there is no second review unless the user asks for one.
 
 ## 7. Approval
 
+Before you ask for approval, run the quote review (SKILL.md, "Quote review at approvals").
 When the user approves: `sae approve <task> spec` (it refuses while a due `REVIEW-SPEC` is not
 collected). Then load [plan.md](plan.md) — planning phase, plan gate and decision-record
 drafts.
