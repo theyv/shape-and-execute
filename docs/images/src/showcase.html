@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>shape-and-execute: orchestration that ships</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 200 200%27%3E%3Cpath fill=%27%2318B995%27 d=%27M33 33H109L141 65V100H106V80L94 68H68V94H33Z%27/%3E%3Cpath fill=%27%23C9D6DB%27 d=%27M141 165H65L33 133V98H68V118L80 130H106V104H141Z%27/%3E%3Cpath fill=%27%2318B995%27 d=%27M104 87L160 100L104 113Z%27/%3E%3C/svg%3E">
+<style>
+/* Tokens from skills/shape-and-execute/assets/viewer/app.css (dark theme). Dark only. */
+:root{--bg:#121212;--s1:#171717;--s2:#1c1c1c;--s3:#262626;--line:#2e2e2e;--line2:#3a3a3a;
+--ink:#ededed;--ink2:#a1a1a1;--ink3:#7c7c7c;--ink-md:#d4d4d4;
+--acc:#3ecf8e;--red:#ff8a7e;--ph-s:#d99cc4;--ph-p:#6dc0cc;--ph-e:#72adff;--ph-a:#ededed;
+--orange:#f39c5a;--yellow:#e6c84f;--review:#b48cff;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:dark}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--ink);font:18px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:4px}
+code,.mono{font-family:var(--mono)}
+code{font-size:.9em;background:var(--s3);padding:1px 6px;border-radius:4px}
+/* plain document flow, no scroll snapping, no scripts */
+section{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:56px 40px;border-top:1px solid var(--line)}
+section:first-of-type{border-top:0}
+.w{width:100%;max-width:1240px;margin:0 auto}
+.k{font:600 14px var(--mono);letter-spacing:.08em;text-transform:uppercase;margin:0}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+
+/* hero */
+.hero .k{color:var(--acc);font-size:18px;letter-spacing:.02em;text-transform:none;display:flex;align-items:center;gap:12px}
+.hero .logo{width:48px;height:48px;flex:none}
+.hero h1 .no{display:block;color:var(--red)}
+.hero h1{font-size:76px;line-height:1.08;margin-top:24px;max-width:15ch}
+.hero .sub{font-size:30px;color:var(--ink2);margin:20px 0 0}
+.hero .d{max-width:980px;margin-top:64px}
+.hero .meta{font:16px var(--mono);color:var(--ink2);margin:40px 0 0}
+/* hero: title block left, the complete task-folder tree (union of the row trees) right */
+.hero .w{max-width:1600px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,560px);gap:64px;align-items:center}
+.hero h1{font-size:clamp(56px,4.2vw,76px)}
+.hero .ht{background:var(--s1);border:1px dashed var(--line2);border-radius:12px;padding:20px 28px 16px}
+.hero .ht .d{max-width:none;margin-top:0}
+
+/* assumptions */
+.sh{font-size:52px;line-height:1.1}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:48px}
+.card{background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:24px 22px}
+.card .k{color:var(--acc)}
+.card h3{font-size:24px;line-height:1.25;margin-top:16px}
+.card p{margin:10px 0 0;color:var(--ink2);font-size:19px;line-height:1.45}
+.lead{font-size:22px;color:var(--ink2);margin:40px 0 0}
+
+/* why another orchestrator: three goal cards, each with a small diagram */
+.why .cards{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}
+.why .card{display:flex;flex-direction:column;padding:28px 28px 24px}
+.why .card h3{font-size:28px}
+.why .card p{font-size:20px;color:var(--ink-md)}
+.why .card p.k{font-size:14px;color:var(--acc)}
+.why .card .d{margin-top:auto;padding-top:28px}
+
+/* rows: problem (left) and fix (right) */
+.rh{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.ptag{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:6px;font:600 15px var(--mono);letter-spacing:.08em;color:var(--pc);background:color-mix(in srgb,var(--pc) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pc) 45%,transparent)}
+.num{font:15px var(--mono);color:var(--ink2)}
+.t-shape{--pc:var(--ph-s)}.t-plan{--pc:var(--ph-p)}.t-exec{--pc:var(--ph-e)}.t-always{--pc:var(--ph-a)}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) 48px minmax(0,1.2fr);align-items:stretch}
+.side{display:flex;flex-direction:column;background:var(--s2);border:1px solid var(--line);border-radius:12px;padding:28px 32px 24px}
+.prob{border-color:rgba(255,138,126,.3)}
+.fix{border-color:rgba(62,207,142,.38)}
+.prob .k{color:var(--red)}.fix .k{color:var(--acc)}
+.side h2{font-size:32px;line-height:1.2;margin-top:12px}
+.prob h2{color:var(--red)}.fix h2{color:var(--acc)}
+.side p.t{font-size:22px;line-height:1.45;color:var(--ink-md);margin:12px 0 0}
+.side .d{margin-top:auto;padding-top:24px}
+.arr{display:flex;align-items:center;justify-content:center}
+.arr svg{width:28px;height:28px}
+/* cards share one row and end level; the tree is a centered strip under both */
+.pair>.prob{align-self:stretch}
+/* growing task-folder tree under the fix (rows 2-7): earlier files muted, new ones in the phase color */
+.ft{grid-column:1 / -1;justify-self:center;width:min(100%,760px);margin-top:14px;background:var(--s1);border:1px dashed var(--line2);border-radius:12px;padding:14px 32px 12px}
+.ft .d{width:580px;max-width:100%;margin:0 auto}
+.d .tl{fill:none;stroke:var(--line2);stroke-width:1.5}
+
+/* PROSE */
+.prose .d{margin-top:48px}
+
+/* pipeline */
+.pipe .d{margin-top:28px}
+.ctl{font-size:22px;color:var(--ink-md);margin:24px 0 0;max-width:62em}
+.ctl b{color:var(--acc)}
+
+footer{border-top:1px solid var(--line);padding:32px 40px 40px;font:15px var(--mono);color:var(--ink2)}
+footer .w{display:flex;flex-wrap:wrap;gap:8px 20px}
+
+/* diagrams: inline SVG, labels in mono */
+.d{display:block;width:100%;height:auto;font-family:var(--mono);overflow:visible}
+.d text{font-size:14px;fill:var(--ink2)}
+.d .lb{fill:var(--ink)}.d .tr{fill:var(--red)}.d .tg{fill:var(--acc)}.d .ts{fill:var(--ph-s)}.d .tp{fill:var(--ph-p)}.d .te{fill:var(--ph-e)}
+.d .to{fill:var(--orange)}.d .ty{fill:var(--yellow)}.d .tm{fill:var(--ink3)}.d .tv{fill:var(--review)}.d .tk{fill:var(--bg)}
+.d .b{font-weight:600}.d .sm{font-size:13px}.d .lg{font-size:17px}.d .xl{font-size:20px}
+.d .c{text-anchor:middle}.d .e{text-anchor:end}
+.d .ln{fill:none;stroke:var(--line2);stroke-width:2}
+.d .lm{fill:none;stroke:var(--ink3);stroke-width:1.5;stroke-dasharray:5 5}
+.d .lr{fill:none;stroke:var(--red);stroke-width:2}
+.d .lg2{fill:none;stroke:var(--acc);stroke-width:2}
+.d .dash{stroke-dasharray:6 5}
+.d .box{fill:var(--s3);stroke:var(--line2);stroke-width:1.5}
+.d .bx-r{fill:rgba(255,138,126,.12);stroke:var(--red);stroke-width:1.5}
+.d .bx-g{fill:rgba(62,207,142,.1);stroke:var(--acc);stroke-width:1.5}
+.d .bx-s{fill:rgba(217,156,196,.07);stroke:var(--ph-s);stroke-width:1.5}
+.d .bx-p{fill:rgba(109,192,204,.07);stroke:var(--ph-p);stroke-width:1.5}
+.d .bx-e{fill:rgba(114,173,255,.07);stroke:var(--ph-e);stroke-width:1.5}
+.d .bx-o{fill:rgba(243,156,90,.1);stroke:var(--orange);stroke-width:1.5}
+.d .bx-y{fill:rgba(230,200,79,.1);stroke:var(--yellow);stroke-width:1.5}
+.d .bx-m{fill:none;stroke:var(--ink3);stroke-width:1.5;stroke-dasharray:5 4}
+.d .bx-v{fill:rgba(180,140,255,.1);stroke:var(--review);stroke-width:1.5}
+
+@media (max-width:1000px){
+.pair{grid-template-columns:minmax(0,1fr);gap:16px}.arr{transform:rotate(90deg)}.ft{grid-column:1;margin-top:0}
+.hero .w{grid-template-columns:minmax(0,1fr)}.hero .ht{max-width:560px}.hero h1{font-size:56px}.sh{font-size:40px}}
+</style>
+</head>
+<body>
+
+<!-- Shared SVG parts: arrow heads and icons, used by every diagram below. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+<marker id="a-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3ecf8e"/></marker>
+<marker id="a-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#ff8a7e"/></marker>
+<marker id="a-m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#7c7c7c"/></marker>
+<marker id="a-w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#a1a1a1"/></marker>
+<marker id="a-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6dc0cc"/></marker>
+<marker id="a-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f39c5a"/></marker>
+<marker id="a-y" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#e6c84f"/></marker>
+<symbol id="bulb" viewBox="0 0 40 52"><g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 30a14 14 0 1 1 16 0v6H12z"/><path d="M14 42h12M16 47h8"/></g></symbol>
+<symbol id="doc" viewBox="0 0 36 44"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 2h22l10 10v30H2z"/><path d="M24 2v10h10M8 20h20M8 27h20M8 34h14"/></g></symbol>
+<symbol id="sw" viewBox="-16 -16 32 32"><g fill="none" stroke="currentColor" stroke-linecap="round"><path d="M-14 -14L4 4M14 -14L-4 4" stroke-width="2"/><path d="M-1 11L11 -1M1 11L-11 -1" stroke-width="2.6"/><path d="M7 7L12 12M-7 7L-12 12" stroke-width="3.6"/></g></symbol>
+<symbol id="bug" viewBox="0 0 40 44"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><ellipse cx="20" cy="25" rx="10" ry="13"/><path d="M20 12v26M14 8l3 5M26 8l-3 5M10 20H3M10 28H3M10 35l-6 5M30 20h7M30 28h7M30 35l6 5"/></g></symbol>
+</defs>
+</svg>
+
+<!-- 0. Hero -->
+<section class="hero" id="hero">
+<div class="w">
+<div class="hl">
+<p class="k"><svg class="logo" viewBox="0 0 200 200" aria-hidden="true"><path fill="#18B995" d="M33 33H109L141 65V100H106V80L94 68H68V94H33Z"/><path fill="#C9D6DB" d="M141 165H65L33 133V98H68V118L80 130H106V104H141Z"/><path fill="#18B995" d="M104 87L160 100L104 113Z"/></svg>shape-and-execute</p>
+<h1>Finally, orchestration that ships. <span class="no">Not agentic theater.</span></h1>
+<p class="sub">A Claude Code and Codex workflow that gets the job done. Every time.</p>
+<svg class="d" viewBox="0 0 850 120" role="img" aria-label="Three phases in a line: shape, plan, execute, then a branch">
+<path d="M40 44H250" stroke="#d99cc4" stroke-width="3"/>
+<path d="M290 44H500" stroke="#6dc0cc" stroke-width="3"/>
+<path d="M540 44H760" stroke="#72adff" stroke-width="3"/>
+<circle cx="28" cy="44" r="14" fill="#d99cc4"/>
+<circle cx="278" cy="44" r="14" fill="#6dc0cc"/>
+<circle cx="528" cy="44" r="14" fill="#72adff"/>
+<text class="ts xl b" x="14" y="100">SHAPE</text>
+<text class="tp xl b" x="264" y="100">PLAN</text>
+<text class="te xl b" x="514" y="100">EXECUTE</text>
+<path d="M778 28L794 44L778 60L762 44Z" fill="#3ecf8e"/>
+<text class="tg xl b" x="764" y="100">BRANCH</text>
+</svg>
+<p class="meta">skill + sae (Python CLI) + local viewer · <a href="https://github.com/theyv/shape-and-execute">github.com/theyv/shape-and-execute</a></p>
+</div>
+<!-- complete task-folder tree: union of the row trees in rows 2-7, colored by phase -->
+<div class="ht"><svg class="d" viewBox="0 0 500 400" role="img" aria-label="The complete task folder: every file the rows below add, colored by the phase that adds it">
+<path class="tl" d="M8 30V381M8 43H24M8 329H24M8 355H24M8 381H24"/>
+<path class="tl" d="M42 56V303M42 69H58M42 95H58M42 121H58M42 147H58M42 173H58M42 199H58M42 225H58M42 251H58M42 277H58M42 303H58"/>
+<text class="tm" x="0" y="22">.tasks/</text>
+<text class="tm" x="34" y="48">&lt;task&gt;/</text>
+<text class="ts b" x="68" y="74">intent.md</text><text class="sm" x="250" y="74">why</text>
+<text class="ts b" x="68" y="100">specs.md</text><text class="sm" x="250" y="100">what, with IDs</text>
+<text class="tp b" x="68" y="126">plan.md</text><text class="sm" x="250" y="126">the job graph</text>
+<text class="tp b" x="68" y="152">brief.md</text><text class="sm" x="250" y="152">only what every job needs</text>
+<text class="tp b" x="68" y="178">settings.json</text><text class="sm" x="250" y="178">levels per phase</text>
+<text class="tp b" x="68" y="204">jobs/&lt;ID&gt;.md</text><text class="sm" x="250" y="204">one job, one deliverable</text>
+<text class="te b" x="68" y="230">jobs/&lt;ID&gt;.result.md</text><text class="sm" x="250" y="230">result + validation</text>
+<text class="te b" x="68" y="256">reviews/</text><text class="sm" x="250" y="256">verdicts</text>
+<text class="lb b" x="68" y="282">events.jsonl</text><text class="sm" x="250" y="282">who did what, on which model</text>
+<text class="lb b" x="68" y="308">state.json</text><text class="sm" x="250" y="308">where the task stands</text>
+<text class="lb b" x="34" y="334">findings/</text><text class="sm" x="250" y="334">filed by agents</text>
+<text class="lb b" x="34" y="360">backlog/</text><text class="sm" x="250" y="360">deferred intents</text>
+<text class="lb b" x="34" y="386">adr/</text><text class="sm" x="250" y="386">decision drafts</text>
+</svg></div>
+</div>
+</section>
+
+<!-- Why another orchestrator: three goals -->
+<section class="why" id="why">
+<div class="w">
+<h2 class="sh">Why another orchestrator?</h2>
+<div class="cards">
+<div class="card"><p class="k">01</p><h3>It scales with the task.</h3><p>Big or small, one tool fits. The orchestrator adds, changes and cancels jobs as the work unfolds; a small task skips whole steps.</p>
+<svg class="d" viewBox="0 0 360 140" role="img" aria-label="A small task skips the plan and runs one job; a big task runs a tangled graph of jobs: fan-outs and joins, review and fix rounds, jobs added and one cancelled on the way">
+<text class="tm" x="0" y="27">small</text>
+<rect class="bx-m" x="64" y="10" width="76" height="26" rx="6"/><text class="tm c sm" x="102" y="28">plan</text>
+<path d="M140 23H168" stroke="#7c7c7c" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#a-w)"/>
+<rect class="box" x="172" y="10" width="60" height="26" rx="6"/><text class="lb c sm" x="202" y="28">job</text>
+<text class="tm" x="0" y="100">big</text>
+<path d="M76 95L92 62M76 95L92 95M76 95L92 128M116 62L132 73M116 95L132 73M116 95L132 117M116 128L132 117M156 73L172 62M156 73L172 95M156 117L172 95M156 117L172 128M196 95L212 95M196 62L252 62M236 95L252 106M236 95L252 62M196 128L252 106M276 62L292 84M276 106L292 84M316 84L332 84" stroke="#a1a1a1" stroke-width="1.2" fill="none"/>
+<path d="M196 128L212 128" stroke="#ff8a7e" stroke-width="1.2" stroke-dasharray="3 3" stroke-opacity=".7"/>
+<path d="M222 87C216 74 196 76 190 85" fill="none" stroke="#b48cff" stroke-width="1.2" marker-end="url(#a-w)"/>
+<rect class="box" x="52" y="87" width="24" height="16" rx="4"/>
+<rect class="box" x="92" y="54" width="24" height="16" rx="4"/>
+<rect class="box" x="92" y="87" width="24" height="16" rx="4"/>
+<rect class="box" x="92" y="120" width="24" height="16" rx="4"/>
+<rect class="box" x="132" y="65" width="24" height="16" rx="4"/>
+<rect class="box" x="132" y="109" width="24" height="16" rx="4"/>
+<rect class="box" x="172" y="54" width="24" height="16" rx="4"/>
+<rect class="bx-v" x="172" y="87" width="24" height="16" rx="4"/>
+<rect class="bx-g" x="172" y="120" width="24" height="16" rx="4"/>
+<rect class="box" x="212" y="87" width="24" height="16" rx="4"/>
+<rect class="bx-r" x="212" y="120" width="24" height="16" rx="4" opacity=".55"/>
+<rect class="bx-g" x="252" y="54" width="24" height="16" rx="4"/>
+<rect class="box" x="252" y="98" width="24" height="16" rx="4"/>
+<rect class="bx-v" x="292" y="76" width="24" height="16" rx="4"/>
+<rect class="box" x="332" y="76" width="24" height="16" rx="4"/>
+<text class="tg c sm" x="184" y="133">+</text><text class="tg c sm" x="264" y="67">+</text><text class="tr c sm" x="224" y="133">✕</text>
+</svg></div>
+<div class="card"><p class="k">02</p><h3>Human work first.</h3><p>Design, decisions, tradeoffs: what even the best model cannot read from your head. Most of your time goes into shaping; planning and execution follow the spec.</p>
+<svg class="d" viewBox="0 0 360 130" role="img" aria-label="You bring ideas, decisions and tradeoffs; agents do research, code and review; sae does the bookkeeping">
+<text class="ts b" x="0" y="31">you</text>
+<rect class="bx-s" x="74" y="10" width="286" height="32" rx="7"/><text class="ts c sm" x="217" y="31">ideas · decisions · tradeoffs</text>
+<text class="lb" x="0" y="77">agents</text>
+<rect class="box" x="74" y="56" width="286" height="32" rx="7"/><text class="lb c sm" x="217" y="77">research · code · review</text>
+<text class="tm" x="0" y="121">sae</text>
+<text class="tm sm" x="74" y="121">bookkeeping, for no tokens</text>
+</svg></div>
+<div class="card"><p class="k">03</p><h3>No false ceremony.</h3><p>It stays light: one command to remember, not dozens. No heavy workflow that burns tokens on ceremony without better results.</p>
+<svg class="d" viewBox="0 0 360 130" role="img" aria-label="A long list of workflow commands crossed out, next to the one command to remember: /shape-and-execute">
+<g class="tm sm"><text x="0" y="22">/flow:brainstorm</text><text x="0" y="46">/flow:write-plan</text><text x="0" y="70">/flow:exec-batch</text><text x="0" y="94">/flow:review-loop</text><text x="0" y="118">… +46 more</text></g>
+<path d="M0 18H140M0 42H136M0 66H136M0 90H144M0 114H96" stroke="#ff8a7e" stroke-width=".8" stroke-opacity=".8"/>
+<rect class="bx-g" x="168" y="50" width="192" height="36" rx="8"/><text class="tg c sm b" x="264" y="73">/shape-and-execute</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- Row 1 · SHAPE · intent problem 6 -->
+<section class="row" id="row-1">
+<div class="w">
+<div class="rh"><span class="ptag t-shape">SHAPE</span><span class="num">1 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Intent matures while coding</h2>
+<p class="t">You know what you want only once changing course is expensive.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="Timeline: idea, code, code, and the insight only at the end; the code before it becomes rework">
+<path class="lr" d="M92 104V90H348V104"/>
+<text class="tr c lg" x="220" y="78">rework</text>
+<path class="ln" d="M24 160H456"/>
+<circle cx="40" cy="160" r="7" fill="#a1a1a1"/>
+<text class="c" x="40" y="200">idea</text>
+<rect class="bx-r" x="92" y="140" width="116" height="40" rx="6"/>
+<text class="lb c" x="150" y="165">code</text>
+<rect class="bx-r" x="232" y="140" width="116" height="40" rx="6"/>
+<text class="lb c" x="290" y="165">code</text>
+<use href="#bulb" x="400" y="104" width="40" height="52" style="color:#e6c84f"/>
+<text class="lb c" x="420" y="200">now I know</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Grill before code</h2>
+<p class="t">The agent asks rounds of questions, each with A/B/C answers and a recommendation. Then a second model can attack the spec in an adversarial review.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="Grill questions come first, the insight moves to the start, a second model reviews the spec, then code">
+<rect class="bx-s" x="16" y="14" width="176" height="32" rx="8"/>
+<text x="30" y="35"><tspan class="lb">Q1</tspan>  A B C <tspan class="tg">→ B</tspan></text>
+<rect class="bx-s" x="16" y="56" width="176" height="32" rx="8"/>
+<text x="30" y="77"><tspan class="lb">Q2</tspan>  A B C <tspan class="tg">→ A</tspan></text>
+<rect class="bx-s" x="16" y="98" width="176" height="32" rx="8"/>
+<text x="30" y="119"><tspan class="lb">Q3</tspan>  A B C <tspan class="tg">→ C</tspan></text>
+<path class="ln" d="M24 190H556"/>
+<path class="lm" d="M104 132V184"/>
+<text class="ts c" x="104" y="224">grill</text>
+<use href="#bulb" x="208" y="132" width="40" height="52" style="color:#3ecf8e"/>
+<text class="tg c" x="228" y="224">now I know</text>
+<use href="#doc" x="290" y="144" width="36" height="44" style="color:#ededed"/>
+<text class="lb c" x="308" y="224">spec</text>
+<use href="#sw" x="288" y="90" width="40" height="40" style="color:#b48cff"/>
+<text class="tv sm" x="336" y="106">Codex reviews</text>
+<text class="tv sm" x="336" y="124">Claude's spec</text>
+<rect class="bx-g" x="374" y="172" width="84" height="36" rx="6"/>
+<text class="lb c" x="416" y="195">code</text>
+<rect class="bx-g" x="468" y="172" width="84" height="36" rx="6"/>
+<text class="lb c" x="510" y="195">code</text>
+</svg>
+</article>
+</div>
+</div>
+</section>
+
+<!-- Row 2 · SHAPE · intent problem 5 -->
+<section class="row" id="row-2">
+<div class="w">
+<div class="rh"><span class="ptag t-shape">SHAPE</span><span class="num">2 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>The intent gets lost</h2>
+<p class="t">Precise at the start of a chat, vague after compactions.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="A column of chat messages that fade out after each compaction">
+<rect class="box" x="20" y="10" width="290" height="32" rx="10"/>
+<text class="lb" x="34" y="31">keep Y, never Z, ship by Friday</text>
+<g opacity=".8"><rect class="box" x="150" y="50" width="220" height="32" rx="10"/><path class="ln" d="M166 66H340"/></g>
+<path class="lr dash" d="M20 96H460"/><text class="tr sm e" x="460" y="90">compacted</text>
+<g opacity=".5"><rect class="box" x="20" y="108" width="250" height="32" rx="10"/><path class="ln" d="M36 124H200"/></g>
+<g opacity=".38"><rect class="box" x="150" y="148" width="220" height="32" rx="10"/><path class="ln" d="M166 164H300"/></g>
+<path class="lr dash" d="M20 194H460"/><text class="tr sm e" x="460" y="188">compacted</text>
+<g opacity=".22"><rect class="box" x="20" y="206" width="250" height="32" rx="10"/><text class="lb" x="34" y="227">keep … what?</text></g>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Two files, two jobs</h2>
+<p class="t"><code>intent.md</code> keeps the why, in the owner's words. <code>specs.md</code> keeps the contract: requirements with IDs and acceptance checks. Rejected ideas stay in the chat. Every decision is tagged <code>[human]</code>, <code>[agent]</code> or <code>[joint]</code>.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="Chat messages funnel into two files, intent.md and specs.md; a rejected idea stays behind">
+<rect class="box" x="16" y="24" width="120" height="28" rx="9"/><path class="ln" d="M30 38H112"/>
+<rect class="box" x="16" y="72" width="120" height="28" rx="9"/><path class="ln" d="M30 86H96"/>
+<rect class="bx-m" x="16" y="120" width="120" height="28" rx="9"/><text class="tm sm" x="30" y="139">rejected</text>
+<rect class="box" x="16" y="168" width="120" height="28" rx="9"/><path class="ln" d="M30 182H118"/>
+<path class="lm" d="M138 38C180 38 186 120 204 126M138 86C170 86 186 122 204 126M138 182C176 182 186 132 204 126"/>
+<path class="lg2" d="M206 124C222 104 222 64 236 62" marker-end="url(#a-g)"/>
+<path class="lg2" d="M206 128C222 148 222 172 236 174" marker-end="url(#a-g)"/>
+<text class="tm sm c" x="76" y="222">stays in chat</text>
+<rect class="bx-s" x="240" y="16" width="324" height="88" rx="10"/>
+<text class="lb lg b" x="258" y="46">intent.md</text>
+<text x="258" y="76">why · in the owner's words</text>
+<rect class="bx-s" x="240" y="118" width="324" height="120" rx="10"/>
+<text class="lb lg b" x="258" y="148">specs.md</text>
+<text x="258" y="176"><tspan class="tg">[REQ-ID]</tspan> requirement + check</text>
+<rect class="box" x="258" y="194" width="76" height="28" rx="6"/><text class="lb sm c" x="296" y="213">[human]</text>
+<rect class="box" x="344" y="194" width="76" height="28" rx="6"/><text class="lb sm c" x="382" y="213">[agent]</text>
+<rect class="box" x="430" y="194" width="76" height="28" rx="6"/><text class="lb sm c" x="468" y="213">[joint]</text>
+</svg>
+</article>
+<div class="ft"><svg class="d" viewBox="0 0 580 80" role="img" aria-label="Task folder: intent.md and specs.md are new">
+<text class="tm" x="0" y="18">.tasks/&lt;task&gt;/</text>
+<path class="tl" d="M8 26V63M8 39H24M8 63H24"/>
+<text class="ts b" x="34" y="44">intent.md</text><text class="sm" x="250" y="44">why</text>
+<text class="ts b" x="34" y="68">specs.md</text><text class="sm" x="250" y="68">what, with IDs</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- Row 3 · PLAN · intent problem 2 -->
+<section class="row" id="row-3">
+<div class="w">
+<div class="rh"><span class="ptag t-plan">PLAN</span><span class="num">3 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Planning while coding</h2>
+<p class="t">A model plans well and codes well, but when it does both at once, every switch blurs its attention mechanism.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="One model zig-zags between plan blocks and code blocks; each switch pulls the two lanes closer until they blur into one">
+<defs><filter id="blur-1" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.6"/></filter><filter id="blur-2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="1.2"/></filter><filter id="blur-3" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2"/></filter><filter id="blur-4" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter><filter id="blur-5" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter></defs>
+<text class="tp b" x="16" y="58">plan</text>
+<text class="tr b" x="16" y="168">code</text>
+<path class="ln dash" d="M70 54L446 109M70 164L446 109"/>
+<path class="lr" d="M114 54L130 155M174 155L190 73M234 73L250 136M294 136L310 91M354 91L370 117M414 117L428 109"/>
+<rect class="bx-p" x="70" y="42" width="44" height="24" rx="6"/>
+<rect class="bx-r" x="130" y="143" width="44" height="24" rx="6"/>
+<rect class="bx-p" x="190" y="61" width="44" height="24" rx="6" filter="url(#blur-1)"/>
+<rect class="bx-r" x="250" y="124" width="44" height="24" rx="6" filter="url(#blur-2)"/>
+<rect class="bx-p" x="310" y="79" width="44" height="24" rx="6" filter="url(#blur-3)"/>
+<rect class="bx-r" x="370" y="105" width="44" height="24" rx="6" filter="url(#blur-4)"/>
+<g filter="url(#blur-5)"><rect class="bx-p" x="428" y="97" width="44" height="24" rx="6"/><rect class="bx-r" x="430" y="99" width="40" height="20" rx="6" opacity=".8"/></g>
+<text class="tr c" x="240" y="238">every switch blurs attention</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Planning is its own step</h2>
+<p class="t">A planner turns the spec into a job graph. Each job fits a fresh context, with its own checks. It starts with one worker and runs jobs in parallel only when that really saves time.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="A planner writes a job graph: research, API, then UI and tests, then a review">
+<rect class="bx-p" x="16" y="8" width="104" height="36" rx="8"/>
+<text class="tp c" x="68" y="31">planner</text>
+<text x="132" y="31">spec → job graph</text>
+<path d="M68 44V66" stroke="#6dc0cc" stroke-width="2" marker-end="url(#a-p)"/>
+<rect x="8" y="70" width="528" height="140" rx="12" fill="none" stroke="#6dc0cc" stroke-opacity=".45" stroke-width="1.5" stroke-dasharray="6 5"/>
+<rect class="box" x="18" y="122" width="104" height="34" rx="7"/><text class="lb c" x="70" y="144">RESEARCH</text>
+<rect class="box" x="162" y="122" width="80" height="34" rx="7"/><text class="lb c" x="202" y="144">API</text>
+<rect class="box" x="290" y="80" width="84" height="34" rx="7"/><text class="lb c" x="332" y="102">UI</text>
+<rect class="box" x="290" y="164" width="84" height="34" rx="7"/><text class="lb c" x="332" y="186">TESTS</text>
+<rect class="bx-v" x="420" y="122" width="104" height="34" rx="7"/><text class="tv c" x="472" y="144">REVIEW</text>
+<path d="M122 139H158" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<path d="M242 132L286 101" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<path d="M242 146L286 177" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<path d="M374 101L416 132" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<path d="M374 177L416 146" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<text class="tg" x="16" y="240">each job: fresh context + checks</text>
+<text class="e" x="564" y="240">no multi-agent theater</text>
+</svg>
+</article>
+<div class="ft"><svg class="d" viewBox="0 0 580 128" role="img" aria-label="Task folder grows: plan.md, brief.md and one file per job are new">
+<text class="tm" x="0" y="18">.tasks/&lt;task&gt;/</text>
+<path class="tl" d="M8 26V111M8 39H24M8 63H24M8 87H24M8 111H24"/>
+<text class="tm" x="34" y="44">intent.md · specs.md</text>
+<text class="tp b" x="34" y="68">plan.md</text><text class="sm" x="250" y="68">the job graph</text>
+<text class="tp b" x="34" y="92">brief.md</text><text class="sm" x="250" y="92">only what every job needs</text>
+<text class="tp b" x="34" y="116">jobs/&lt;ID&gt;.md</text><text class="sm" x="250" y="116">one job, one deliverable</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- Row 4 · PLAN · intent problem 4 -->
+<section class="row" id="row-4">
+<div class="w">
+<div class="rh"><span class="ptag t-plan">PLAN</span><span class="num">4 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Orchestrators pick models badly</h2>
+<p class="t">Left to the harness, orchestration is luck: it skips subagents or spawns too many, on the wrong model and effort. Too weak, and the work rests on bad assumptions; too strong, and the quota burns.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="An orchestrator spawns agents at random: the biggest model on a typo fix, a small model on a hard job, one job skipped; 11% of the quota is left">
+<rect class="box" x="166" y="10" width="148" height="38" rx="8"/>
+<text class="lb c" x="240" y="34">orchestrator</text>
+<path d="M240 48L88 100M240 48L164 100M240 48L240 100M240 48L316 100" stroke="#ff8a7e" stroke-width="1.5" stroke-opacity=".6"/>
+<path d="M240 48L392 100" stroke="#7c7c7c" stroke-width="1.5" stroke-dasharray="5 4"/>
+<g>
+<rect class="bx-r" x="56" y="100" width="64" height="48" rx="7"/><text class="tr c sm" x="88" y="120">max</text><text class="tr c sm" x="88" y="139">high</text>
+<rect class="bx-r" x="132" y="100" width="64" height="48" rx="7"/><text class="tr c sm" x="164" y="120">max</text><text class="tr c sm" x="164" y="139">high</text>
+<text class="c sm" x="164" y="170">typo fix</text>
+<rect class="bx-r" x="208" y="100" width="64" height="48" rx="7"/><text class="tr c sm" x="240" y="120">mini</text><text class="tr c sm" x="240" y="139">low</text>
+<text class="c sm" x="240" y="170">hard job</text>
+<rect class="bx-r" x="284" y="100" width="64" height="48" rx="7"/><text class="tr c sm" x="316" y="120">max</text><text class="tr c sm" x="316" y="139">high</text>
+<rect class="bx-m" x="360" y="100" width="64" height="48" rx="7"/><text class="c sm" x="392" y="129">—</text>
+<text class="c sm" x="392" y="170">skipped</text>
+</g>
+<text class="lb" x="18" y="213">quota</text>
+<rect x="80" y="192" width="380" height="30" rx="6" fill="rgba(255,138,126,.08)" stroke="#ff8a7e" stroke-width="1.5"/>
+<rect x="80" y="192" width="42" height="30" rx="6" fill="#ff8a7e"/>
+<text class="tr b c lg" x="270" y="213">⚠ 11% left</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Economy, balanced, premium</h2>
+<p class="t">Chosen in the plan: you set a level per phase, the planner sets a difficulty per job. Settings map each pair to an exact model and effort. Any job can be overridden; <code>sae</code> prints every dispatch.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="A table of levels per phase: research economy, planning premium, execution balanced, review premium; one job overridden">
+<text class="tm sm" x="16" y="28">level per phase</text>
+<text class="c" x="270" y="28">economy</text>
+<text class="c" x="380" y="28">balanced</text>
+<text class="c" x="490" y="28">premium</text>
+<path d="M16 42H550M16 78H550M16 114H550M16 150H550M16 186H550" stroke="#2e2e2e" stroke-width="1"/>
+<text class="lb" x="16" y="65">research</text>
+<text class="lb" x="16" y="101">planning</text>
+<text class="lb" x="16" y="137">execution</text>
+<text class="lb" x="16" y="173">review</text>
+<g fill="none" stroke="#3a3a3a" stroke-width="1.5">
+<circle cx="380" cy="60" r="6"/><circle cx="490" cy="60" r="6"/>
+<circle cx="270" cy="96" r="6"/><circle cx="380" cy="96" r="6"/>
+<circle cx="270" cy="132" r="6"/><circle cx="490" cy="132" r="6"/>
+<circle cx="270" cy="168" r="6"/><circle cx="380" cy="168" r="6"/>
+</g>
+<g fill="#3ecf8e"><circle cx="270" cy="60" r="8"/><circle cx="490" cy="96" r="8"/><circle cx="380" cy="132" r="8"/><circle cx="490" cy="168" r="8"/></g>
+<text x="16" y="222">per job: mechanical · normal · hard</text>
+<rect class="bx-g" x="372" y="202" width="190" height="30" rx="7"/>
+<text class="lb c" x="467" y="222">JOB-API → override</text>
+</svg>
+</article>
+<div class="ft"><svg class="d" viewBox="0 0 580 80" role="img" aria-label="Task folder grows: settings.json with the levels per phase is new">
+<text class="tm" x="0" y="18">.tasks/&lt;task&gt;/</text>
+<path class="tl" d="M8 26V63M8 39H24M8 63H24"/>
+<text class="tm" x="34" y="44">intent.md · specs.md · plan.md · brief.md · jobs/</text>
+<text class="tp b" x="34" y="68">settings.json</text><text class="sm" x="250" y="68">levels per phase</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- Row 5 · EXECUTE · intent problem 1 -->
+<section class="row" id="row-5">
+<div class="w">
+<div class="rh"><span class="ptag t-exec">EXECUTE</span><span class="num">5 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Too big for one context</h2>
+<p class="t">A big task overflows one context; each compaction blurs it.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="One context bar filled past one hundred percent, compacted three times">
+<text class="lb" x="30" y="80">one context</text>
+<rect x="30" y="100" width="420" height="48" rx="6" fill="rgba(255,138,126,.22)" stroke="#ff8a7e" stroke-width="1.5"/>
+<rect x="30" y="100" width="340" height="48" rx="6" fill="none" stroke="#ededed" stroke-width="2"/>
+<path d="M120 108V140M200 108V140M280 108V140" stroke="#ff8a7e" stroke-width="2" stroke-dasharray="4 4"/>
+<path class="lm" d="M370 90V160"/>
+<text class="c" x="370" y="80">100%</text>
+<text class="tr c lg" x="240" y="196">compacted ×3</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>One fresh worker per job</h2>
+<p class="t">Each job starts in a fresh context. Parallel jobs get their own branch and worktree; <code>sae</code> merges them into one task branch. You keep working in the repo. Nothing is pushed; only you merge.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="Four small job contexts flow into one task branch; you merge it into main">
+<text x="16" y="20">1 job = 1 fresh context</text>
+<rect x="16" y="36" width="120" height="24" rx="5" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="16" y="36" width="72" height="24" rx="5" fill="rgba(62,207,142,.35)"/>
+<rect x="16" y="76" width="120" height="24" rx="5" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="16" y="76" width="88" height="24" rx="5" fill="rgba(62,207,142,.35)"/>
+<rect x="16" y="116" width="120" height="24" rx="5" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="16" y="116" width="60" height="24" rx="5" fill="rgba(62,207,142,.35)"/>
+<rect x="16" y="156" width="120" height="24" rx="5" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="16" y="156" width="80" height="24" rx="5" fill="rgba(62,207,142,.35)"/>
+<path class="lg2" d="M140 48C190 48 196 128 240 128M140 88C186 88 200 128 240 128M140 128H240M140 168C186 168 200 128 240 128"/>
+<path d="M240 128H392" stroke="#3ecf8e" stroke-width="4" marker-end="url(#a-g)"/>
+<text class="tg c" x="316" y="114">task branch</text>
+<rect x="400" y="108" width="96" height="40" rx="8" fill="#262626" stroke="#ededed" stroke-width="2"/>
+<text class="lb c" x="448" y="133">you merge</text>
+<path d="M496 128H520" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<text class="lb" x="524" y="133">main</text>
+<text class="tm c" x="448" y="176">nothing pushed</text>
+<text x="16" y="214">parallel jobs: own branch + worktree</text>
+</svg>
+</article>
+<div class="ft"><svg class="d" viewBox="0 0 580 128" role="img" aria-label="Task folder grows: job results and reviews are new">
+<text class="tm" x="0" y="18">.tasks/&lt;task&gt;/</text>
+<path class="tl" d="M8 26V111M8 39H24M8 63H24M8 87H24M8 111H24"/>
+<text class="tm" x="34" y="44">intent.md · specs.md · plan.md · brief.md</text>
+<text class="tm" x="34" y="68">settings.json · jobs/&lt;ID&gt;.md</text>
+<text class="te b" x="34" y="92">jobs/&lt;ID&gt;.result.md</text><text class="sm" x="250" y="92">result + validation</text>
+<text class="te b" x="34" y="116">reviews/</text><text class="sm" x="250" y="116">verdicts</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- Row 6 · ALWAYS · intent problem 3 -->
+<section class="row" id="row-6">
+<div class="w">
+<div class="rh"><span class="ptag t-always">ALWAYS</span><span class="num">6 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Resuming a session</h2>
+<p class="t">After a /clear or a few compactions, the business problem is gone. Moving the task to another harness starts from zero too.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="An empty chat window with a question mark">
+<rect x="70" y="10" width="340" height="230" rx="12" fill="#171717" stroke="#3a3a3a" stroke-width="1.5"/>
+<path d="M70 44H410" stroke="#3a3a3a" stroke-width="1.5"/>
+<circle cx="92" cy="27" r="5" fill="#3a3a3a"/><circle cx="110" cy="27" r="5" fill="#3a3a3a"/><circle cx="128" cy="27" r="5" fill="#3a3a3a"/>
+<text class="tm e sm" x="396" y="32">/clear</text>
+<text class="tr c b" x="240" y="158" style="font-size:80px">?</text>
+<rect x="92" y="196" width="296" height="28" rx="7" fill="none" stroke="#3a3a3a" stroke-width="1.5"/>
+<text class="tm sm" x="104" y="215">what were we building?</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Files are the memory</h2>
+<p class="t">Any session, any model, even the other harness, resumes from the task folder alone. <code>sae</code>, a Python CLI, writes all state, so bookkeeping costs no agent tokens.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="Task folder grows: the event log and the state file are new; the folder is committed with the code">
+<text class="tm" x="0" y="22">.tasks/&lt;task&gt;/</text>
+<path class="tl" d="M8 30V123M8 45H24M8 71H24M8 97H24M8 123H24"/>
+<text class="tm" x="34" y="50">intent.md · specs.md · plan.md · brief.md</text>
+<text class="tm" x="34" y="76">settings.json · jobs/ · reviews/</text>
+<text class="lb b lg" x="34" y="102">events.jsonl</text><text x="250" y="102">who did what, on which model</text>
+<text class="lb b lg" x="34" y="128">state.json</text><text x="250" y="128">where the task stands</text>
+<path d="M0 170H580" stroke="#2e2e2e" stroke-width="1"/>
+<text class="tg" x="0" y="208">committed with the code: what, why, who decided</text>
+</svg>
+</article>
+</div>
+</div>
+</section>
+
+<!-- Row 7 · ALWAYS · intent problem 7 -->
+<section class="row" id="row-7">
+<div class="w">
+<div class="rh"><span class="ptag t-always">ALWAYS</span><span class="num">7 / 7</span></div>
+<div class="pair">
+<article class="side prob">
+<p class="k">Problem</p>
+<h2>Side fixes poison context</h2>
+<p class="t">An agent stops to fix an unrelated bug on the side. The detour contaminates its context. The task rarely fails; it comes out worse, in ways you do not see but do feel.</p>
+<svg class="d" viewBox="0 0 480 250" role="img" aria-label="A worker detours to fix another bug, comes back with a contaminated context and finishes the task worse than planned">
+<text class="lb" x="16" y="34">worker</text>
+<circle cx="30" cy="60" r="8" fill="#ededed"/>
+<path class="lm" d="M40 60H426"/>
+<text class="tm sm" x="250" y="50">planned path</text>
+<path class="lr" d="M40 60H160C220 60 210 186 268 192" marker-end="url(#a-r)"/>
+<use href="#bug" x="276" y="168" width="40" height="44" style="color:#ff8a7e"/>
+<path class="lr dash" d="M322 190C390 186 420 130 436 76" marker-end="url(#a-r)"/>
+<circle cx="440" cy="60" r="10" fill="rgba(255,138,126,.25)" stroke="#ff8a7e" stroke-width="2"/>
+<text class="tr c" x="296" y="238">fix other bug</text>
+<text class="tr sm" x="296" y="112">context</text>
+<text class="tr sm" x="296" y="130">contaminated</text>
+<text class="tr e b" x="464" y="34">done, but worse</text>
+</svg>
+</article>
+<div class="arr" aria-hidden="true"><svg viewBox="0 0 28 28"><path d="M4 14H22M15 7l7 7-7 7" fill="none" stroke="#7c7c7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<article class="side fix">
+<p class="k">Fix</p>
+<h2>Write it down, carry on</h2>
+<p class="t">The agent files a finding and keeps working. Later, triage turns findings into tasks, backlog items or nothing; decision drafts become ADRs.</p>
+<svg class="d" viewBox="0 0 580 250" role="img" aria-label="The worker drops a finding and reaches task done; triage sends findings to a new task, the backlog or rejects them, and decision drafts to ADRs">
+<circle cx="24" cy="40" r="8" fill="#ededed"/>
+<path class="lg2" d="M34 40H520" marker-end="url(#a-g)"/>
+<text class="tg e" x="572" y="28">task done ✓</text>
+<path class="lm" d="M130 42V96"/>
+<use href="#doc" x="114" y="98" width="32" height="38" style="color:#ededed"/>
+<text class="lb sm c" x="130" y="156">finding</text>
+<use href="#doc" x="114" y="174" width="32" height="38" style="color:#a1a1a1"/>
+<text class="sm c" x="130" y="232">decision draft</text>
+<path d="M152 118L236 136" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<path d="M152 192L236 154" stroke="#a1a1a1" stroke-width="1.5" marker-end="url(#a-w)"/>
+<rect class="box" x="240" y="126" width="90" height="36" rx="8"/>
+<text class="lb c" x="285" y="149">triage</text>
+<path d="M330 134L396 94" stroke="#3ecf8e" stroke-width="1.5" marker-end="url(#a-g)"/>
+<path d="M330 140L396 136" stroke="#f39c5a" stroke-width="1.5" marker-end="url(#a-o)"/>
+<path d="M330 148L396 178" stroke="#7c7c7c" stroke-width="1.5" marker-end="url(#a-m)"/>
+<path d="M330 156L396 220" stroke="#e6c84f" stroke-width="1.5" marker-end="url(#a-y)"/>
+<rect class="bx-g" x="400" y="76" width="90" height="30" rx="7"/><text class="tg c sm" x="445" y="96">new task</text>
+<text class="ts sm b" x="500" y="96">→ SHAPE</text>
+<rect class="bx-o" x="400" y="120" width="90" height="30" rx="7"/><text class="to c sm" x="445" y="140">backlog</text>
+<path d="M490 128C520 124 520 110 492 100" fill="none" stroke="#f39c5a" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#a-o)"/>
+<text class="to sm" x="502" y="140">picked up</text>
+<rect class="bx-m" x="400" y="164" width="90" height="30" rx="7"/><text class="tm c sm" x="445" y="184">reject</text>
+<rect class="bx-y" x="400" y="206" width="90" height="30" rx="7"/><text class="ty c sm" x="445" y="226">ADR</text>
+</svg>
+</article>
+<div class="ft"><svg class="d" viewBox="0 0 580 128" role="img" aria-label="One level up, next to the task folders: findings, backlog and decision drafts are new">
+<text class="tm" x="0" y="18">.tasks/</text>
+<path class="tl" d="M8 26V111M8 39H24M8 63H24M8 87H24M8 111H24"/>
+<text class="tm" x="34" y="44">&lt;task&gt;/  intent · specs · plan · jobs · reviews · …</text>
+<text class="lb b" x="34" y="68">findings/</text><text class="sm" x="250" y="68">filed by agents</text>
+<text class="lb b" x="34" y="92">backlog/</text><text class="sm" x="250" y="92">deferred intents</text>
+<text class="lb b" x="34" y="116">adr/</text><text class="sm" x="250" y="116">decision drafts</text>
+</svg></div>
+</div>
+</div>
+</section>
+
+<!-- 9. The whole pipeline -->
+<section class="pipe" id="pipeline">
+<div class="w">
+<h2 class="sh">Put together</h2>
+<svg class="d" viewBox="0 0 1200 620" role="img" aria-label="The whole pipeline: a note goes through shape (grill, intent and spec, spec review), plan (a planner splits the spec into a graph of jobs and sets a model and effort per job, plan review) and execute (each job in a fresh context, parallel jobs on their own branches, merged into one task branch, job and integration reviews); you merge the task branch. Every review is adversarial and optional, run by the same or the other harness. Files are the memory under all phases. Findings and decision drafts go through triage to a new task, the backlog or ADRs.">
+<!-- note -->
+<use href="#doc" x="12" y="148" width="36" height="44" style="color:#ededed"/>
+<text class="lb c" x="30" y="216">note</text>
+<path d="M54 170H96" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<!-- SHAPE -->
+<rect class="bx-s" x="100" y="40" width="250" height="270" rx="12"/>
+<text class="ts xl b" x="122" y="76">SHAPE</text>
+<circle cx="134" cy="116" r="12" fill="#d99cc4"/><text class="tk c sm b" x="134" y="121">1</text><text class="lb lg" x="156" y="122">grill</text>
+<text class="sm" x="156" y="144">A/B/C answers</text>
+<circle cx="134" cy="180" r="12" fill="#d99cc4"/><text class="tk c sm b" x="134" y="185">2</text><text class="lb lg" x="156" y="186">intent + spec</text>
+<text class="sm" x="156" y="208">why · what</text>
+<use href="#sw" x="120" y="256" width="28" height="28" style="color:#b48cff"/><text class="lg" x="156" y="276">spec review</text>
+<path d="M350 175H376" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<!-- PLAN -->
+<rect class="bx-p" x="380" y="40" width="250" height="270" rx="12"/>
+<text class="tp xl b" x="402" y="76">PLAN</text>
+<circle cx="414" cy="116" r="12" fill="#6dc0cc"/><text class="tk c sm b" x="414" y="121">3</text><text class="lb lg" x="436" y="122">planner → jobs</text>
+<rect class="box" x="436" y="146" width="34" height="22" rx="5"/><text class="lb c sm" x="453" y="162">A</text>
+<rect class="box" x="500" y="134" width="34" height="22" rx="5"/><text class="lb c sm" x="517" y="150">B</text>
+<rect class="box" x="500" y="160" width="34" height="22" rx="5"/><text class="lb c sm" x="517" y="176">C</text>
+<rect class="box" x="564" y="146" width="34" height="22" rx="5"/><text class="lb c sm" x="581" y="162">D</text>
+<path d="M470 153L496 146M470 161L496 168M534 145L560 153M534 171L560 161" stroke="#a1a1a1" stroke-width="1.5"/>
+<circle cx="414" cy="212" r="12" fill="#6dc0cc"/><text class="tk c sm b" x="414" y="217">4</text><text class="lb lg" x="436" y="218">model + effort</text>
+<text class="sm" x="436" y="240">per phase · per job</text>
+<use href="#sw" x="400" y="256" width="28" height="28" style="color:#b48cff"/><text class="lg" x="436" y="276">plan review</text>
+<path d="M630 175H656" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<!-- EXECUTE -->
+<rect class="bx-e" x="660" y="40" width="340" height="270" rx="12"/>
+<text class="te xl b" x="682" y="76">EXECUTE</text>
+<circle cx="694" cy="116" r="12" fill="#72adff"/><text class="tk c sm b" x="694" y="121">5</text><text class="lb lg" x="716" y="122">1 job = 1 fresh context</text>
+<rect x="716" y="140" width="64" height="16" rx="4" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="716" y="140" width="38" height="16" rx="4" fill="rgba(62,207,142,.35)"/>
+<rect x="716" y="164" width="64" height="16" rx="4" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="716" y="164" width="46" height="16" rx="4" fill="rgba(62,207,142,.35)"/>
+<rect x="716" y="188" width="64" height="16" rx="4" fill="none" stroke="#3a3a3a" stroke-width="1.5"/><rect x="716" y="188" width="30" height="16" rx="4" fill="rgba(62,207,142,.35)"/>
+<text class="sm" x="790" y="153">job/B</text><text class="sm" x="790" y="177">job/C</text><text class="sm" x="790" y="201">job/…</text>
+<path class="lg2" d="M840 148C890 148 900 172 940 172M840 172H940M840 196C890 196 900 172 940 172"/>
+<text class="sm" x="716" y="228">a branch per parallel job</text>
+<use href="#sw" x="680" y="256" width="28" height="28" style="color:#b48cff"/><text class="lg" x="716" y="276">job + integration reviews</text>
+<!-- task branch and merge -->
+<path d="M940 172H1026" stroke="#3ecf8e" stroke-width="4" marker-end="url(#a-g)"/>
+<rect class="bx-g" x="1030" y="150" width="150" height="44" rx="8"/>
+<text class="tg c lg" x="1105" y="178">task branch</text>
+<path d="M1105 194V226" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<rect x="1030" y="230" width="150" height="44" rx="8" fill="#262626" stroke="#ededed" stroke-width="2"/>
+<text class="lb c lg" x="1105" y="258">you merge</text>
+<!-- files are the memory -->
+<path class="lm" d="M225 312V356M505 312V356M800 312V356"/>
+<rect x="100" y="360" width="820" height="48" rx="10" fill="#1c1c1c" stroke="#ededed" stroke-opacity=".5" stroke-width="1.5"/>
+<circle cx="126" cy="384" r="12" fill="#ededed"/><text class="tk c sm b" x="126" y="389">6</text>
+<text class="lb lg b" x="148" y="390">files are the memory</text>
+<text x="370" y="389">.tasks/&lt;task&gt;/: intent, spec, plan, jobs, reviews, events</text>
+<!-- findings loop -->
+<path class="lm" d="M960 312V454" marker-end="url(#a-m)"/>
+<rect class="box" x="680" y="458" width="320" height="44" rx="8"/>
+<circle cx="704" cy="480" r="12" fill="#ededed"/><text class="tk c sm b" x="704" y="485">7</text>
+<text class="lb" x="726" y="485">findings · decision drafts</text>
+<path d="M680 480H594" stroke="#a1a1a1" stroke-width="2" marker-end="url(#a-w)"/>
+<rect class="box" x="470" y="458" width="120" height="44" rx="8"/>
+<text class="lb c lg" x="530" y="486">triage</text>
+<path d="M470 480H384" stroke="#f39c5a" stroke-width="2" marker-end="url(#a-o)"/>
+<rect class="bx-o" x="260" y="458" width="120" height="44" rx="8"/>
+<text class="to c lg" x="320" y="486">backlog</text>
+<path d="M260 480H224" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/>
+<rect class="bx-g" x="100" y="458" width="120" height="44" rx="8"/>
+<text class="tg c lg" x="160" y="486">new task</text>
+<path d="M100 480H66V250H96" fill="none" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/>
+<path d="M530 502V536" stroke="#e6c84f" stroke-width="2" marker-end="url(#a-y)"/>
+<rect class="bx-y" x="470" y="540" width="120" height="40" rx="8"/>
+<text class="ty c lg" x="530" y="566">ADRs</text>
+<!-- legend -->
+<rect x="812" y="530" width="384" height="84" rx="10" fill="none" stroke="#3a3a3a" stroke-width="1.5" stroke-dasharray="5 4"/>
+<use href="#sw" x="826" y="544" width="28" height="28" style="color:#b48cff"/>
+<text class="lb" x="864" y="563">adversarial review</text>
+<text class="sm" x="864" y="585">each one optional, switched in settings;</text>
+<text class="sm" x="864" y="603">the same or the other harness reviews</text>
+</svg>
+<p class="ctl"><b>You stay in control:</b> five interaction modes from <code>full-auto</code> to <code>interactive</code>, a next-step card before every bigger dispatch, and settings change only on your word.</p>
+</div>
+</section>
+
+<section class="assume" id="assumptions">
+<div class="w">
+<h2 class="sh">Built on five assumptions</h2>
+<div class="cards">
+<div class="card"><p class="k">01</p><h3>Decisions are yours.</h3><p>Facts and implementation are the agents'. The task record keeps the tribal knowledge: why, what was rejected, who decided. What the code already shows stays out of commits and docs.</p></div>
+<div class="card"><p class="k">02</p><h3>Quota is limited.</h3><p>Not every step needs the biggest model.</p></div>
+<div class="card"><p class="k">03</p><h3>A contract before code.</h3><p>A spec checked early is cheaper than fixing several jobs. Every job carries its own verify commands, and <code>sae</code> re-runs them before the merge: done is checked, not claimed.</p></div>
+<div class="card"><p class="k">04</p><h3>Files outlive chats.</h3><p>The task record is committed with the code, like code. What is not written down is lost at the next compaction.</p></div>
+<div class="card"><p class="k">05</p><h3>Light in its complexity.</h3><p>Complex work, done with simple, smart parts: plain files, one small CLI, no MCP servers, no hooks. The viewer is an optional local page. The bookkeeping is the CLI's, not yours or an agent's.</p></div>
+</div>
+<p class="lead">The seven problems above follow from these.</p>
+</div>
+</section>
+
+<!-- 10. PROSE; the reasoning: docs/adr/2026-10-06-follow-prose-without-ceremony.md -->
+<section class="prose" id="prose">
+<div class="w">
+<h2 class="sh">Built on PROSE</h2>
+<p class="lead">PROSE is Daniel Meppiel's five constraints for agentic systems, from <a href="https://danielmeppiel.github.io/agentic-sdlc-handbook/handbook/ch13-the-prose-specification.html">The Agentic SDLC Handbook, chapter 13</a>. Every task you run gets all five; the skill's own files follow them too.</p>
+<svg class="d" viewBox="0 0 1200 280" role="img" aria-label="The five PROSE constraints and what each means for your task: progressive disclosure, workers get pointers and read only what they need; reduced scope, one job with one deliverable in a fresh context; orchestrated composition, small jobs in a graph and separate planner, worker and reviewer roles; safety boundaries, hard stops, re-run checks, nothing pushed and only you merge; explicit hierarchy, repository rules over spec over brief over job file">
+<rect class="box" x="4" y="8" width="224" height="150" rx="12"/><text class="lb c b" x="116" y="78" style="font-size:56px">P</text><text class="c" x="116" y="112">Progressive</text><text class="c" x="116" y="134">disclosure</text><path d="M116 160V196" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/><rect class="bx-g" x="4" y="200" width="224" height="72" rx="10"/><text class="lb c sm" x="116" y="230">workers get pointers,</text><text class="lb c sm" x="116" y="254">read only what they need</text>
+<rect class="box" x="244" y="8" width="224" height="150" rx="12"/><text class="lb c b" x="356" y="78" style="font-size:56px">R</text><text class="c" x="356" y="112">Reduced</text><text class="c" x="356" y="134">scope</text><path d="M356 160V196" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/><rect class="bx-g" x="244" y="200" width="224" height="72" rx="10"/><text class="lb c sm" x="356" y="230">one job, one deliverable</text><text class="lb c sm" x="356" y="254">a fresh context per job</text>
+<rect class="box" x="484" y="8" width="224" height="150" rx="12"/><text class="lb c b" x="596" y="78" style="font-size:56px">O</text><text class="c" x="596" y="112">Orchestrated</text><text class="c" x="596" y="134">composition</text><path d="M596 160V196" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/><rect class="bx-g" x="484" y="200" width="224" height="72" rx="10"/><text class="lb c sm" x="596" y="230">small jobs in a graph</text><text class="lb c sm" x="596" y="254">planner, worker, reviewer</text>
+<rect class="box" x="724" y="8" width="224" height="150" rx="12"/><text class="lb c b" x="836" y="78" style="font-size:56px">S</text><text class="c" x="836" y="112">Safety</text><text class="c" x="836" y="134">boundaries</text><path d="M836 160V196" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/><rect class="bx-g" x="724" y="200" width="224" height="72" rx="10"/><text class="lb c sm" x="836" y="230">hard stops, re-run checks</text><text class="lb c sm" x="836" y="254">nothing pushed, you merge</text>
+<rect class="box" x="964" y="8" width="224" height="150" rx="12"/><text class="lb c b" x="1076" y="78" style="font-size:56px">E</text><text class="c" x="1076" y="112">Explicit</text><text class="c" x="1076" y="134">hierarchy</text><path d="M1076 160V196" stroke="#3ecf8e" stroke-width="2" marker-end="url(#a-g)"/><rect class="bx-g" x="964" y="200" width="224" height="72" rx="10"/><text class="lb c sm" x="1076" y="230">repo rules &gt; spec</text><text class="lb c sm" x="1076" y="254">&gt; brief &gt; job file</text>
+</svg>
+</div>
+</section>
+
+<footer>
+<div class="w">
+<span>github.com/theyv/shape-and-execute</span><span>·</span><span>Claude Code + Codex</span><span>·</span><span>Python standard library only</span>
+</div>
+</footer>
+
+</body>
+</html>
