@@ -14,7 +14,7 @@ fact supplied by the owner. Unverified items are marked UNKNOWN.
 | Completion notifications | Background subagents notify the parent on completion, with usage (`subagent_tokens`, `tool_uses`, `duration_ms`). | observed in the session |
 | Headless reviewer | `claude -p "<prompt>" --model <m> --permission-mode dontAsk --allowedTools "<read-only list>" --output-format json`. Keep the allowlist strictly read-only (for example `Bash(git diff:*)`, not `Bash(git *)`). | docs: headless (flags to re-verify) |
 | Skill folder at runtime | `${CLAUDE_SKILL_DIR}`. | docs: skills |
-| Explicit invocation only | `disable-model-invocation: true` in `SKILL.md` frontmatter. | the owner |
+| Explicit invocation only | `disable-model-invocation: true` in `SKILL.md` frontmatter; the Skill tool then refuses the skill, also when a handoff asks for it. | the owner; observed in a session |
 | Default commit behavior | The harness tells the model to commit or push only when the user asks; the skill must authorize commits on task and job branches explicitly. | session system instructions |
 | Sandbox | Off by default; covers Bash only. Writes allowed: working folder, temp, `--add-dir` / `additionalDirectories`, `allowWrite`. `.git/hooks` and `.git/config` denied. Subagents share the sandbox config and start in the parent's folder (`cd` does not persist). | docs: sandboxing, sub-agents |
 | Editing outside the working folder | Prompts unless the folder is in `additionalDirectories` (or permissions are bypassed). `acceptEdits` does not auto-approve `git commit`, `merge` or `worktree add`; allow rules are needed. | docs: permissions, permission modes |

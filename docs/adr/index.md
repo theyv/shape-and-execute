@@ -5,7 +5,7 @@ decision in one sentence. Whoever writes a record adds its line here.
 
 - [Intent: shape-and-execute](_intent.md) — Why the skill exists, what it must do, the owner's assumptions and roughly how it works; read it first.
 - [Big work goes lazily through the backlog](2026-10-06-big-work-goes-lazily-through-the-backlog.md) — Very large work is not planned up front; deferred parts wait in the backlog as intents and get their spec when picked up.
-- [Explicit invocation only](2026-10-06-explicit-invocation-only.md) — Only the user's explicit call starts the skill, in Claude Code and in Codex.
+- [Invocation by explicit request](2026-10-30-invocation-by-explicit-request.md) — The agent may invoke the skill, but only when the user or the user's handoff explicitly asks for it, in Claude Code and in Codex.
 - [Follow PROSE without ceremony](2026-10-06-follow-prose-without-ceremony.md) — The skill follows PROSE where it adds no step to a run: router links, one-deliverable jobs, pointer prompts, hard stops.
 - [No configuration in the skill and sae fails loudly](2026-10-06-no-configuration-in-the-skill-and-sae-fa.md) — The skill ships no config values; `sae` reads only the user config and exits 2 when something is missing, which leads to setup.
 - [One skill with five modes](2026-10-06-one-skill-with-five-modes.md) — Shape, plan, execute, setup and triage are modes of one skill, each with one reference loaded only when needed.

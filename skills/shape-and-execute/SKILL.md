@@ -1,7 +1,6 @@
 ---
 name: shape-and-execute
-description: "Shape a rough task into an approved intent, spec and job plan. Then run the plan with fresh worker agents, in parallel where this helps, with validation and adversarial review. Setup mode configures models and permissions. Triage mode turns collected findings and decision-record drafts into tasks, backlog items and documentation. Use only when the user explicitly calls shape-and-execute."
-disable-model-invocation: true
+description: "Shape a rough task into an approved intent, spec and job plan. Then run the plan with fresh worker agents, in parallel where this helps, with validation and adversarial review. Setup mode configures models and permissions. Triage mode turns collected findings and decision-record drafts into tasks, backlog items and documentation. Use only when the user, or a handoff the user set up, explicitly asks to run shape-and-execute."
 metadata:
   version: "0.1"
 ---
