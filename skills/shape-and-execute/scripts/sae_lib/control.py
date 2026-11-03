@@ -81,8 +81,8 @@ def purpose(task: Task, job_id: str) -> str:
 
 
 def settings_snapshot(task: Task, config: dict | None) -> dict:
-    """Effective task settings, the resolved routing of every cell the task can use, overrides
-    and holds, as flat `{label: text}` ([OUT-NEXT-STEP-CARD])."""
+    """Effective task settings, the resolved routing of every cell the task can use, overrides,
+    holds and writer review flags, as flat `{label: text}` ([OUT-NEXT-STEP-CARD])."""
     snap = {k: v for k, v in flatten_settings(task.settings).items() if not k.startswith("routing.")}
     snap["ask_signal"] = ask_signal(task.settings)["text"]  # the effective value: unset follows the mode
     if config is not None:
@@ -112,6 +112,9 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
         snap[f"override {key}"] = " · ".join(str(value[k]) for k in ("harness", "model", "effort") if value.get(k))
     for key, value in (task.info.get("holds") or {}).items():
         snap[f"hold after {key}"] = "set"
+    for job_id, job in task.jobs.items():
+        if job["kind"] in WRITER_KINDS:
+            snap[f"review flag {job_id}"] = "on" if job.get("review") else "off"
     return snap
 
 

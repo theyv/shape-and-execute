@@ -554,6 +554,17 @@ def route_hold(body: dict):
     return argv, None
 
 
+def route_job_review(body: dict):
+    """Change a job review flag through the CLI; never change review points."""
+    job = _plain(body.get("job"), "job")
+    if not JOB_ID_RE.match(job):
+        raise RequestError(400, f"job: {job!r} is not a job ID.")
+    if not isinstance(body.get("review"), bool):
+        raise RequestError(400, "review: expected a boolean.")
+    return ["job", "edit", _plain(body.get("task"), "task"), job,
+            "--review" if body["review"] else "--no-review", "--reason", "changed in the viewer"], None
+
+
 def route_project_set(body: dict):
     return ["project", "set", *_plain_list(body.get("pairs"), "pairs")], None
 
@@ -571,6 +582,7 @@ def route_global(body: dict):
 # Route → builder of the `sae` arguments (and stdin). A new write is one entry here, never a
 # second implementation: the command validates, locks, logs and refuses exactly as in a terminal.
 WRITE_ROUTES = {
+    "job-review": route_job_review,          # sae job edit <task> <job> --review | --no-review
     "set": route_set,                       # task settings: sae set <task> key=value …
     "override": route_override,             # per-job override: sae job override …
     "hold": route_hold,                     # a hold after a job: sae hold <task> <job> [--release]
