@@ -121,9 +121,9 @@ function rowTip(t,r,x,card){var p=PLo(t,r.id),m=card&&markOf(t,card),
     (m&&m.forced&&m.reviewed?"\nForced by settings: "+m.reason+".":"")+(canOvr(t,r.id)?"\nClick the model to change it.":""):"")+(r.accReason?"\nMerged despite changes required: "+r.accReason:"")}
 
 // model · effort, right-aligned at xr; a button when it can change ([JOB-MODEL-OVERRIDE])
-function mlab(t,id,x,xr,y,room){if(!x)return"";var ed=canOvr(t,id),suf=(x.e?" · "+x.e:"")+(x.ovr?" · override":""),
+function mlab(t,id,x,xr,y,room,compact){if(!x)return"";var ed=canOvr(t,id),ov=x.ovr?(compact?" *":" · override"):"",suf=(x.e?" · "+x.e:"")+ov,
    mt=trunc(x.m,Math.max(3,Math.floor(room/GC.CM)-suf.length)),w=Math.round((mt.length+suf.length)*GC.CM),
-   lab='<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(x.ovr?'<tspan class="to"> · override</tspan>':""),
+   lab='<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(ov?'<tspan class="to">'+ov+'</tspan>':""),
    tip=x.ovr?"<b>Override for this job.</b><br>"+esc(x.h)+" · "+mwords(t,x)+(x.routed?"<br>Routing would pick "+esc(x.routed.harness)+" · "+mwords(t,{h:x.routed.harness,m:x.routed.model_entry,e:x.routed.effort}):"")+(ed?"<br>Click to change or clear it.":""):
     "<b>"+(x.ran?"Last attempt":x.next?"Routing of the next round":"Routing")+"</b>: "+esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":"")+(ed?"<br>Click to run it on another model.":"");
   return'<g class="ml'+(ed?" ed":"")+'"'+(ed?' data-act="ovr" data-id="'+esc(id)+'" tabindex="0" role="button" aria-haspopup="dialog" aria-label="'+esc("Model of "+id+": "+[x.h,x.m,x.e].join(" · ")+(x.ovr?", override":"")+". Change")+'"':"")+' data-tiph="'+esc(tip)+'">'+
@@ -328,7 +328,8 @@ function rowSvg(t,r,y,c){var NW=GC.NW,RH=GC.RH,x=modelOf(t,r.id),p=r.planned&&PL
   if(x&&p&&p.round>1)x.next=1;r.tip=tip;
   return'<g class="rw t-'+r.tone+(r.planned?" planned":"")+(S.job===r.id?" sel":"")+'" transform="translate(0,'+y+')"'+(r.planned?' role="note"':' tabindex="0" role="button"'+dataJ("job",r.id))+' aria-label="'+esc(tip)+'" data-tip="'+esc(tip)+'">'+
    '<rect class="hitr" x="4" y="0" width="'+(NW-8)+'" height="'+RH+'" rx="3"/><text class="rg'+(r.run?" pulse":"")+'" x="12" y="16">'+r.g+'</text><text class="rl" x="28" y="16">'+esc(r.label)+"</text>"+
-   mlab(t,r.id,x,NW-12,16,NW-46-Math.round(r.label.length*GC.CH))+"</g>"}
+   // Research labels need more room than review labels; * keeps the override mark beside the effort.
+   mlab(t,r.id,x,NW-12,16,NW-46-Math.round(r.label.length*GC.CH),r.k==="research")+"</g>"}
 
 /* ---------- graph canvas ([AMEND-4]): the view {x, y, k} lives per task in GV, so a refresh keeps it ---------- */
 var GV={},GZ=[.2,2],GE=[],GHI=null,gvK=k=>Math.min(GZ[1],Math.max(GZ[0],k)),
