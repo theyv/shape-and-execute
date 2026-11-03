@@ -37,6 +37,9 @@ orchestrator may adapt it during execution.
 - Flag a job for review (`--review`) only when job reviews are on (`selected-jobs` or
   `all-jobs` among the review points in `settings.json`), and then when it is risky,
   security-sensitive, architecturally central, or hard to check with tests.
+- When job reviews are on, flag a foundation job with `--review` if three or more jobs use its
+  text deliverable in parallel. This applies to contracts, schemas and design documents, not
+  code checked by tests; do not flag it for this rule when fewer than three jobs use it in parallel.
 - Decide the final validation. Add one `--final` validation job when several workstreams meet,
   behavior crosses system boundaries, acceptance or end-to-end tests matter, or regression
   risk is real. For a small chain, the last job's validation is enough. When the profile
