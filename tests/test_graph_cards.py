@@ -14,6 +14,7 @@ import math
 import shutil
 import sys
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from saetest import SCRIPTS, SKILL_DIR
@@ -146,6 +147,60 @@ class GraphCardsCase(ViewerServerCase, ReviewFlowCase):
 
 
 class ServerDataTests(GraphCardsCase):
+    def test_shape_research_labels_leave_room_for_models_effort_and_overrides(self):
+        """[SHAPE-ROW-READABILITY]: numbered research rows at the 240px card width."""
+        sb = self.sandbox(points=["spec"])
+        task = sb.new_task("Research rows", "research-rows")
+        for i in range(1, 13):
+            sb.sae("job", "add", "research-rows", f"RESEARCH-{i}", "--kind", "research")
+        data = self.data(sb, task)
+        model = "example-research-model-with-a-long-name"
+        efforts = ("high", "medium", "xhigh", "ultra", "max", "")
+        for i in range(1, 13):
+            data["routing"][f"RESEARCH-{i}"] = {
+                "harness": "codex", "model_entry": model, "effort": efforts[(i - 1) % len(efforts)],
+                "override": i != 12,
+            }
+        data["routing"]["REVIEW-SPEC"] = {
+            "harness": "codex", "model_entry": "example", "effort": "high", "override": True,
+        }
+        out = run_node(CARDS_JS, "app.js", "task-views.js", data=data)
+        shape = next(g for g in ET.fromstring(out["svg"]).iter("g") if g.get("data-card") == "@shape")
+        research = [g for g in shape.findall("g") if (g.get("aria-label") or "").startswith("RESEARCH-")]
+        self.assertEqual(len(research), 12)
+        for i, row in enumerate(research, 1):
+            label = row.find("text[@class='rl']")
+            control = row.find("g[@class='ml ed']")
+            self.assertIsNotNone(control)
+            hit = control.find("rect")
+            text = control.find("text")
+            # Mono 12px labels use at most 7.3px per character; the 11px model uses 6.7px.
+            label_right = float(label.get("x")) + len(label.text) * 7.3
+            self.assertGreater(float(hit.get("x")), label_right)
+            self.assertLessEqual(float(hit.get("x")) + float(hit.get("width")), 240 - 8)
+            self.assertLessEqual(len("".join(text.itertext())) * 6.7, float(hit.get("width")))
+            self.assertIn("…", text.find("tspan[@class='tm']").text)
+            self.assertIn(model, control.get("data-tiph"))
+            self.assertIn(model, control.get("aria-label"))
+            self.assertEqual(control.get("tabindex"), "0")
+            self.assertEqual(control.get("role"), "button")
+            self.assertEqual(control.get("aria-haspopup"), "dialog")
+            self.assertEqual(control.get("data-act"), "ovr")
+            self.assertEqual(control.get("data-id"), f"RESEARCH-{i}")
+            effort = next((s for s in text.findall("tspan") if "te" in s.get("class", "").split()), None)
+            expected_effort = efforts[(i - 1) % len(efforts)]
+            self.assertEqual("" if effort is None else effort.text, expected_effort)
+            mark = text.find("tspan[@class='to']")
+            if i != 12:
+                self.assertEqual(mark.text, " *")
+                self.assertIn("Override for this job", control.get("data-tiph"))
+                self.assertIn(", override", control.get("aria-label"))
+            else:
+                self.assertIsNone(mark)
+        review = next(g for g in shape.findall("g") if (g.get("aria-label") or "").startswith("REVIEW-SPEC"))
+        self.assertEqual(review.find("text[@class='rl']").text, "Review")
+        self.assertEqual(review.find("g/text/tspan[@class='to']").text, " · override")
+
     def test_steps_and_finish_readiness_come_from_the_cli_code_and_write_nothing(self):
         """[GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH]: steps of the process map; Finish ready only
         when `sae finish` would pass its gates, blocked with its reason once every job is done."""
