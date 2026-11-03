@@ -28,6 +28,11 @@ Attack the design, not the details:
 - Can it be built and checked? Contracts that conflict with the existing code; acceptance that
   cannot be verified; missing flows or edge cases that change behavior.
 
+Walk key flows through boundaries: empty or missing data, failure and retry, and two at once.
+Report a gap only when the scenario is realistic for the intent and the spec gives no answer.
+For each gap, state the scenario, its concrete consequence, and the decision the spec needs; do not
+report scenarios outside the intent or without a concrete consequence.
+
 Do not flag missing implementation detail. Flag only what would make a correct plan impossible
 or the result wrong. The user reads your findings as questions, so say what decision each one
 needs.

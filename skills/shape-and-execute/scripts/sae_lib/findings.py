@@ -691,8 +691,9 @@ def register_adr(sub, command):
                          description="sae adr <new|accept|reject> --help for details.")
     adr_sub = adr.add_subparsers(dest="adr_command", metavar="<new|accept|reject>", parser_class=Parser)
     p = command(adr_sub, "new", "Create a decision-record draft in .tasks/adr/; prints its path.",
-                "Status proposed, source the task. Draft only durable decisions a later agent could not\n"
-                "rebuild from the code. Fill the printed file. Never blocks a run.",
+                "Status proposed, source the task. Draft a record when, without it, an agent would\n"
+                "\"fix\" something on purpose or bring back a rejected option. Fill the printed file.\n"
+                "Never blocks a run.",
                 ['adr new claims-status "Status is cached for 60 s" --type architecture --applies-to src/status,StatusCache'],
                 [0, 1], cmd_adr_new)
     p.add_argument("task")
