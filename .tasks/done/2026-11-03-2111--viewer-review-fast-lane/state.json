@@ -1,0 +1,392 @@
+{
+  "schema": 1,
+  "task": {
+    "id": "2026-11-03-2111--viewer-review-fast-lane",
+    "title": "Viewer and review maintenance with fast lane",
+    "created": "2026-11-03T21:11:29+01:00",
+    "author": "theyv",
+    "phase": "done",
+    "git": true,
+    "layout": "worktrees",
+    "orchestrator_harness": "claude",
+    "branch": "task/2026-11-03-2111--viewer-review-fast-lane",
+    "base": {
+      "branch": "main",
+      "commit": "55c6a90"
+    },
+    "home": "~/Documents/fn-local/shape-and-execute",
+    "approvals": {
+      "spec": {
+        "at": "2026-11-03T21:58:27+01:00",
+        "by": "theyv"
+      },
+      "plan": {
+        "at": "2026-11-03T22:03:13+01:00",
+        "by": "theyv"
+      }
+    },
+    "settings_seen": {
+      "schema": 1,
+      "interaction": "full-auto",
+      "levels": {
+        "research": "balanced",
+        "planning": "balanced",
+        "execution": "balanced",
+        "review": "balanced"
+      },
+      "review": {
+        "points": [
+          "integration"
+        ],
+        "provider": "codex"
+      },
+      "max_verify_failures": 3,
+      "max_review_rounds": 3
+    },
+    "last_change": "2026-11-03T22:24:59+01:00",
+    "overrides": {
+      "FINAL-CHECK": {
+        "harness": "codex",
+        "at": "2026-11-03T22:03:53+01:00",
+        "reason": "owner: all jobs run on Codex"
+      },
+      "REVIEW-TOGGLE": {
+        "harness": "codex",
+        "at": "2026-11-03T22:03:52+01:00",
+        "reason": "owner: all jobs run on Codex"
+      }
+    },
+    "worktree": "~/Library/Caches/shape-and-execute/worktrees/shape-and-execute-3f2d3e60/2026-11-03-2111--viewer-review-fast-lane/task",
+    "last_card": {
+      "at": "2026-11-03T22:15:38+01:00",
+      "phase": "executing",
+      "jobs": [
+        "REVIEW-INTEGRATION"
+      ],
+      "settings": {
+        "interaction": "full-auto",
+        "levels.research": "balanced",
+        "levels.planning": "balanced",
+        "levels.execution": "balanced",
+        "levels.review": "balanced",
+        "review.points": [
+          "integration"
+        ],
+        "review.provider": "codex",
+        "max_verify_failures": 3,
+        "max_review_rounds": 3,
+        "task_difficulty": "normal",
+        "ask_signal": "on (mode default)",
+        "routing claude research balanced mechanical": "sonnet · medium",
+        "routing claude research balanced normal": "sonnet · high",
+        "routing claude research balanced hard": "opus · low",
+        "routing claude planning balanced normal": "opus · high",
+        "routing claude planning balanced hard": "opus · xhigh",
+        "routing claude execution balanced mechanical": "sonnet · high",
+        "routing claude execution balanced normal": "opus · medium",
+        "routing claude execution balanced hard": "opus · high",
+        "routing claude review balanced normal": "opus · medium",
+        "routing claude review balanced hard": "opus · high",
+        "routing codex research balanced mechanical": "terra · medium",
+        "routing codex research balanced normal": "sol · medium",
+        "routing codex research balanced hard": "sol · high",
+        "routing codex planning balanced normal": "sol · high",
+        "routing codex planning balanced hard": "sol · xhigh",
+        "routing codex execution balanced mechanical": "terra · medium",
+        "routing codex execution balanced normal": "sol · medium",
+        "routing codex execution balanced hard": "sol · high",
+        "routing codex review balanced normal": "sol · high",
+        "routing codex review balanced hard": "sol · xhigh",
+        "override FINAL-CHECK": "codex",
+        "override REVIEW-TOGGLE": "codex"
+      }
+    }
+  },
+  "jobs": {
+    "SHAPE-ROWS": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-03T22:09:25+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:03:15+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "55c6a906eae850e5ef57fc83c78a8a690dfe6f35"
+        },
+        {
+          "n": 2,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:03:53+01:00",
+          "ended": "2026-11-03T22:08:33+01:00",
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "owner: run on Codex; the Claude dispatch was never spawned",
+          "head": "55c6a906eae850e5ef57fc83c78a8a690dfe6f35"
+        }
+      ],
+      "commits": [
+        "92d0cadad93f8fb481f4c4f26c30e2637458aee6"
+      ],
+      "summary": "Research rows use a compact override mark so labels and model controls stay distinct."
+    },
+    "REVIEW-TOGGLE": {
+      "kind": "implementation",
+      "needs": [
+        "SHAPE-ROWS"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-03T22:15:36+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-03T22:09:25+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "6fbecb417566239ba3cf020d128fca462f78f27f"
+        },
+        {
+          "n": 2,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-03T22:09:29+01:00",
+          "ended": "2026-11-03T22:14:48+01:00",
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "capture prompt for codex exec",
+          "head": "6fbecb417566239ba3cf020d128fca462f78f27f"
+        }
+      ],
+      "commits": [
+        "88ef53795b346231ae1f7966871dbc3634575db3"
+      ],
+      "summary": "Pending and running writer review flags can change through the CLI and viewer until collection."
+    },
+    "PROTOCOL-RULES": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "mechanical",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-03T22:06:45+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:03:16+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "55c6a906eae850e5ef57fc83c78a8a690dfe6f35"
+        },
+        {
+          "n": 2,
+          "harness": "codex",
+          "model": "gpt-6.1-terra",
+          "model_entry": "terra",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:03:53+01:00",
+          "ended": "2026-11-03T22:06:33+01:00",
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "owner: run on Codex; the Claude dispatch was never spawned",
+          "head": "55c6a906eae850e5ef57fc83c78a8a690dfe6f35"
+        }
+      ],
+      "commits": [
+        "08a5fcb3ef79a64f56b184fb027ffe160a2f3fa5"
+      ],
+      "summary": "Refined spec review, foundation review and decision-record help."
+    },
+    "FINAL-CHECK": {
+      "kind": "validation",
+      "needs": [
+        "REVIEW-TOGGLE",
+        "PROTOCOL-RULES",
+        "REVIEW-INTEGRATION"
+      ],
+      "difficulty": "mechanical",
+      "review": false,
+      "final": true,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-03T22:21:44+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.1-terra",
+          "model_entry": "terra",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-03T22:18:11+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        },
+        {
+          "n": 2,
+          "harness": "codex",
+          "model": "gpt-6.1-terra",
+          "model_entry": "terra",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-03T22:18:14+01:00",
+          "ended": "2026-11-03T22:21:44+01:00",
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "read workdir",
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated_needs": [
+        "REVIEW-INTEGRATION"
+      ],
+      "summary": "Smoke and full suite passed on the task branch."
+    },
+    "REVIEW-INTEGRATION": {
+      "kind": "review",
+      "needs": [
+        "SHAPE-ROWS",
+        "REVIEW-TOGGLE",
+        "PROTOCOL-RULES"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-03T22:18:07+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:15:38+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "5b7b8d6ab0b62044ad107253064651e6aa2cb081"
+        },
+        {
+          "n": 2,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:15:42+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "run the printed command",
+          "head": "5b7b8d6ab0b62044ad107253064651e6aa2cb081"
+        },
+        {
+          "n": 3,
+          "harness": "codex",
+          "model": "gpt-6.1-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-03T22:15:43+01:00",
+          "ended": "2026-11-03T22:18:07+01:00",
+          "tokens": 648883,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": "run the printed command",
+          "head": "5b7b8d6ab0b62044ad107253064651e6aa2cb081"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "limit": null,
+      "since": null,
+      "summary": "verdict: pass-with-notes",
+      "verdict": "pass-with-notes"
+    }
+  }
+}

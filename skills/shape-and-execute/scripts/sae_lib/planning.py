@@ -244,8 +244,14 @@ def cmd_job_edit(args) -> int:
     root, _ = find_root()
     with open_task(root, args.task) as task:
         job = task.job(args.id)
-        if job["status"] != "pending":
-            fail(EXIT_USAGE, f"{args.id} is {job['status']}; only pending jobs change.")
+        if args.review is not None and job["kind"] not in WRITER_KINDS:
+            fail(EXIT_USAGE, f"{args.id} is {job['kind']}; only writer jobs have an editable review flag.")
+        if job["status"] == "running":
+            if (job["kind"] not in WRITER_KINDS or args.review is None
+                    or args.needs is not None or args.difficulty is not None):
+                fail(EXIT_USAGE, f"{args.id} is running; only --review or --no-review on a writer job can change.")
+        elif job["status"] != "pending":
+            fail(EXIT_USAGE, f"{args.id} is {job['status']}; only pending jobs or a running writer's review flag change.")
         require_reason(task, args.reason)
         changes = {}
         if args.needs is not None:
@@ -267,7 +273,7 @@ def cmd_job_edit(args) -> int:
         for key, (_, value) in changes.items():
             job[key] = value
         task.touch(job)
-        task.event("job.changed", job=args.id, changes=changes, reason=args.reason)
+        task.event("job.changed", job=args.id, changes=changes, reason=args.reason, by=changed_by())
         emit(args, f"{args.id}: " + ", ".join(f"{k} {v[0]} → {v[1]}" for k, v in changes.items()),
              {"job": args.id, "changes": changes})
     return EXIT_OK
@@ -427,7 +433,8 @@ def register_job(sub, command):
     p.add_argument("--fix-of", metavar="ID", help="the writer job this fix repairs (it works on that job's branch), "
                                                "or the integration review round whose findings it answers")
     p.add_argument("--reason")
-    p = command(job_sub, "edit", "Change the scheduling fields of a pending job.", "--reason: required during execution.",
+    p = command(job_sub, "edit", "Change a pending job or a running writer job's review flag.",
+                "Running writers accept only --review or --no-review, until collection. --reason: required during execution.",
                 ['job edit claims-status STATUS-UI --needs STATUS-API --reason "UI needs the real endpoint"'], [0, 1],
                 cmd_job_edit)
     p.add_argument("task")

@@ -39,6 +39,13 @@ var dead=t=>/^(done|abandoned)$/.test(t.state.task.phase),
  holdBtn=(t,id)=>dead(t)||!JO(t,id)?"":own(holdsOf(t),id)?'<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="release" title="Remove the hold: dispatching continues.">Release hold</button>':
   '<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="set" title="Once this job is done, nothing new is dispatched until you release the hold. Running jobs finish.">Hold after</button>';
 
+// The stored review flag is editable until collection; review points still decide its effect.
+function reviewFlagControl(t,id){var j=JO(t,id);if(!j||!["implementation","integration"].includes(j.kind))return "";
+  var points=((t.settings||{}).review||{}).points||[],why=j.fix_of?"No effect: fix jobs follow the target's review.":points.includes("all-jobs")?"No effect: all writer jobs are reviewed.":!points.includes("selected-jobs")?"No effect: job reviews are off.":"Review selected jobs when this flag is on.",
+    editable=!dead(t)&&["pending","running"].includes(j.status);
+  return(editable?'<button class="btn sm" data-act="review-flag" data-id="'+esc(id)+'" data-v="'+(!j.review)+'" aria-label="Review flag for '+esc(id)+'" aria-pressed="'+!!j.review+'">Review flag: '+(j.review?"on":"off")+'</button>':"Review flag: "+(j.review?"on":"off"))+' <span class="ink2">'+esc(why)+"</span>";
+}
+
 /* ---------- graph cards ([DECISION-STACK-CARDS]): Shape and Plan, job cards with their review and fix rows, one
    Integration card, Finish. The cards are a model first (graph().cards), then SVG; the CSS holds colors and timings ---------- */
 // sizes in px (FB, FBS: how far below the cards feedback edges run, and their spacing; CVH: the canvas's least height; otherwise 70vh to 80vh, taller for a tall graph (owner: prefer a taller canvas)); character widths: CH mono 12px, CM the model labels' mono 11px, CS sans 12px, CP a status pill's,
@@ -121,9 +128,9 @@ function rowTip(t,r,x,card){var p=PLo(t,r.id),m=card&&markOf(t,card),
     (m&&m.forced&&m.reviewed?"\nForced by settings: "+m.reason+".":"")+(canOvr(t,r.id)?"\nClick the model to change it.":""):"")+(r.accReason?"\nMerged despite changes required: "+r.accReason:"")}
 
 // model · effort, right-aligned at xr; a button when it can change ([JOB-MODEL-OVERRIDE])
-function mlab(t,id,x,xr,y,room){if(!x)return"";var ed=canOvr(t,id),suf=(x.e?" · "+x.e:"")+(x.ovr?" · override":""),
+function mlab(t,id,x,xr,y,room,compact){if(!x)return"";var ed=canOvr(t,id),ov=x.ovr?(compact?" *":" · override"):"",suf=(x.e?" · "+x.e:"")+ov,
    mt=trunc(x.m,Math.max(3,Math.floor(room/GC.CM)-suf.length)),w=Math.round((mt.length+suf.length)*GC.CM),
-   lab='<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(x.ovr?'<tspan class="to"> · override</tspan>':""),
+   lab='<tspan class="tm" style="--mc:'+mcol(t,x.h,x.m)+'">'+esc(mt)+"</tspan>"+(x.e?'<tspan> · </tspan><tspan class="te'+(x.e==="ultra"?" u":"")+'" style="--ec:'+effortColor(x.e)+'">'+esc(x.e)+"</tspan>":"")+(ov?'<tspan class="to">'+ov+'</tspan>':""),
    tip=x.ovr?"<b>Override for this job.</b><br>"+esc(x.h)+" · "+mwords(t,x)+(x.routed?"<br>Routing would pick "+esc(x.routed.harness)+" · "+mwords(t,{h:x.routed.harness,m:x.routed.model_entry,e:x.routed.effort}):"")+(ed?"<br>Click to change or clear it.":""):
     "<b>"+(x.ran?"Last attempt":x.next?"Routing of the next round":"Routing")+"</b>: "+esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":"")+(ed?"<br>Click to run it on another model.":"");
   return'<g class="ml'+(ed?" ed":"")+'"'+(ed?' data-act="ovr" data-id="'+esc(id)+'" tabindex="0" role="button" aria-haspopup="dialog" aria-label="'+esc("Model of "+id+": "+[x.h,x.m,x.e].join(" · ")+(x.ovr?", override":"")+". Change")+'"':"")+' data-tiph="'+esc(tip)+'">'+
@@ -328,7 +335,8 @@ function rowSvg(t,r,y,c){var NW=GC.NW,RH=GC.RH,x=modelOf(t,r.id),p=r.planned&&PL
   if(x&&p&&p.round>1)x.next=1;r.tip=tip;
   return'<g class="rw t-'+r.tone+(r.planned?" planned":"")+(S.job===r.id?" sel":"")+'" transform="translate(0,'+y+')"'+(r.planned?' role="note"':' tabindex="0" role="button"'+dataJ("job",r.id))+' aria-label="'+esc(tip)+'" data-tip="'+esc(tip)+'">'+
    '<rect class="hitr" x="4" y="0" width="'+(NW-8)+'" height="'+RH+'" rx="3"/><text class="rg'+(r.run?" pulse":"")+'" x="12" y="16">'+r.g+'</text><text class="rl" x="28" y="16">'+esc(r.label)+"</text>"+
-   mlab(t,r.id,x,NW-12,16,NW-46-Math.round(r.label.length*GC.CH))+"</g>"}
+   // Research labels need more room than review labels; * keeps the override mark beside the effort.
+   mlab(t,r.id,x,NW-12,16,NW-46-Math.round(r.label.length*GC.CH),r.k==="research")+"</g>"}
 
 /* ---------- graph canvas ([AMEND-4]): the view {x, y, k} lives per task in GV, so a refresh keeps it ---------- */
 var GV={},GZ=[.2,2],GE=[],GHI=null,gvK=k=>Math.min(GZ[1],Math.max(GZ[0],k)),
@@ -479,8 +487,8 @@ function nextUp(t){var nx=t.next;if(!nx)return"";if(nx.error)return sec("Next up
    hs=(nx.holds||[]).filter(h=>!(nx.holds_active||[]).includes(h.job));
   (nx.ready||[]).forEach(r=>{var x=r.routing?rt(r.routing):null;
     rows.push(row("fx",pill("ready"),J(r.id)+' <span class="ink2">'+esc(r.kind+(r.difficulty?" · "+r.difficulty:""))+"</span>",holdBtn(t,r.id),
-     (x?esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":""):esc(r.model||""))+(r.workspace?' <span class="mut">· '+esc(r.workspace)+"</span>":"")+(r.blocked?'<br><span class="mut">waits: '+esc(r.blocked)+"</span>":"")))});
-  (nx.running||[]).forEach(r=>{var x=modelOf(t,r.id);rows.push(row("fx",pill("running"),J(r.id)+sp(stale(t,r.id)),holdBtn(t,r.id),x?esc(x.h)+" · "+mwords(t,x):""))});
+     (x?esc(x.h)+" · "+mwords(t,x)+(srcText(x)?' <span class="mut">('+esc(srcText(x))+")</span>":""):esc(r.model||""))+(r.workspace?' <span class="mut">· '+esc(r.workspace)+"</span>":"")+(r.blocked?'<br><span class="mut">waits: '+esc(r.blocked)+"</span>":"")+(reviewFlagControl(t,r.id)?"<br>"+reviewFlagControl(t,r.id):"")))});
+  (nx.running||[]).forEach(r=>{var x=modelOf(t,r.id);rows.push(row("fx",pill("running"),J(r.id)+sp(stale(t,r.id)),holdBtn(t,r.id),(x?esc(x.h)+" · "+mwords(t,x):"")+(reviewFlagControl(t,r.id)?"<br>"+reviewFlagControl(t,r.id):"")))});
   var h=sec("Next up",box(rows,(nx.holds_active||[]).length?"Nothing starts: a hold is active.":"No job is ready."),nx.slots?esc(nx.slots):"");
   if(hs.length)h+=sec("Holds",box(hs.map(x=>row("",'<span class="tag">⏸ hold</span>',"after "+J(x.job)+(x.reason?' <span class="ink2">— '+esc(x.reason)+"</span>":""),holdBtn(t,x.job),"Active once "+esc(x.job)+" is done; then nothing new starts."))));
   if(nx.integration)h+=sec("Integration review",'<div class="box pad"><pre class="cmd">'+esc(nx.integration)+"</pre></div>");
@@ -509,10 +517,13 @@ function ovrSave(sel){var o=OVR,t=o&&o.repo===S.repo&&o.task===S.task?T():null,v
     ovrClose(true);note((v[0]?"Override for "+o.id+": "+v.join(" · "):"Override for "+o.id+" cleared")+". It applies from the next dispatch.");loadTask()})}
 function holdSet(btn){var id=btn.dataset.id,rel=btn.dataset.v==="release";btn.disabled=true;
   post("hold",{repo:S.repo,task:S.task,job:id,release:rel}).then(r=>{note(r.ok?(rel?"Released the hold after "+id+".":"Hold after "+id+": once it is done, nothing new is dispatched."):(r.error||"Not saved.").split("\n")[0],!r.ok);loadTask()})}
+function reviewFlagSet(btn){var id=btn.dataset.id;btn.disabled=true;
+  post("job-review",{repo:S.repo,task:S.task,job:id,review:btn.dataset.v==="true"}).then(r=>{note(r.ok?"Review flag changed for "+id+".":(r.error||"Not saved.").split("\n")[0],!r.ok);loadTask()})}
 D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dataset.act;
   if(ev.target.closest(".ovm"))ev.stopPropagation();else if(OVR&&a!=="ovr")ovrClose();
   if(a==="ovr"){ev.stopPropagation();if(OVR&&OVR.id===e.dataset.id)ovrClose(true);else ovrOpen(e)}
   else if(a==="oclose")ovrClose(true);
+  else if(a==="review-flag")reviewFlagSet(e);
   else if(a==="hold")holdSet(e)},true);
 D.addEventListener("change",ev=>{if(ev.target.dataset&&ev.target.dataset.act==="ovs")ovrSave(ev.target)});
 D.addEventListener("keydown",ev=>{if(ev.key==="Escape"&&OVR){ev.stopPropagation();ovrClose(true)}},true);
@@ -606,7 +617,7 @@ var rsn=e=>e.reason?' <span class="ink2">— '+esc(e.reason)+"</span>":"",
   "settings.changed":e=>"Settings changed "+(e.by==="external"?"in the file":e.by==="viewer"?"in the viewer":"with sae set")+": "+chg(e.changes||{},", "),
   "spec.approved":e=>SP(e)+" approved by "+esc(e.by),
   "job.added":(e,t)=>"Added "+J(e.job)+" ("+esc(e.kind)+(e.difficulty?", "+esc(e.difficulty):"")+")"+(e.needs&&e.needs.length?", needs "+e.needs.map(J).join(", "):"")+(e.target?", target "+tgt(t,e.target):"")+rsn(e),
-  "job.changed":e=>"Changed "+J(e.job)+": "+chg(e.changes||{},"; ")+rsn(e),
+  "job.changed":e=>"Changed "+J(e.job)+(e.by==="viewer"?" in the viewer":"")+": "+chg(e.changes||{},"; ")+rsn(e),
   "job.removed":e=>"Removed "+J(e.job)+rsn(e),
   "execution.started":e=>"Execution "+(e.resumed?"resumed":"started")+(e.branch?" on "+code(e.branch):"")+", layout "+esc(e.layout),
   "job.dispatched":e=>"Dispatched "+J(e.job)+" #"+esc(e.attempt)+" → "+code(model(e))+' <span class="mut">'+esc(e.harness+" "+tierOf(e))+"</span>"+rsn(e),
@@ -668,7 +679,7 @@ TAB.findings=t=>{var sf=scopedFindings(t),fs=sf.open,cr=sf.closed,mine=S.sc!=="a
 function jobBody(t,id){var js=JS(t),j=own(js,id),f=t.files;
   if(!j){var g=own(changes(t).r.removed,id)||{},rf="jobs/"+id+".removed.md";return dl([["Status",pill("removed")],["Reason",esc(g.reason)]])+(f[rf]!=null?docs("j:",[rf],f):"")}
   var rs=reviewsOf(t,id),dj=jf(t,o=>o.kind==="decision"&&o.target===id),out=dl([["Status",jpill(t,id)],["Summary",esc(j.summary)],["Decision request",j.status==="parked"&&ask(t,id)],["Waits for",j.status==="pending"&&esc(waits(t,id).join(", "))],
-    ["Needs",j.needs.map(J).join(", ")],["Target",j.target&&tgt(t,j.target)],["Fix of",J(j.fix_of)],["Reviews",rs.map(k=>J(k)+" "+stp(t,k)).join(" ")],["Decision jobs",dj.map(J).join(", ")],["Hold",dead(t)?"":(own(holdsOf(t),id)?'<span class="tag">⏸ '+(holdOn(t,id)?"hold active":"hold after this job")+"</span> ":"")+holdBtn(t,id)],["Commits",(j.commits||[]).map(c=>code(c.slice(0,7))).join(" ")],["Last change",agoH(j.last_change)]].map(p=>[p[0],p[1]||""]));
+    ["Needs",j.needs.map(J).join(", ")],["Target",j.target&&tgt(t,j.target)],["Fix of",J(j.fix_of)],["Review flag",reviewFlagControl(t,id)],["Reviews",rs.map(k=>J(k)+" "+stp(t,k)).join(" ")],["Decision jobs",dj.map(J).join(", ")],["Hold",dead(t)?"":(own(holdsOf(t),id)?'<span class="tag">⏸ '+(holdOn(t,id)?"hold active":"hold after this job")+"</span> ":"")+holdBtn(t,id)],["Commits",(j.commits||[]).map(c=>code(c.slice(0,7))).join(" ")],["Last change",agoH(j.last_change)]].map(p=>[p[0],p[1]||""]));
   if(j.attempts.length)out+=sec("Attempts",tbl("nw","~#,Model,Harness,Started,~Duration,~Tokens,Reason",j.attempts.map(a=>tr([["n",a.n],["mono",esc(model(a))],esc(a.harness+" "+tierOf(a)),["ink2",esc(fmt(a.started))],["n",esc(dur(a.duration_s)||(a.ended?"–":"running"))],["n",a.tokens?num(a.tokens):"–"],esc(a.reason||"")]))));
   var dd=[...new Set(["jobs/"+id+".md",resultPath(id,j),"jobs/"+id+".verify.log"].concat(dj.map(k=>"decisions/"+k+".md")))].filter(d=>f[d]!=null);
   return out+sec("Files",dd.length?docs("j:",dd,f):box([],"No files yet."))}
