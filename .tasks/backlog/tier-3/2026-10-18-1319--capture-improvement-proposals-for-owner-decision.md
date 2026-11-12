@@ -43,10 +43,10 @@ experience working in the repository.
 
 ## Current behavior
 
-[Worker instructions](../../skills/shape-and-execute/references/roles/worker.md)
+[Worker instructions](../../../skills/shape-and-execute/references/roles/worker.md)
 already collect out-of-scope observations as `defect`, `friction`, or `follow-up` findings.
 They restrict `follow-up` to work the task or user clearly needs.
-[Finding triage](../../skills/shape-and-execute/references/modes/triage-findings.md)
+[Finding triage](../../../skills/shape-and-execute/references/modes/triage-findings.md)
 lets the owner fix now, move to the backlog, leave open, or reject.
 
 This covers part of the desired flow. The current finding types have no `improve` category,
