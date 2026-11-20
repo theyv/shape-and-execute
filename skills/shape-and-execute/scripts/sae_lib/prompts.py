@@ -33,8 +33,7 @@ STAKES_LONG_SUFFIX = " The section is longer than {limit} lines: read it before 
 STAKES_NOT_SET_LINE = ("Project Stakes: how much care this project needs. Not set, so set the bar yourself: from the "
                        "repository instructions and the README, judge who uses it, what breakage is acceptable and "
                        "what matters now. Then work to that bar. Leaving out what the bar does not need is "
-                       "expected, not a failure. They never lower the requirements you were given. State your "
-                       "estimate in one line in what you write back.")
+                       "expected, not a failure. They never lower the requirements you were given.")
 # [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
 APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.

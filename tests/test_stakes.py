@@ -131,7 +131,7 @@ class BlockTests(StakesCase):
         self.assertEqual(block, prompts.STAKES_NOT_SET_LINE)
         self.assertTrue(block.startswith(NOT_SET))
         self.assertIn("who uses it, what breakage is acceptable and what matters now", block)
-        self.assertIn("State your estimate in one line", block)
+        self.assertNotIn("estimate", block)
 
     def test_the_texts_name_the_section_and_hold_no_pointer_to_other_copies(self):
         self.assertIn('section "Project Stakes"', prompts.STAKES_LINE)
