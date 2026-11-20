@@ -27,15 +27,14 @@ from .workspaces import job_branch, workspace_of, workspace_owner
 # [STAKES-POINTER], [AMEND-1], [AMEND-2] one Project Stakes block in every dispatch prompt: STAKES_LINE and the
 # section text, or the "not set" text. STAKES_LONG_SUFFIX replaces the section text of a long section.
 STAKES_LINE = ('Project Stakes: how much care this project needs (from {path}, section "Project Stakes"). '
-               "Work to this bar. Leaving out what the bar does not need (extra tests, rare edge cases, polish, "
-               "abstractions) is expected, not a failure. Never leave out what your job must deliver to be correct:")
+               "Work to this bar. Leaving out what the bar does not need is expected, not a failure. "
+               "They never lower the requirements you were given:")
 STAKES_LONG_SUFFIX = " The section is longer than {limit} lines: read it before you start."
 STAKES_NOT_SET_LINE = ("Project Stakes: how much care this project needs. Not set, so set the bar yourself: from the "
                        "repository instructions and the README, judge who uses it, what breakage is acceptable and "
-                       "what matters now. Then work to that bar. Leaving out what the bar does not need (extra "
-                       "tests, rare edge cases, polish, abstractions) is expected, not a failure. Never leave out "
-                       "what your job must deliver to be correct. State your estimate in one line in what you write "
-                       "back.")
+                       "what matters now. Then work to that bar. Leaving out what the bar does not need is "
+                       "expected, not a failure. They never lower the requirements you were given. State your "
+                       "estimate in one line in what you write back.")
 # [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
 APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
