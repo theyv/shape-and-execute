@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import re
 import subprocess
 from pathlib import Path
@@ -534,6 +535,19 @@ def finish_readiness(task: Task) -> dict:
     return {"state": "ready", "reason": None}
 
 
+def result_predates(path: Path, attempt: dict) -> bool:
+    """A COMMAND attempt's result that the attempt did not write or update: last changed before the
+    attempt started. A retry keeps the earlier result as context, so its presence alone proves nothing
+    ([WRITER-COMMAND]). Subagent attempts are not checked: the orchestrator collects on their reply."""
+    started = attempt.get("started")
+    if not attempt.get("launch") or not started:
+        return False
+    try:
+        return path.stat().st_mtime < dt.datetime.fromisoformat(started).timestamp()
+    except (OSError, ValueError):
+        return False
+
+
 def cmd_collect(args) -> int:
     root, _ = find_root()
     config = load_config(required=False)
@@ -551,6 +565,12 @@ def cmd_collect(args) -> int:
         if not text.strip():
             fail(EXIT_USAGE, f"The result file {path} is empty. If an external reviewer wrote it, the provider "
                              "failed: run the IF IT FAILS line that dispatch printed.")
+        if job["attempts"] and result_predates(path, job["attempts"][-1]):
+            attempt = job["attempts"][-1]
+            fail(EXIT_USAGE, f"The result file {path} predates attempt {attempt.get('n')} (started "
+                             f"{attempt['started']}): attempt {attempt.get('n')} has not written or updated it. The "
+                             "earlier result stays in place. If the COMMAND exited, it failed: follow the IF IT FAILS "
+                             "rule that dispatch printed.")
         meta, body = split_frontmatter(text)
         status, summary, fields = interpret_result(job["kind"], meta, path)
         disputed = disputed_findings(body)

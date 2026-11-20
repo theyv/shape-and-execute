@@ -10,6 +10,7 @@ small outputs in the shapes the harnesses use; no real harness runs.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -165,6 +166,46 @@ class WriterCommandTests(LaunchTestCase):
                                             "model_reasoning_effort=medium -s read-only -C <workdir> -o <result> "
                                             "--ephemeral --json <prompt> < /dev/null > <output>")
         self.assertNotIn("Bypass:", sb.sae("status", "rev").stdout)  # a review is not a bypass job
+
+
+    def test_codex_writer_in_a_task_without_git_skips_the_repo_check(self):
+        # Review WRITER-LAUNCH finding 3.
+        sb = self.sandbox_for("claude", git=False)
+        task = self.executing(sb, "nogit")
+        self.to_other(sb, "nogit", "ONE", "claude")
+        data = sb.json("dispatch", "nogit", "ONE")
+        self.assertIn(" --skip-git-repo-check ", data["command"])
+        self.assertIn(" --skip-git-repo-check ", sb.state(task)["jobs"]["ONE"]["attempts"][0]["launch"]["command"])
+        argv = self.run_command(sb, data["command"])[0]["argv"]
+        self.assertIn("--skip-git-repo-check", argv)
+        # a task with git keeps the check
+        git_sb = self.sandbox_for("claude", name="git")
+        self.executing(git_sb, "withgit")
+        self.to_other(git_sb, "withgit", "ONE", "claude")
+        self.assertNotIn("--skip-git-repo-check", git_sb.json("dispatch", "withgit", "ONE")["command"])
+
+    def test_collect_refuses_a_result_the_current_attempt_did_not_write(self):
+        # Review WRITER-LAUNCH finding 2: a reopened research job whose COMMAND wrote nothing.
+        sb = self.sandbox_for("claude")
+        task = self.executing(sb, "stale")
+        sb.sae("job", "add", "stale", "R", "--kind", "research", "--reason", "a question")
+        self.to_other(sb, "stale", "R", "claude")
+        sb.sae("dispatch", "stale", "R")
+        sb.result(task, "research/R.md", status="done", confidence="high")
+        sb.sae("collect", "stale", "R")
+        report = sb.task_dir(task) / "research" / "R.md"
+        old = report.stat().st_mtime - 60
+        os.utime(report, (old, old))  # the first attempt wrote it a minute ago
+        data = sb.json("dispatch", "stale", "R", "--resume", "--reason", "follow-up questions")
+        self.run_command(sb, data["command"])  # exits 0 and writes no report
+        before = self.frozen(sb, task)
+        err = sb.sae("collect", "stale", "R", code=1).stderr
+        self.assertIn("attempt 2 has not written or updated it", err)
+        self.assertEqual(self.frozen(sb, task), before)
+        self.assertTrue(report.exists())  # the earlier report stays for the retry
+        self.assertEqual(sb.state(task)["jobs"]["R"]["status"], "running")
+        sb.result(task, "research/R.md", status="done", confidence="high")
+        self.assertIn("R: done", sb.sae("collect", "stale", "R").stdout)
 
 
 class LaunchRecordTests(LaunchTestCase):
@@ -460,6 +501,36 @@ class HarnessFallbackTests(LaunchTestCase):
         sb.sae("dispatch", "pk", "REVIEW-ONE")
         self.assertIn("falls back in every mode",
                       sb.sae("job", "park", "pk", "REVIEW-ONE", "--reason", "x", code=1).stderr)
+
+    def test_parked_job_without_attempts_meets_an_active_hold_through_the_fallback(self):
+        # Review WRITER-LAUNCH finding 1: --resume of a never-started parked job is a first dispatch.
+        sb = self.sandbox_for("claude")
+        task = self.executing(sb, "hold", jobs=("A", "B"), settings=("interaction=collaborative",))
+        self.to_other(sb, "hold", "A", "claude")
+        sb.without_cli("codex")
+        resumed = sb.sae("dispatch", "hold", "A", code=1).stderr.splitlines()[-1].strip()
+        sb.sae("job", "park", "hold", "A", "--reason", "harness fallback: codex CLI not on PATH")
+        sb.sae("hold", "hold", "B")
+        self.finish_writer(sb, task, "hold", "B", Path(sb.json("dispatch", "hold", "B")["workspace"]))
+        before = self.frozen(sb, task)
+        err = sb.sae(*self.args_of(resumed), code=3).stderr
+        self.assertIn("Hold after B: nothing new is dispatched.", err)
+        self.assertEqual(self.frozen(sb, task), before)
+        sb.sae("hold", "hold", "B", "--release")
+        self.assertEqual(sb.json(*self.args_of(resumed))["harness"], "claude")
+
+    def test_fallback_closes_the_failed_command_attempt(self):
+        # Review WRITER-LAUNCH finding 4.
+        sb = self.sandbox_for("claude")
+        task = self.executing(sb, "close", settings=("interaction=full-auto",))
+        self.to_other(sb, "close", "ONE", "claude")
+        out = sb.sae("dispatch", "close", "ONE").stdout
+        fallback = out.splitlines()[out.splitlines().index("IF IT FAILS:") + 1]
+        sb.json(*self.args_of(fallback.replace("<exit code or missing result>", "exit 1")))
+        first, second = sb.state(task)["jobs"]["ONE"]["attempts"]
+        self.assertIsNotNone(first["ended"])
+        self.assertEqual(first["ended"], second["started"])
+        self.assertIsNone(second["ended"])
 
     @staticmethod
     def args_of(command: str) -> list[str]:

@@ -29,6 +29,7 @@ from .tasks import Task, open_task, result_file
 BYPASS_REQUESTED = "bypass requested"
 READ_ONLY_REQUESTED = "read-only requested"
 CODEX_BYPASS_FLAG = "--dangerously-bypass-approvals-and-sandbox"
+CODEX_NO_GIT_FLAG = "--skip-git-repo-check"  # codex exec refuses a folder outside a Git repository without it
 CLAUDE_BYPASS_MODE = "bypassPermissions"
 CLAUDE_REVIEW_TOOLS = "Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)"
 # [LAUNCH-RECORD] what stands in the recorded command for the prompt and the private paths
@@ -47,10 +48,10 @@ def is_command_job(task: Task, harness: str) -> bool:
 # ------------------------------------------------------------------ the COMMAND
 
 def command_line(harness: str, review: bool, model: str, effort: str, prompt: str, workdir: str,
-                 task_folder: str, output: str, result: str) -> str:
+                 task_folder: str, output: str, result: str, git: bool = True) -> str:
     """One shell line from shell-ready words (quoted values, or the placeholders of the record).
     A review: read-only, its review text goes to the result file. Any other job: no sandbox; the
-    worker writes its own result file."""
+    worker writes its own result file; a Codex worker in a task without git skips the repo check."""
     q = shlex.quote
     if review:
         clean = f"rm -f {result} {output}"
@@ -61,8 +62,9 @@ def command_line(harness: str, review: bool, model: str, effort: str, prompt: st
                 f"--effort {effort} --permission-mode dontAsk --allowedTools {q(CLAUDE_REVIEW_TOOLS)} "
                 f"> {output} && python3 -c {q(CLAUDE_RESULT_TEXT)} {output} > {result}")
     if harness == "codex":
+        no_git = "" if git else f"{CODEX_NO_GIT_FLAG} "
         return (f"rm -f {output} && codex exec -m {model} -c model_reasoning_effort={effort} {CODEX_BYPASS_FLAG} "
-                f"-C {workdir} --ephemeral --json {prompt} < /dev/null > {output}")
+                f"{no_git}-C {workdir} --ephemeral --json {prompt} < /dev/null > {output}")
     # --add-dir: the worker writes its result into the task folder, outside a job worktree
     return (f"cd {workdir} && rm -f {output} && claude -p {prompt} --output-format json --model {model} "
             f"--effort {effort} --permission-mode {CLAUDE_BYPASS_MODE} --add-dir {task_folder} > {output}")
@@ -74,10 +76,12 @@ def launch_command(task: Task, job_id: str, model: dict, prompt: str, workdir: P
     result = result_file(task, job_id)
     result.parent.mkdir(parents=True, exist_ok=True)
     escaped = prompt.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-    return command_line(model["harness"], task.jobs[job_id]["kind"] == "review", q(model["model"]),
+    review = task.jobs[job_id]["kind"] == "review"
+    return command_line(model["harness"], review, q(model["model"]),
                         q(model["effort"]), prompt='"$(printf %b ' + q(escaped) + ')"', workdir=q(str(workdir)),
                         task_folder=q(str(task.dir)),
-                        output=q(str(review_output_file(task, job_id, model["harness"]))), result=q(str(result)))
+                        output=q(str(review_output_file(task, job_id, model["harness"]))), result=q(str(result)),
+                        git=review or bool(task.info.get("git")))
 
 
 def launch_record(task: Task, job_id: str, model: dict) -> dict:
@@ -85,7 +89,8 @@ def launch_record(task: Task, job_id: str, model: dict) -> dict:
     review = task.jobs[job_id]["kind"] == "review"
     q = shlex.quote
     return {"harness": model["harness"], "model": model["model"], "effort": model["effort"],
-            "command": command_line(model["harness"], review, q(model["model"]), q(model["effort"]), **PLACEHOLDERS),
+            "command": command_line(model["harness"], review, q(model["model"]), q(model["effort"]), **PLACEHOLDERS,
+                                    git=review or bool(task.info.get("git"))),
             "request": READ_ONLY_REQUESTED if review else BYPASS_REQUESTED}
 
 

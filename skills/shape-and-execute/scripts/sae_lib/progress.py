@@ -402,9 +402,10 @@ def cmd_dispatch(args) -> int:
                                  "and for done research or planning jobs.")
             if not kind_allowed_now(task, job):
                 fail(EXIT_USAGE, f"{job['kind']} jobs do not run in phase {task.phase}.")
-        else:
-            if job["status"] != "pending":
-                fail(EXIT_USAGE, f"{job_id} is {job['status']}. To run it again: --resume --reason \"<why>\".")
+        elif job["status"] != "pending":
+            fail(EXIT_USAGE, f"{job_id} is {job['status']}. To run it again: --resume --reason \"<why>\".")
+        # A parked job that never started (a missing CLI) is a first dispatch, also with --resume [HARNESS-FALLBACK]
+        if not args.resume or (job["status"] == "parked" and not job["attempts"]):
             parked = integration_parked(task)
             if parked:
                 fail(EXIT_GATE, integration_notice(task))
@@ -435,6 +436,9 @@ def cmd_dispatch(args) -> int:
         exception = routing_exception(task, job_id, config, model, args.harness, args.provider, args.reason)
         if exception:
             attempt["routing_exception"] = exception  # [HARNESS-FALLBACK]
+        previous = job["attempts"][-1] if job["attempts"] else None
+        if args.resume and previous and previous.get("launch") and not previous.get("ended"):
+            previous["ended"] = attempt["started"]  # [HARNESS-FALLBACK]: the failed COMMAND's attempt ends here
         command_job = is_command_job(task, model["harness"])  # [WRITER-COMMAND]
         if command_job:
             attempt["launch"] = launch_record(task, job_id, model)  # [LAUNCH-RECORD]
