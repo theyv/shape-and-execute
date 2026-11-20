@@ -24,7 +24,6 @@ from .common import (
     read_json,
     read_text,
     rel,
-    sae_prefix,
     stamp_time,
     table,
 )
@@ -54,7 +53,18 @@ from .graph import (
     writer_slot_notice,
 )
 from .markdown import first_heading, has_content, md_section, split_frontmatter
-from .prompts import build_prompt, external_review_command
+from .launch import (
+    bypass_line,
+    exception_text,
+    how_to_run_line,
+    if_it_fails,
+    is_command_job,
+    launch_command,
+    launch_record,
+    refuse_missing_cli,
+    routing_exception,
+)
+from .prompts import build_prompt
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
 from .session_tokens import record_session_snapshot
@@ -122,6 +132,7 @@ def task_status_data(task: Task) -> dict:
             "layout": task.info.get("layout"), "last_change": task.info.get("last_change"),
             "settings": task.settings,
             "settings_card": settings_card(task.settings, task.info.get("orchestrator_harness")),
+            "bypass": bypass_line(task),  # [NO-SANDBOX-VISIBLE]
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
             "holds": holds_data(task), "asks": open_asks(task), "ask_signal": ask_signal(task.settings),
@@ -139,7 +150,8 @@ def cmd_status(args) -> int:
                             + ([f"layout: {data['layout']}"] if data["layout"] else []))]
         if data["worktree"]:
             lines.append(f"Task worktree: {data['worktree']}")
-        lines += [data["settings_card"], f"Last change: {age_text(data['last_change'])}"]
+        lines += [data["settings_card"]] + ([data["bypass"]] if data["bypass"] else [])
+        lines.append(f"Last change: {age_text(data['last_change'])}")
         data["routing_notice"] = easy_fallback_notice(task)  # [EASY-UPGRADE]
         if data["routing_notice"]:
             lines.append(data["routing_notice"])
@@ -374,7 +386,11 @@ def cmd_dispatch(args) -> int:
         card = None
         if not args.resume and (job_id in due or (job_id in task.jobs and is_ready(task, job_id))):
             card = next_step_card(task, config, ready_ids(task))  # the card sae next shows now
+        cli_checked = False
         if job_id not in task.jobs and job_id in due:
+            # [HARNESS-FALLBACK]: a missing CLI refuses before the due review is added
+            refuse_missing_cli(task, job_id, cfg_or_fail(config), args.harness, args.provider, args.resume)
+            cli_checked = True
             add_due_review(task, job_id)  # a due spec or plan review is added by its dispatch
         job = task.job(job_id)
         if args.resume:
@@ -403,6 +419,8 @@ def cmd_dispatch(args) -> int:
             blocked = writer_blocked(task, job_id, config)
             if blocked:
                 fail(EXIT_USAGE, f"{job_id} must wait: {blocked}.")
+        if not cli_checked:  # [HARNESS-FALLBACK]: before the workspace, the attempt and any event
+            refuse_missing_cli(task, job_id, cfg_or_fail(config), args.harness, args.provider, args.resume)
         model = resolve_model(task, job_id, config, harness=args.harness, provider=args.provider)
         workdir, branch = prepare_workspace(task, job_id, config)
         head = None
@@ -414,6 +432,12 @@ def cmd_dispatch(args) -> int:
                    "model_entry": model["model_entry"], "effort": model["effort"], "source": model["source"],
                    "tier": model["tier"], "started": iso(), "ended": None,
                    "tokens": None, "duration_s": None, "agent_ref": None, "reason": args.reason, "head": head}
+        exception = routing_exception(task, job_id, config, model, args.harness, args.provider, args.reason)
+        if exception:
+            attempt["routing_exception"] = exception  # [HARNESS-FALLBACK]
+        command_job = is_command_job(task, model["harness"])  # [WRITER-COMMAND]
+        if command_job:
+            attempt["launch"] = launch_record(task, job_id, model)  # [LAUNCH-RECORD]
         job["attempts"].append(attempt)
         if card is not None and job_id in [b["id"] for b in card["jobs"]]:
             record_card(task, card)
@@ -422,10 +446,12 @@ def cmd_dispatch(args) -> int:
         task.event("job.dispatched", job=job_id, attempt=attempt["n"], harness=model["harness"],
                    model=model["model"], effort=model["effort"], source=model["source"], tier=model["tier"],
                    workspace=rel(workdir, task.root) or ".",
-                   reason=args.reason)
+                   reason=args.reason, **({"launch": attempt["launch"]} if command_job else {}))
+        if exception:
+            task.event("routing.exception", job=job_id, attempt=attempt["n"], **exception)
         if task.phase == "executing":
             record_session_snapshot(task, "dispatch", "executing")  # [MAIN-TOKENS], [AMEND-1]
-        external = job["kind"] == "review" and model["harness"] != task.info.get("orchestrator_harness")
+        external = command_job and job["kind"] == "review"  # a review in the other harness replies with its text
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
         if args.resume:
             extra = []
@@ -442,14 +468,16 @@ def cmd_dispatch(args) -> int:
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
         header = (f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}\n"
-                  f"ROUTING: {routing_text(model)}")
-        data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model}
-        if external:
-            command = external_review_command(task, job_id, model, prompt)
-            fallback = (f"{sae_prefix()} dispatch {task.id} {job_id} --provider {task.info['orchestrator_harness']} "
-                        f"--resume --reason \"provider failed: <exit code or empty result>\"")
-            data.update({"command": command, "if_it_fails": fallback})
-            emit(args, f"{header}\nCOMMAND:\n{command}\nIF IT FAILS:\n{fallback}", data)
+                  f"ROUTING: {routing_text(model)}" + (f" · {exception_text(exception)}" if exception else ""))
+        data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model,
+                "routing_exception": exception}
+        if command_job:
+            command = launch_command(task, job_id, model, prompt, task.root if external else workdir)
+            fallback, rule = if_it_fails(task, job_id, model)
+            how = how_to_run_line(task, job_id)
+            data.update({"command": command, "how_to_run": how, "if_it_fails": fallback, "rule": rule,
+                         "launch": attempt["launch"]})
+            emit(args, "\n".join([header, "COMMAND:", command, how, "IF IT FAILS:", fallback, *rule]), data)
         else:
             data["prompt"] = prompt
             emit(args, f"{header}\nPROMPT:\n{prompt}", data)
@@ -483,10 +511,15 @@ def register_dispatch(sub, command):
     p = command(sub, "dispatch", "Prepare the workspace and print HARNESS, MODEL, EFFORT and PROMPT for one job.",
                 "Spawn a subagent with the printed PROMPT, passing the printed MODEL and EFFORT explicitly (Claude\n"
                 "Code: the Agent tool's model and effort; Codex: the spawn model and reasoning_effort); no subagent\n"
-                "inherits your effort. ROUTING says where the pair came from (phase table, tier, level, override).\n"
-                "For a review in the\n"
-                "other harness it prints COMMAND (run it in the background) and an IF IT FAILS line (run it when the\n"
-                "command exits non-zero or leaves no review). --resume runs a running, parked or failed job again\n"
+                "inherits your effort. ROUTING says where the pair came from (phase table, tier, level, override)\n"
+                "and names a routing exception (a fallback or a flag on another harness than routing chose).\n"
+                "For any job in the other harness it prints a COMMAND instead of the PROMPT, with how to run it, and\n"
+                "an IF IT FAILS line (for when the command exits non-zero or leaves no result) with the rule for this\n"
+                "job and mode: a review falls back at once in every mode; any other job only in full-auto, else it is\n"
+                "parked (sae job park) until the owner says yes. A review COMMAND runs read-only; any other job's\n"
+                "COMMAND runs without a sandbox (bypass requested). The attempt records the launch. When the other\n"
+                "harness's CLI is not on the PATH, dispatch refuses before anything changes and prints the fallback\n"
+                "command with the same rule. --resume runs a running, parked or failed job again\n"
                 "with --reason, or reopens a done research or planning job (a follow-up question; the planner\n"
                 "after a plan review); sae collect then reads the updated report or result. The message also\n"
                 "works for a fresh agent. A due spec or plan review is added first. Exit 3: an active hold (the\n"

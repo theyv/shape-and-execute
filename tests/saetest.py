@@ -129,6 +129,20 @@ def write_codex_catalog(codex_home: Path, catalog=None) -> None:
     (codex_home / "models_cache.json").write_text(json.dumps({"models": models}))
 
 
+# Stand-ins for the harness CLIs ([HARNESS-FALLBACK]): `sae dispatch` refuses a job in the other harness
+# when its CLI is not on the PATH. They fail when run; a test that runs a COMMAND puts its own first.
+FAKE_HARNESS_CLI = "#!/bin/sh\necho \"fake $(basename \"$0\"): not for running\" >&2\nexit 1\n"
+
+
+def write_fake_clis(folder: Path, names=("codex", "claude"), script: str = FAKE_HARNESS_CLI) -> Path:
+    """Executable fake harness CLIs in `folder` (created); returns `folder`."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (folder / name).write_text(script)
+        (folder / name).chmod(0o755)
+    return folder
+
+
 GIT_IDENTITY = {"GIT_AUTHOR_NAME": "Tester", "GIT_AUTHOR_EMAIL": "t@example.com",
                 "GIT_COMMITTER_NAME": "Tester", "GIT_COMMITTER_EMAIL": "t@example.com",
                 "PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin"}
@@ -217,12 +231,22 @@ class Sandbox:
         if write_config:
             self.config.write_text(json.dumps(config_for(self.worktrees, points, provider)))
         self.env = clean_env()
+        self.harness_bin = write_fake_clis(tmp / "harness-cli")  # see FAKE_HARNESS_CLI
+        self.env["PATH"] = str(self.harness_bin) + os.pathsep + self.env["PATH"]
         self.viewer_state = tmp / "viewer-state"  # the viewer server's state folder, never the owner's
         self.env.update({"SAE_CONFIG": str(self.config), "SAE_HARNESS": "claude", "CODEX_HOME": str(self.codex_home),
                          "SAE_STATE_DIR": str(self.viewer_state), "SAE_VIEWER": "off",
                          "PYTHONPYCACHEPREFIX": str(sae_pycache())})
         if git:
             self.git("config", "core.hooksPath", str(self.hooks))
+
+    def without_cli(self, name: str) -> None:
+        """Takes the fake `name` CLI off the PATH, so a job routed to that harness meets a missing CLI.
+        The rest of the PATH must not hold a real one: tests never run a real harness."""
+        (self.harness_bin / name).unlink()
+        for folder in self.env["PATH"].split(os.pathsep):
+            if folder and (Path(folder) / name).exists():
+                raise unittest.SkipTest(f"a real {name} CLI is on the test PATH: {folder}")
 
     def git(self, *args, cwd: Path | None = None) -> str:
         proc = subprocess.run(["git", *args], cwd=cwd or self.repo, capture_output=True, text=True, env=self.env)

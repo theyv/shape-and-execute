@@ -35,6 +35,7 @@ from .gitutil import find_root, git, git_ok, git_user, run
 from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
+from .launch import exception_report_lines
 from .prompts import REVIEW_OUTPUT_SUFFIX
 from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, merge_job
@@ -375,6 +376,7 @@ def final_report(task: Task, with_open: bool, kept: list[str] | None = None) -> 
                                        + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
                                        + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})"
                                        for e in reviews]
+    lines += exception_report_lines(task)  # [HARNESS-FALLBACK]
     overridden = [e for e in events if e["type"] == "gate.overridden"]
     if overridden:
         lines += ["", "## Overridden gates"] + [f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
@@ -548,9 +550,9 @@ def tilde_home_bytes(data: bytes) -> bytes:
 
 
 def remove_harness_logs(record: Path) -> None:
-    """[RECORD-PRIVACY]: harness output logs left beside job or review files (`jobs/<stem>.codex.jsonl`,
+    """[RECORD-PRIVACY]: harness output logs left beside job, review, research or decision files (`jobs/<stem>.codex.jsonl`,
     `reviews/<stem>.claude.json`, …) never reach git; same-named files elsewhere in the record stay."""
-    for folder in (record / "jobs", record / "reviews"):
+    for folder in (record / "jobs", record / "reviews", record / "research", record / "decisions"):
         if folder.is_symlink() or not folder.is_dir():
             continue
         for path in folder.iterdir():

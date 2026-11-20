@@ -429,21 +429,6 @@ def review_output_tokens(path: Path, harness: str) -> int | None:
 
 
 def external_review_command(task: Task, job_id: str, model: dict, prompt: str) -> str:
-    """Print one shell line; printf restores the literal newlines in the review prompt."""
-    result = result_file(task, job_id)
-    result.parent.mkdir(parents=True, exist_ok=True)
-    output = review_output_file(task, job_id, model["harness"])
-    q = shlex.quote
-    escaped_prompt = prompt.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-    prompt_arg = '"$(printf %b ' + q(escaped_prompt) + ')"'
-    clean = f"rm -f {q(str(result))} {q(str(output))}"
-    if model["harness"] == "codex":
-        return (f"{clean} && codex exec -m {q(model['model'])} "
-                f"-c model_reasoning_effort={q(model['effort'])} -s read-only "
-                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral --json {prompt_arg} "
-                f"< /dev/null > {q(str(output))}")
-    return (f"cd {q(str(task.root))} && {clean} && claude -p {prompt_arg} --output-format json "
-            f"--model {q(model['model'])} "
-            f"--effort {q(model['effort'])} --permission-mode dontAsk "
-            f"--allowedTools {q('Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)')} "
-            f"> {q(str(output))} && python3 -c {q(CLAUDE_RESULT_TEXT)} {q(str(output))} > {q(str(result))}")
+    """The review COMMAND: one shell line; printf restores the literal newlines in the review prompt."""
+    from .launch import launch_command  # late import: launch imports this module
+    return launch_command(task, job_id, model, prompt, task.root)
