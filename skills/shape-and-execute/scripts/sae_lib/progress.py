@@ -61,7 +61,9 @@ from .launch import (
     is_command_job,
     launch_command,
     launch_record,
+    needs_fresh_result,
     refuse_missing_cli,
+    result_fingerprint,
     routing_exception,
 )
 from .prompts import build_prompt
@@ -442,6 +444,8 @@ def cmd_dispatch(args) -> int:
         command_job = is_command_job(task, model["harness"])  # [WRITER-COMMAND]
         if command_job:
             attempt["launch"] = launch_record(task, job_id, model)  # [LAUNCH-RECORD]
+        if needs_fresh_result(previous, command_job):
+            attempt["result_before"] = result_fingerprint(result_file(task, job_id))  # collect needs a new one
         job["attempts"].append(attempt)
         if card is not None and job_id in [b["id"] for b in card["jobs"]]:
             record_card(task, card)

@@ -86,6 +86,12 @@ class LaunchTestCase(SaeTestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return [json.loads(line) for line in log.read_text().splitlines()]
 
+    @staticmethod
+    def args_of(command: str) -> list[str]:
+        """The sae arguments of a printed `python3 <sae.py> …` command."""
+        words = shlex.split(command)
+        return words[words.index(next(w for w in words if w.endswith("sae.py"))) + 1:]
+
 
 class WriterCommandTests(LaunchTestCase):
     def test_codex_writer_under_claude_runs_without_sandbox_and_records_tokens(self):
@@ -200,13 +206,53 @@ class WriterCommandTests(LaunchTestCase):
         self.run_command(sb, data["command"])  # exits 0 and writes no report
         before = self.frozen(sb, task)
         err = sb.sae("collect", "stale", "R", code=1).stderr
-        self.assertIn("attempt 2 has not written or updated it", err)
+        self.assertIn("attempt 2 has not written or replaced it", err)
         self.assertEqual(self.frozen(sb, task), before)
         self.assertTrue(report.exists())  # the earlier report stays for the retry
         self.assertEqual(sb.state(task)["jobs"]["R"]["status"], "running")
         sb.result(task, "research/R.md", status="done", confidence="high")
         self.assertIn("R: done", sb.sae("collect", "stale", "R").stdout)
 
+    def reopened_research(self, sb: Sandbox, slug: str) -> tuple[str, Path]:
+        """A research job on the other harness, collected once, whose report the first attempt wrote."""
+        task = self.executing(sb, slug, settings=("interaction=full-auto",))
+        sb.sae("job", "add", slug, "R", "--kind", "research", "--reason", "a question")
+        self.to_other(sb, slug, "R", "claude")
+        sb.sae("dispatch", slug, "R")
+        sb.result(task, "research/R.md", status="done", confidence="high")
+        sb.sae("collect", slug, "R")
+        return task, sb.task_dir(task) / "research" / "R.md"
+
+    def test_collect_refuses_an_unchanged_result_written_in_the_retrys_start_second(self):
+        # Review REVIEW-WRITER-LAUNCH-2 finding 1: the start time has one-second precision. A later mtime
+        # stands for a report written earlier in the second the retry started (or a clock step).
+        sb = self.sandbox_for("claude")
+        task, report = self.reopened_research(sb, "same")
+        later = report.stat().st_mtime + 30
+        os.utime(report, (later, later))
+        data = sb.json("dispatch", "same", "R", "--resume", "--reason", "follow-up questions")
+        self.run_command(sb, data["command"])  # exits 0 and writes no report
+        before = self.frozen(sb, task)
+        err = sb.sae("collect", "same", "R", code=1).stderr
+        self.assertIn("attempt 2 has not written or replaced it", err)
+        self.assertEqual(self.frozen(sb, task), before)  # no tokens booked to the old report
+        self.assertTrue(report.exists())
+
+    def test_fallback_collect_refuses_a_result_left_unchanged(self):
+        # Review REVIEW-WRITER-LAUNCH-2 finding 1: the fallback attempt has no `launch` record.
+        sb = self.sandbox_for("claude")
+        task, report = self.reopened_research(sb, "fb")
+        out = sb.sae("dispatch", "fb", "R", "--resume", "--reason", "follow-up questions").stdout
+        fallback = out.splitlines()[out.splitlines().index("IF IT FAILS:") + 1]
+        data = sb.json(*self.args_of(fallback.replace("<exit code or missing result>", "exit 1")))
+        self.assertEqual(data["harness"], "claude")
+        self.assertNotIn("launch", sb.state(task)["jobs"]["R"]["attempts"][-1])
+        before = self.frozen(sb, task)
+        err = sb.sae("collect", "fb", "R", code=1).stderr  # the fallback subagent left the report as it was
+        self.assertIn("attempt 3 has not written or replaced it", err)
+        self.assertEqual(self.frozen(sb, task), before)
+        sb.result(task, "research/R.md", status="done", confidence="high")
+        self.assertIn("R: done", sb.sae("collect", "fb", "R").stdout)
 
 class LaunchRecordTests(LaunchTestCase):
     def test_attempt_records_the_placeholder_command_and_the_request(self):
@@ -531,12 +577,6 @@ class HarnessFallbackTests(LaunchTestCase):
         self.assertIsNotNone(first["ended"])
         self.assertEqual(first["ended"], second["started"])
         self.assertIsNone(second["ended"])
-
-    @staticmethod
-    def args_of(command: str) -> list[str]:
-        """The sae arguments of a printed `python3 <sae.py> …` command."""
-        words = shlex.split(command)
-        return words[words.index(next(w for w in words if w.endswith("sae.py"))) + 1:]
 
 
 if __name__ == "__main__":

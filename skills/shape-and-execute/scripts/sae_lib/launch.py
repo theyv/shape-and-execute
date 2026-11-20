@@ -11,10 +11,14 @@ placeholders instead of the prompt and paths, and the request (`bypass requested
 not on the PATH, and prints the fallback command with the rule for the case at hand
 ([DECISION-FALLBACK-BY-MODE]). The fallback command's `--reason` carries the requested route in a
 fixed format; the dispatch that runs it records a routing exception from there.
+A COMMAND attempt, and the attempt that follows one (its fallback), records the result file's
+fingerprint at dispatch (`result_before`); `sae collect` refuses a result with the same fingerprint:
+the attempt has not written or replaced it. A retry keeps the earlier result as context.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shlex
 import shutil
@@ -92,6 +96,29 @@ def launch_record(task: Task, job_id: str, model: dict) -> dict:
             "command": command_line(model["harness"], review, q(model["model"]), q(model["effort"]), **PLACEHOLDERS,
                                     git=review or bool(task.info.get("git"))),
             "request": READ_ONLY_REQUESTED if review else BYPASS_REQUESTED}
+
+
+def result_fingerprint(path: Path) -> dict | None:
+    """Size, mtime in nanoseconds and SHA-256 of a result file; None when it does not exist."""
+    try:
+        stat = path.stat()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+    return {"size": stat.st_size, "mtime_ns": stat.st_mtime_ns, "sha256": digest}
+
+
+def needs_fresh_result(previous: dict | None, command_job: bool) -> bool:
+    """[WRITER-COMMAND], [HARNESS-FALLBACK]: a COMMAND attempt and the fallback that replaces one must
+    write or replace the result. Subagent retries are not checked: the orchestrator collects on their reply."""
+    return command_job or bool(previous and previous.get("launch"))
+
+
+def result_unchanged(path: Path, attempt: dict) -> bool:
+    """The result file is exactly as it was when this attempt was dispatched (see `result_before`)."""
+    if "result_before" not in attempt or attempt["result_before"] is None:
+        return False
+    return result_fingerprint(path) == attempt["result_before"]
 
 
 def how_to_run_line(task: Task, job_id: str) -> str:
