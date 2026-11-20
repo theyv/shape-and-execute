@@ -37,10 +37,12 @@ Repeat until `sae next` reports that all jobs are done.
    review, run it. For any other job, run it only in `full-auto`. In the other modes park the
    job (`sae job park <task> <ID> --reason "harness fallback: <why>"`), ask the user and
    continue with independent work; on the user's yes, run the fallback command with
-   `--resume`. A done job you reopened with `--resume` (a research or planning follow-up)
-   stays done and is not parked; outside `full-auto`, ask the user, log the yes
+   `--resume`. One exception: when `sae` refuses to reopen a done job with `--resume` (a
+   research or planning follow-up) because the other harness is missing, the job stays done
+   and is not parked; outside `full-auto`, ask the user, log the yes
    (`sae log <task> decision "harness fallback: <ID>: <why>" --by human --job <ID>`), then run
-   the fallback command, keeping `--resume`. `sae` records each fallback run as a routing
+   the fallback command, keeping `--resume`. When its COMMAND started and then failed, the job
+   is running again: park it as above. `sae` records each fallback run as a routing
    exception; later dispatches use routing again.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
    `--agent-ref` when your harness reports them. A COMMAND job needs no `--tokens`: `sae` reads
