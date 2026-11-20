@@ -17,16 +17,25 @@ from .gitutil import git
 from .graph import fix_target, review_rounds
 from .markdown import split_frontmatter
 from .routing import job_context
+from .stakes import prompt_block
 from .tasks import Task, as_list, job_file, job_meta, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
 
 
 # [PROMPT-SAE] Texts that dispatch prompts carry. Fill them with str.format; reword them only in the
 # prompt-text job of a task, so the owner reads every prompt change in one diff.
-# [STAKES-POINTER] one stakes line in every dispatch prompt: the source, or the "not set" line.
-STAKES_LINE = 'Stakes (read before you start): {path}, section "Stakes"'
-STAKES_NOT_SET_LINE = ("Stakes: not set. Estimate them from the repository instructions and the README, and work to\n"
-                       "that level: neither over- nor under-engineer.")
+# [STAKES-POINTER], [AMEND-1], [AMEND-2] one Project Stakes block in every dispatch prompt: STAKES_LINE and the
+# section text, or the "not set" text. STAKES_LONG_SUFFIX replaces the section text of a long section.
+STAKES_LINE = ('Project Stakes: how much care this project needs (from {path}, section "Project Stakes"). '
+               "Work to this bar. Leaving out what the bar does not need (extra tests, rare edge cases, polish, "
+               "abstractions) is expected, not a failure. Never leave out what your job must deliver to be correct:")
+STAKES_LONG_SUFFIX = " The section is longer than {limit} lines: read it before you start."
+STAKES_NOT_SET_LINE = ("Project Stakes: how much care this project needs. Not set, so set the bar yourself: from the "
+                       "repository instructions and the README, judge who uses it, what breakage is acceptable and "
+                       "what matters now. Then work to that bar. Leaving out what the bar does not need (extra "
+                       "tests, rare edge cases, polish, abstractions) is expected, not a failure. Never leave out "
+                       "what your job must deliver to be correct. State your estimate in one line in what you write "
+                       "back.")
 # [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
 APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
@@ -245,6 +254,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         f"You are {who} for the shape-and-execute skill. Follow your protocol:",
         f"  {roles / protocol}",
         f"Task: {task.id} · Job: {job_id} ({kind}, {job_context(task, job_id)['difficulty']})",
+        prompt_block(task.root),  # [STAKES-POINTER]: exactly one stakes block, read now
     ]
     spec, intent = d / "specs.md", d / "intent.md"
     spec_pointer = pointer("Spec — read the parts your job covers: ", spec)

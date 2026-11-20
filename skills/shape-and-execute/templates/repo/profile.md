@@ -21,8 +21,9 @@
      - So build it like: A toy.
      Do not name risky areas or exceptions here; hard limits belong in the repository
      instructions. When the owner does not set Project Stakes, keep only this line:
-     - Not set by the owner. Estimate the Project Stakes from the repository instructions
-       and the README, and build and review to that level: neither over- nor under-engineer. -->
+     - Not set by the owner. Set the bar yourself from the repository instructions and the
+       README. Leaving out what it does not need is expected; never leave out what your job
+       must deliver to be correct. -->
 - Who uses it and why:
 - Acceptable breakage:   <!-- how much, in one or two sentences; not a list -->
 - What matters now:

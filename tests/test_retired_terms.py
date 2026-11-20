@@ -32,12 +32,6 @@ def _schema1_place(name: str, line: str) -> bool:
             or (name == "assets/viewer/app.js" and "old tasks" in line))
 
 
-def _stakes_line_constant(name: str, line: str) -> bool:
-    """STAKES_LINE in prompts.py keeps `section "Stakes"` until the STAKES-IN-PROMPTS job
-    rewrites it ([AMEND-1], [AMEND-2])."""
-    return name == "scripts/sae_lib/prompts.py" and line.startswith("STAKES_LINE = ")
-
-
 # (retired term, pattern, the place where it is still correct or None). Replaced terms first,
 # then pointers to the removed design docs.
 RETIRED = [
@@ -64,7 +58,7 @@ RETIRED = [
     # [AMEND-2] the term is "Project Stakes"; case-sensitive so prose may still say "stakes"
     ("[beyond stakes]", r"\[beyond stakes\]", None),
     ("## Stakes", r"(?-i:^#+ Stakes\b)", None),
-    ("section \"Stakes\"", r'(?-i:section "Stakes")', _stakes_line_constant),
+    ("section \"Stakes\"", r'(?-i:section "Stakes")', None),
 ]
 
 
@@ -102,10 +96,7 @@ class RetiredTermsTests(unittest.TestCase):
         self.assertEqual(scan([("references/modes/setup.md", "each rung becomes a tier")]), [])
         self.assertEqual(len(scan([("references/modes/plan.md", "each rung becomes a tier")])), 1)
 
-    def test_old_stakes_names_are_retired_except_the_stakes_line(self):
-        line = 'STAKES_LINE = \'Stakes: {path}, section "Stakes"\''
-        self.assertEqual(scan([("scripts/sae_lib/prompts.py", line)]), [])
-        self.assertEqual(len(scan([("scripts/sae_lib/progress.py", line)])), 1)
+    def test_old_stakes_names_are_retired(self):
         text = "## Stakes\nA note: `[beyond stakes]`.\n## Project Stakes\n`[beyond Project Stakes]`\n"
         self.assertEqual([hit.split(": ")[1] for hit in scan([("templates/review.md", text)])],
                          ["## Stakes", "[beyond stakes]"])
