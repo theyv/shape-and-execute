@@ -139,14 +139,17 @@ class BlockTests(StakesCase):
             self.assertTrue(text.startswith("Project Stakes:"))
             self.assertNotIn("copy", text)
             self.assertNotIn("\n", text)
+            self.assertIn("Leaving out what the bar does not need is expected, not a failure. "
+                          "They never lower the requirements you were given", text)
+            self.assertNotIn("edge cases", text)
 
     def test_the_template_not_set_line_has_the_not_set_meaning(self):
         text = (SKILL_DIR / "templates" / "repo" / "profile.md").read_text()
         self.assertNotIn("neither over- nor under-engineer", text)
         flat = " ".join(text.split())
         self.assertIn("Not set by the owner. Set the bar yourself", flat)
-        self.assertIn("Leaving out what it does not need is expected; never leave out what your job must deliver "
-                      "to be correct", flat)
+        self.assertIn("Leaving out what it does not need is expected; it never lowers the requirements you "
+                      "were given", flat)
 
 
 class PromptKindTests(StakesCase):
