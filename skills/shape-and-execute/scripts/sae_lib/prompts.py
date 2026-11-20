@@ -30,8 +30,9 @@ STAKES_NOT_SET_LINE = ("Stakes: not set. Estimate them from the repository instr
 # [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
 APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
-APPROACH_PARAGRAPH = """FIX {fix} of {target}. The job parks for the owner after review round {max_rounds}.
-Before you patch, read the earlier review rounds of this job and answer in your result:
+APPROACH_PARAGRAPH = """FIX {fix} of {target}. {target} parks for the owner after review round {max_rounds}.
+Before you patch, read the earlier review rounds of {target} and answer under "Decisions taken"
+in your result:
 1. Do the findings share one cause? Typical causes: the same value computed in several
    places; a function that gets a new special case in every round; a requirement read
    wider than the spec states.

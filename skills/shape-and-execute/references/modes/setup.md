@@ -169,8 +169,7 @@ now SaE starts them with a bypass request:
   "agent thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to
   set it.
 
-A sandboxed setup waits in the backlog. `sae setup snippets` prints a draft of it; its Codex
-git rule does not work in linked worktrees yet.
+A sandboxed setup waits in the backlog.
 
 Show each change, explain it in one sentence, and apply it only after the user says yes.
 Back up the file first.

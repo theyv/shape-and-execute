@@ -62,9 +62,9 @@ is a proposal, and a change of approach when patches would not converge. When th
 rule applies in more places, search for them and list them under `Also in`. Short and
 concrete.
 
-Grade every finding against the stakes in your prompt. Report everything you find; the
-stakes decide only whether it blocks. A finding that needs more care than the stakes
-justify goes to Notes as `[beyond stakes]`, with one sentence why. When a change adds a
+Grade every finding against the Project Stakes in your prompt. They decide only where it
+goes, Findings or Notes; never drop it. A finding that needs more care than the Project Stakes
+justify goes to Notes as `[beyond Project Stakes]`, with one sentence why. When a change adds a
 safeguard, check what new failure it can cause in normal use. When your prompt points to an
 Approach proposal, judge it: when it holds, make it the `Suggested fix` of a finding.
 
