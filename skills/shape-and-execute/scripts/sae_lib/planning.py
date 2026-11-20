@@ -29,6 +29,7 @@ from .config import (
     REVIEW_PROVIDERS,
     ROUTING_KEYS_HELP,
     SET_KEYS,
+    TASK_DIFFICULTIES,
     apply_routing_key,
     is_routing_key,
     level_routing_errors,
@@ -210,8 +211,8 @@ def cmd_job_add(args) -> int:
                                  f"--reason \"<why>\"")
             if target["merged"]:
                 fail(EXIT_USAGE, f"{args.fix_of} is already merged; add a normal job instead.")
-        if args.kind == "planning" and args.difficulty == "mechanical":
-            fail(EXIT_USAGE, "Planning is never mechanical: use --difficulty normal or hard.")
+        if args.kind == "planning" and args.difficulty and args.difficulty not in TASK_DIFFICULTIES:
+            fail(EXIT_USAGE, f"Planning takes --difficulty {' or '.join(TASK_DIFFICULTIES)}, not {args.difficulty}.")
         require_reason(task, args.reason)
         needs = parse_needs(args.needs)
         difficulty = args.difficulty or (task_difficulty(task.settings) if args.kind == "planning" else "normal")
@@ -261,8 +262,9 @@ def cmd_job_edit(args) -> int:
                 fail(EXIT_USAGE, f"{args.id} is a job review: it takes the difficulty of {job['target']}. "
                                  f"For an exception:\n  sae job override {task.id} {job['target']} --review "
                                  f"--harness <harness> --model <model> --effort <effort>")
-            if job["kind"] in ("review", "planning") and args.difficulty == "mechanical":
-                fail(EXIT_USAGE, f"{job['kind'].capitalize()} is never mechanical: use normal or hard.")
+            if job["kind"] in ("review", "planning") and args.difficulty not in TASK_DIFFICULTIES:
+                fail(EXIT_USAGE, f"{job['kind'].capitalize()} takes --difficulty {' or '.join(TASK_DIFFICULTIES)}, "
+                                 f"not {args.difficulty}.")
             changes["difficulty"] = [job["difficulty"], args.difficulty]
         if args.review is not None:
             changes["review"] = [job["review"], args.review]
@@ -427,7 +429,7 @@ def register_job(sub, command):
     p.add_argument("--kind", required=True, choices=[k for k in JOB_KINDS if k not in ("review", "decision")])
     p.add_argument("--needs", metavar="A,B")
     p.add_argument("--difficulty", choices=DIFFICULTIES,
-                   help="default normal; a planning job takes the task difficulty and is never mechanical")
+                   help="default normal; a planning job takes the task difficulty: normal or hard")
     p.add_argument("--review", action="store_true")
     p.add_argument("--final", action="store_true")
     p.add_argument("--fix-of", metavar="ID", help="the writer job this fix repairs (it works on that job's branch), "
@@ -440,7 +442,8 @@ def register_job(sub, command):
     p.add_argument("task")
     p.add_argument("id")
     p.add_argument("--needs", metavar="A,B", help="replaces the list; empty string clears it")
-    p.add_argument("--difficulty", choices=DIFFICULTIES)
+    p.add_argument("--difficulty", choices=DIFFICULTIES,
+                   help="planning and review jobs: normal or hard")
     p.add_argument("--review", dest="review", action="store_true", default=None)
     p.add_argument("--no-review", dest="review", action="store_false")
     p.add_argument("--reason")

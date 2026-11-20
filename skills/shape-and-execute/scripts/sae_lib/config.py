@@ -45,9 +45,13 @@ TIERS = ("L1", "L2", "L3", "L4")
 # interaction mode: on in these modes, off in collaborative and interactive.
 ASK_SIGNAL_VALUES = ("on", "off")
 ASK_SIGNAL_MODES = ("full-auto", "auto", "critical-only")
-# Planning and review are never mechanical work: their tables have no mechanical column.
+# Planning and review are never mechanical or easy work: their tables have only normal and hard.
 PHASE_DIFFICULTIES = {"research": DIFFICULTIES, "planning": TASK_DIFFICULTIES,
                       "execution": DIFFICULTIES, "review": TASK_DIFFICULTIES}
+# An optional column → the column it falls back to when no layer sets its cell ([EASY-UPGRADE]).
+# Configurations from before `easy` have no easy cells; setup mode proposes them, `sae` writes none.
+FALLBACK_COLUMNS = {"easy": "mechanical"}
+SETUP_FIX = "setup mode (Claude Code: /shape-and-execute setup; Codex: $shape-and-execute setup)"
 ROUTING_SOURCES = ("global", "project", "task")
 SCHEMA1_TEXT = ("Your user config uses schema 1 (rungs and level maps).\n"
                 "This sae needs schema 2 (routing tables). Run setup mode to\n"
@@ -315,7 +319,7 @@ def routing_shape_errors(block, where: str, partial: bool) -> list[str]:
             for difficulty in columns:
                 cell = row.get(difficulty)
                 at = f"{where}.tables.{phase}.{level}.{difficulty}"
-                if cell is None and partial:
+                if cell is None and (partial or difficulty in FALLBACK_COLUMNS):
                     continue
                 errors.extend(cell_shape_errors(cell, at))
     return errors
@@ -386,6 +390,58 @@ def effective_routing(layers: list[tuple[str, dict]], harness: str) -> dict:
     return out
 
 
+def effective_cell(effective: dict, phase: str, level: str, difficulty: str) -> tuple[dict, str, str | None] | None:
+    """(cell, source, fallback column or None) of one table cell in a merged block. The nearest
+    layer that sets the cell wins; an optional column that no layer sets takes the effective
+    cell of its fallback column ([EASY-UPGRADE]). None: nothing sets it."""
+    row = effective["tables"].get(phase, {}).get(level, {})
+    found = row.get(difficulty)
+    if found:
+        return found[0], found[1], None
+    fallback = FALLBACK_COLUMNS.get(difficulty)
+    if fallback and difficulty in PHASE_DIFFICULTIES.get(phase, ()) and row.get(fallback):
+        return row[fallback][0], row[fallback][1], fallback
+    return None
+
+
+def fallback_cells(effective: dict) -> dict[str, list[str]]:
+    """{optional column: ["<phase> <level>", …]} of the cells that fall back in a merged block."""
+    out: dict[str, list[str]] = {}
+    for column in FALLBACK_COLUMNS:
+        for phase, columns in PHASE_DIFFICULTIES.items():
+            if column not in columns:
+                continue
+            for level in LEVELS:
+                found = effective_cell(effective, phase, level, column)
+                if found and found[2]:
+                    out.setdefault(column, []).append(f"{phase} {level}")
+    return out
+
+
+def fallback_line(layers: list[tuple[str, dict]], harnesses) -> str | None:
+    """One line when an optional column falls back for a harness, with the fix; else None.
+    For example: "easy falls back to the mechanical cell (claude: 6 of 6 cells): no layer sets
+    them. Fix: setup mode (…)." """
+    lines = []
+    for column, fallback in FALLBACK_COLUMNS.items():
+        total = len(LEVELS) * sum(column in c for c in PHASE_DIFFICULTIES.values())
+        parts = [f"{h}: {len(cells)} of {total} cells" for h in harnesses
+                 for cells in [fallback_cells(effective_routing(layers, h)).get(column)] if cells]
+        if parts:
+            lines.append(f"{column} falls back to the {fallback} cell ({'; '.join(parts)}): no layer sets them. "
+                         f"Fix: {SETUP_FIX}.")
+    return " ".join(lines) or None
+
+
+def config_fallback_line(config: dict | None, root: Path | None = None, settings: dict | None = None) -> str | None:
+    """`fallback_line` for the routing a task (`settings`), a project (`root`) or the global
+    config sees; None without a config. For `sae status` and `sae doctor`."""
+    if not isinstance(config, dict) or not isinstance(config.get("routing"), dict):
+        return None
+    harnesses = [h for h in HARNESSES if isinstance(config["routing"].get(h), dict)]
+    return fallback_line(routing_layers(config, root, settings), harnesses)
+
+
 def cell_use(effective: dict, cell: dict) -> tuple[str | None, dict | None]:
     """(tier name or None, the {model, effort} the cell uses) under the effective tier switch."""
     tiers_on = effective.get("tiers_in_cells", (True, None))[0]
@@ -403,11 +459,13 @@ def usability_errors(effective: dict, harness: str, label: str) -> list[str]:
     for phase, columns in PHASE_DIFFICULTIES.items():
         for level in LEVELS:
             for difficulty in columns:
-                found = effective["tables"].get(phase, {}).get(level, {}).get(difficulty)
+                found = effective_cell(effective, phase, level, difficulty)
                 where = f"routing.{harness}.tables.{phase}.{level}.{difficulty}"
                 if not found:
                     errors.append(f"{where} missing{label}")
                     continue
+                if found[2]:
+                    continue  # a fallback cell: its own column reports it
                 tier, pair = cell_use(effective, found[0])
                 if pair is None:
                     errors.append(f"{where} ({found[1]}): " + (f"tier {tier} is not defined" if tier else

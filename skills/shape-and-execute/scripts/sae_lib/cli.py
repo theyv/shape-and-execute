@@ -91,7 +91,7 @@ ARGUMENT_HELP = {
     "final": "the final validation job; runs after every other job and review",
     "fix_of": "the writer job this fix job repairs; it works in that job's workspace and branch",
     "needs": "comma list of job IDs that must be done first (writers: also merged)",
-    "difficulty": "mechanical | normal | hard; with the phase level it selects the routing cell",
+    "difficulty": "mechanical | easy | normal | hard (planning and review: normal | hard); with the phase level it selects the routing cell",
     "kind": "what the job does",
     "allow_dirty": "start although tracked files outside .tasks/ have uncommitted changes",
     "open": "open the URL in the default browser",

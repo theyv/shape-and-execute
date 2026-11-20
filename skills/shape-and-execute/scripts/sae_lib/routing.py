@@ -5,7 +5,8 @@ the viewer and the review-mark tooltips. It returns a dict:
 
   harness, model (exact: a Codex family resolved to its newest version), model_entry (the model
   list entry), effort, tier (or None), phase, level, difficulty, source (global | project | task
-  | override: the nearest level that chose the pair), sources ({cell, tier, harness}), override
+  | override: the nearest level that chose the pair), sources ({cell, tier, harness}), fallback (the
+  column whose cell an `easy` job uses when no layer sets its own, or None), override
   (the override applied, or None), routed (what routing alone would choose, when an override
   applies), family ({family, newest} when a Codex family was resolved).
 """
@@ -18,7 +19,10 @@ from .common import CONFIG_HINT, EXIT_CONFIG, EXIT_USAGE, LEVEL_PHASE_OF_KIND, S
 from .config import (
     PHASE_DIFFICULTIES,
     cell_use,
+    config_fallback_line,
+    effective_cell,
     effective_routing,
+    load_config,
     model_entry,
     other_harness,
     pair_error,
@@ -90,8 +94,8 @@ def job_context(task: Task, job_id: str) -> dict:
     else:
         difficulty = job.get("difficulty") or "normal"
     if difficulty not in PHASE_DIFFICULTIES[phase]:
-        # a review of a mechanical job; planning is never mechanical. The owner rejected a
-        # weaker model for review.
+        # a review of a mechanical or easy job; planning is never mechanical or easy. The owner
+        # rejected a weaker model for review.
         difficulty = "normal"
     return {"kind": kind, "phase": phase, "level": task.settings["levels"][phase], "difficulty": difficulty,
             "target": job.get("target")}
@@ -119,10 +123,12 @@ def route(config: dict, layers: list, harness: str, ctx: dict) -> dict:
                           f"{CONFIG_HINT}")
     effective = effective_routing(layers, harness)
     where = f"routing.{harness}.tables.{ctx['phase']}.{ctx['level']}.{ctx['difficulty']}"
-    found = effective["tables"].get(ctx["phase"], {}).get(ctx["level"], {}).get(ctx["difficulty"])
+    found = effective_cell(effective, ctx["phase"], ctx["level"], ctx["difficulty"])
     if not found:
         fail(EXIT_CONFIG, f'Key "{where}" missing in the user config.\n{CONFIG_HINT}')
-    cell, cell_source = found
+    cell, cell_source, fallback = found
+    if fallback:
+        where = f"routing.{harness}.tables.{ctx['phase']}.{ctx['level']}.{fallback}"
     tier, pair = cell_use(effective, cell)
     if pair is None:
         what = f"tier {tier} is not defined" if tier else "the cell has no model and effort while tiers are off"
@@ -130,7 +136,7 @@ def route(config: dict, layers: list, harness: str, ctx: dict) -> dict:
     tier_source = effective["tiers"][tier][1] if tier else None
     nearest = max((s for s in (cell_source, tier_source) if s), key=SOURCE_RANK.get)
     return {"harness": harness, "model_entry": pair["model"], "effort": pair["effort"], "tier": tier,
-            "source": nearest, "sources": {"cell": cell_source, "tier": tier_source},
+            "source": nearest, "sources": {"cell": cell_source, "tier": tier_source}, "fallback": fallback,
             "where": f"routing.{harness}.tiers.{tier}" if tier else where}
 
 
@@ -190,6 +196,7 @@ def resolve_model(task: Task, job_id: str, config: dict, harness: str | None = N
             result["model_entry"] = override.get("model") or result["model_entry"]
             result["effort"] = override.get("effort") or result["effort"]
             result["tier"] = None
+            result["fallback"] = None
             result["where"] = f"override of {override_key(task, job_id)}"
         result["source"] = "override"
     error = pair_error(config, chosen, result["model_entry"], result["effort"], result["where"])
@@ -221,6 +228,8 @@ def routing_text(res: dict) -> str:
         was = (f"; routing: {routed['harness']} · {routed['model_entry']} · {routed['effort']}" if routed else "")
         return f"override (set {at}){was}"
     head = f"{res['phase']} · {res['level']} · {res['difficulty']}"
+    if res.get("fallback"):  # [EASY-UPGRADE]: no layer sets the cell
+        head += f" (no {res['difficulty']} cell: uses the {res['fallback']} cell; fix: setup mode)"
     sources = res["sources"]
     if res.get("tier"):
         return f"{head} → tier {res['tier']} (cell: {sources['cell']}, tier: {sources['tier']})"
@@ -232,5 +241,17 @@ def short_text(res: dict) -> str:
     text = f"{res['harness']} · {res['model']} · {res['effort']}"
     if res.get("override"):
         return text + " · override"
-    return text + ("" if res["source"] == "global" else f" ({res['source']})")
+    text += "" if res["source"] == "global" else f" ({res['source']})"
+    return text + (f" · {res['fallback']} cell" if res.get("fallback") else "")
 
+
+
+def easy_fallback_notice(task: Task, config: dict | None = None) -> str | None:
+    """The one line `sae status` prints when `easy` falls back to `mechanical` for this task's
+    routing ([EASY-UPGRADE]); None without a readable config. Reads only."""
+    if config is None:
+        try:
+            config = load_config(required=False)
+        except SaeError:
+            return None
+    return config_fallback_line(config, task.root, task.settings)
