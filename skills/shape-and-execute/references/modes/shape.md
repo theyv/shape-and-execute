@@ -62,7 +62,10 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
 7. Follow-up questions — the ones you have after putting the reports together, or later during
    grilling — go to the research agent that holds the context:
    - write them under `## Follow-up questions` in that topic's job file;
-   - `sae dispatch <task> <TOPIC-ID> --resume --reason "follow-up questions"`;
+   - `sae dispatch <task> <TOPIC-ID> --resume --reason "follow-up questions"`. When it needs
+     the fallback, the job stays done and is not parked: outside `full-auto`, ask the user, log
+     the yes (`sae log <task> decision "harness fallback: <TOPIC-ID>: <why>" --by human --job <TOPIC-ID>`),
+     then run the fallback command, keeping `--resume`;
    - resume that agent with the printed message (Claude Code: SendMessage; Codex: send_input
      or followup_task). If it cannot be resumed, spawn a new one with the same message;
    - collect again.

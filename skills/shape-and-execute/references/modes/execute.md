@@ -2,7 +2,8 @@
 
 You are the orchestrator. You schedule, dispatch, integrate and record. You never implement:
 every change to the repository is a job for a worker, even a one-job task. Keep your context
-small: read a result body only when a job is parked or failed, or lists disputed findings.
+small: read a result body only when a job is parked or failed, or lists disputed findings. One
+exception: when `sae collect` reports an Approach proposal, read that section.
 
 ## Start
 
@@ -36,8 +37,11 @@ Repeat until `sae next` reports that all jobs are done.
    review, run it. For any other job, run it only in `full-auto`. In the other modes park the
    job (`sae job park <task> <ID> --reason "harness fallback: <why>"`), ask the user and
    continue with independent work; on the user's yes, run the fallback command with
-   `--resume`. `sae` records each fallback run as a routing exception; later dispatches use
-   routing again.
+   `--resume`. A done job you reopened with `--resume` (a research or planning follow-up)
+   stays done and is not parked; outside `full-auto`, ask the user, log the yes
+   (`sae log <task> decision "harness fallback: <ID>: <why>" --by human --job <ID>`), then run
+   the fallback command, keeping `--resume`. `sae` records each fallback run as a routing
+   exception; later dispatches use routing again.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
    `--agent-ref` when your harness reports them. A COMMAND job needs no `--tokens`: `sae` reads
    them from the output the COMMAND kept, then deletes that output. When you run a harness
@@ -54,12 +58,20 @@ Repeat until `sae next` reports that all jobs are done.
    - "Closed finding …" → nothing to do: the job resolved it and `sae` committed the closure
      on the task branch. "Finding stays open: …" → the worker did not list it as resolved;
      its result says why. Mention it in your report; it stays for the next triage.
-   - review `changes-required` (a job or the integration) → triage first, against the stakes.
-     A finding that needs more care than the stakes justify becomes `[beyond stakes]` in your
-     report. Log each finding you set aside with its reason:
-     `sae log <task> decision "<finding>: <reason>" --job <REVIEW-ID> --let-go`. For the rest,
-     add fix jobs
-     (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID or round ID> --reason "<review>: changes required"`).
+   - review `changes-required` (a job or the integration) → first check whether `sae collect`
+     reported a park at the round limit: after `max-review-rounds` changes-required rounds
+     (default 3), the job, or for the integration the task, parks for the user. Then add no fix
+     job and accept nothing, because a fix job unparks the job: the choice is the user's. Relay
+     the story `sae` prints and ask, in every mode: change the approach, reduce the
+     requirement, or another round; add your recommendation and its reason. Wait for the
+     answer, then act on it with the commands below. To change the approach, a job may be
+     dropped, only on the user's word: `sae job drop <task> <ID> --reason "<why>"`.
+     Without a park, triage against the stakes. A finding that needs more care than the
+     stakes justify becomes `[beyond stakes]` in your report. Log each finding you set aside
+     with its reason: `sae log <task> decision "<finding>: <reason>" --job <REVIEW-ID> --let-go`.
+     For the rest, add fix jobs
+     (`sae job add <task> <FIX-ID> --kind implementation --fix-of <ID or round ID> --reason "<review>: changes required"`),
+     with a fresh `<FIX-ID>` for each fix job: `<ID>-FIX-1`, then `<ID>-FIX-2`, ….
      A fix job states each finding's `Expected` and
      every place under `Also in`; it does not limit the worker to single instances; each "do
      not" in it gives its reason ("because …"), also when it rules out a fix that a review
@@ -68,11 +80,8 @@ Repeat until `sae next` reports that all jobs are done.
      you decide: `sae merge <task> <ID> --accept-review "<why>"` for a job,
      `sae accept-review <task> <REVIEW-ID> --reason "<why>"` for the integration. A finding
      that proposes a change of approach is a decision (below).
-     After `max-review-rounds` changes-required rounds (default 3), the job, or for the
-     integration the task, parks for the user. Relay the story `sae` prints and ask, in every
-     mode: change the approach, reduce the requirement, or another round; add your
-     recommendation and its reason. To change the approach, a job may be dropped, only on the
-     user's word: `sae job drop <task> <ID> --reason "<why>"`.
+   - "Approach proposal" reported for a result → read that section of the result; it is a
+     decision (below).
 4. While anything waits for the user, keep dispatching independent jobs.
 
 **Holds and changes.** On the user's word: a hold after any job (`sae hold <task> <ID>`,
