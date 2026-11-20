@@ -102,6 +102,7 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
                         text = f"tier {cell['tier']}" if cell["tier"] else f"{cell['model_entry']} · {cell['effort']}"
                         source = cell["sources"]["cell"]
                         text += "" if source == "global" else f" ({source})"
+                        text += f" ({cell['fallback']} cell)" if cell.get("fallback") else ""
                         if cell["tier"]:
                             tier = effective_routing(layers, harness)["tiers"][cell["tier"]]
                             snap[f"tier {harness} {cell['tier']}"] = (

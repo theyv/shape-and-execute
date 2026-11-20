@@ -9,8 +9,9 @@
 TABS.push(["settings","Settings"]);
 var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draft:null,removed:{},msg:"",err:false,cmd:"",q:Promise.resolve()},
  SXTABS=[["task","Task"],["project","Project"],["global","Global"]],
- SXPH=["research","planning","execution","review"],SXD=["mechanical","normal","hard"],SXTIERS=["L1","L2","L3","L4"],
- SXPD={research:SXD,planning:["normal","hard"],execution:SXD,review:["normal","hard"]}, // planning and review are never mechanical
+ SXPH=["research","planning","execution","review"],SXD=["mechanical","easy","normal","hard"],SXTIERS=["L1","L2","L3","L4"],
+ SXPD={research:SXD,planning:["normal","hard"],execution:SXD,review:["normal","hard"]}, // planning and review take only normal and hard
+ SXFB={easy:"mechanical"}, // an optional column → the column whose cell it uses when no level sets it (FALLBACK_COLUMNS in config.py)
  SXPHN={research:"research jobs",planning:"the planner; its difficulty is the task difficulty",execution:"implementation, integration and validation jobs",review:"job reviews take their job's difficulty; spec, plan and integration reviews take the task difficulty"},
  SXHN={claude:"Claude",codex:"Codex"},SXPROV=[["claude","claude"],["codex","codex"],["cross-harness","cross-harness"]],
  // one row per setting: the `sae set` key → its path in settings.json and in `defaults`, and its key in the server's `sources`
@@ -50,8 +51,8 @@ var SXMODE={
  // [ASK-SETTING-TEXT]: written for the owner
  ask:"<p><b>Ask signal</b> — with it on, the viewer tells you when a question waits for you: a red frame on the card it is about, the \"Needs you\" banner over the graph, and \"● Needs you\" with a dot in the browser tab's title and icon.</p><p>Each question costs the orchestrator one extra call, so the default is on in full-auto, auto and critical-only, where questions are rare, and off in collaborative and interactive, where you expect them.</p>"+
   sxT([["default","on or off by the interaction mode, as above; follows a change of the mode."],["on","always on."],["off","always off."]])+"<p>Parked jobs and holds show without it.</p>",
- difficulty:"<p><b>Task difficulty</b> — the column of the routing tables that the planner and the spec, plan and integration reviews use. Job reviews take their own job's difficulty (a mechanical job counts as normal).</p>"+sxT([["normal","most tasks."],["hard","a large or risky task: the planner and those reviews run on the hard column."]]),
- routing:"<p><b>Routing</b> — which model and effort run a job. One table per phase: rows are the levels set above, columns the difficulty the planner gives each job. Planning and reviews are never mechanical, so their mechanical cell is not used.</p><p>Changes apply from the next dispatch. Running jobs keep their model.</p>",
+ difficulty:"<p><b>Task difficulty</b> — the column of the routing tables that the planner and the spec, plan and integration reviews use. Job reviews take their own job's difficulty (a mechanical or easy job counts as normal).</p>"+sxT([["normal","most tasks."],["hard","a large or risky task: the planner and those reviews run on the hard column."]]),
+ routing:"<p><b>Routing</b> — which model and effort run a job. One table per phase: rows are the levels set above, columns the difficulty the planner gives each job. Planning and reviews take only normal and hard, so their mechanical and easy cells are not used. An easy cell that no level sets uses the mechanical cell of its row; setup mode proposes the easy column.</p><p>Changes apply from the next dispatch. Running jobs keep their model.</p>",
  harness:"<p><b>Claude | Codex</b> — each harness has its own model list, tiers and tables. Jobs run on the orchestrator's harness; reviews on the harness the review provider names.</p>",
  tiers:"<p><b>Tiers</b> — four presets, each a model · effort, colored by number: L1 blue, L2 yellow, L3 orange, L4 red.</p>"+sxT([["on","every cell picks a tier; editing a tier changes every cell that uses it."],["off","cells pick a model · effort directly; the tiers are greyed out."]])+"<p>A cell can keep both a tier and a model · effort; the switch picks which one counts. Switching off below Global writes each tier's model · effort into the cells that had only a tier, on this level.</p>",
  models:"<p><b>Models</b> — the models offered in tiers and tables, lightest first. The order sets the colors: blue, yellow, orange, red, purple, brown. A family entry always means the newest version; sae resolves it at dispatch. Pin an older version only when you need it.</p>"+sxT([["checkbox","ticked: offered in tiers and tables. Unticked: kept in the list (and its color), not offered."],["↑ ↓","change the order, and so the colors."],["✕","remove the entry."]])+"<p>A cell or tier that uses a removed or unticked model shows \"(not in list)\" with a red dashed outline; Save waits until it changes.</p>",
@@ -172,17 +173,20 @@ function sxRouting(sc){var hs=sxHarn();if(!hs.length)return'<section class="sg">
     '<span class="d">'+(on?"cells pick a tier":"off — cells pick a model · effort")+'</span></div><div class="trow">'+SXTIERS.map(n=>{var t=R.tiers[n],v=t&&t.value,k="tier."+h+"."+n;
      return'<div class="tcard'+(v&&!sxOk(models,h,v.model,v.effort)?" bad":"")+(t&&sc!=="global"&&t.source===sc?" own":"")+'" style="--mc:'+tierColor(n)+'"><div class="h"><b>'+n+"</b><span>"+(on?"used in "+(use[n]||0):"")+"</span></div>"+
       sxPreset(models,h,v,K+k,ro||!on,n+" model and effort")+(v?routeWords(models,h,v.model,v.effort):'<span class="mut">not set</span>')+(t?sxTag(sc,t.source,k,"r"):"")+"</div>"}).join("")+"</div></div>";
+  var nfb=0,nall=0;SXPH.forEach(p=>Object.keys(SXFB).forEach(d=>{if(SXPD[p].includes(d))LEVELS.forEach(l=>{nall++;if(!sxGet(R.tables,[p,l,d]))nfb++})}));
+  var fbl=nfb?'<p class="foot fbn">easy falls back to the mechanical cell in '+nfb+" of "+nall+" cells: no level sets them. Fix: setup mode.</p>":"";
   var tables=SXPH.map(p=>'<div class="rph"><div class="pht"><b>'+p+"</b><span>"+SXPHN[p]+'</span></div><div class="tw"><table class="rt"><thead><tr><th>level</th>'+SXD.map(d=>"<th>"+d+"</th>").join("")+"</tr></thead><tbody>"+
     LEVELS.map(l=>'<tr><td class="lv">'+l+"</td>"+SXD.map(d=>SXPD[p].includes(d)?sxCell(sc,h,R,p,l,d,on,models,ro):'<td class="na"><div>not used</div></td>').join("")+"</tr>").join("")+"</tbody></table></div></div>").join("");
-  return'<section class="sg"><div class="sh"><h3>Routing</h3>'+sxHelp("routing")+hsw+'<span class="d">separate per harness</span></div>'+tiers+tables+
+  return'<section class="sg"><div class="sh"><h3>Routing</h3>'+sxHelp("routing")+hsw+'<span class="d">separate per harness</span></div>'+tiers+fbl+tables+
    '<p class="foot">Changes apply from the next dispatch. Running jobs keep their model.</p></section>'}
-function sxCell(sc,h,R,p,l,d,on,models,ro){var c=sxGet(R.tables,[p,l,d]),cell=c?c.value:null,u=sxUse(R,cell,on),pair=u[1],k="routing."+h+"."+p+"."+l+"."+d,K=sc+"|"+k,
-  bad=!pair||!sxOk(models,h,pair.model,pair.effort),ctl;
-  if(on){var cur=cell&&cell.tier||"";ctl='<select data-act="sxs" data-k="'+esc(K)+'" data-tier="1" aria-label="'+esc(p+" "+l+" "+d+" tier")+'"'+(ro?" disabled":"")+">"+(cur?"":sxOpt("","",pair?pair.model+" · "+pair.effort+" (no tier)":"— not set —"))+
+function sxCell(sc,h,R,p,l,d,on,models,ro){var c=sxGet(R.tables,[p,l,d]),fb=!c&&SXFB[d]?sxGet(R.tables,[p,l,SXFB[d]]):null,cell=c?c.value:fb?fb.value:null,u=sxUse(R,cell,on),pair=u[1],k="routing."+h+"."+p+"."+l+"."+d,K=sc+"|"+k,
+  // fb: no level sets this cell, so it uses the cell of its fallback column; that cell reports its own problems
+  bad=!fb&&(!pair||!sxOk(models,h,pair.model,pair.effort)),ctl;
+  if(on){var cur=c&&cell.tier||"";ctl='<select data-act="sxs" data-k="'+esc(K)+'" data-tier="1" aria-label="'+esc(p+" "+l+" "+d+" tier")+'"'+(ro?" disabled":"")+">"+(cur?"":sxOpt("","",fb?"= "+SXFB[d]+(u[0]?" ("+u[0]+")":""):pair?pair.model+" · "+pair.effort+" (no tier)":"— not set —"))+
     SXTIERS.filter(n=>R.tiers[n]).map(n=>{var v=R.tiers[n].value;return sxOpt(n,cur,n+" — "+v.model+" · "+v.effort)}).join("")+"</select>"}
-  else ctl=sxPreset(models,h,pair,K,ro,p+" "+l+" "+d+" model and effort");
-  return'<td><div class="cell'+(bad?" bad":"")+(c&&sc!=="global"&&c.source===sc?" own":"")+'" style="--mc:'+(on&&u[0]?tierColor(u[0]):pair?modelColor(models,h,pair.model):"var(--cx)")+'">'+ctl+
-   (pair?routeWords(models,h,pair.model,pair.effort):'<span class="mut">nothing usable</span>')+(c?sxTag(sc,c.source,k,"r"):"")+"</div></td>"}
+  else ctl=sxPreset(models,h,fb?null:pair,K,ro,p+" "+l+" "+d+" model and effort");
+  return'<td><div class="cell'+(bad?" bad":"")+(fb?" fb":"")+(c&&sc!=="global"&&c.source===sc?" own":"")+'" style="--mc:'+(on&&u[0]?tierColor(u[0]):pair?modelColor(models,h,pair.model):"var(--cx)")+'">'+ctl+
+   (fb?'<span class="mut">uses the '+SXFB[d]+" cell</span>":"")+(pair?routeWords(models,h,pair.model,pair.effort):'<span class="mut">nothing usable</span>')+(c?sxTag(sc,c.source,k,"r"):"")+"</div></td>"}
 
 /* ---------- model lists (Global only) ---------- */
 var sxVer=s=>((/\d+(?:\.\d+)*/.exec(s)||[""])[0]).split(".").filter(Boolean).map(Number),
@@ -216,7 +220,7 @@ TAB.settings=t=>{sxLoad(false);var sc=SXTABS.some(x=>x[0]===SX.tab)?SX.tab:"task
 // the cells, tiers and the switch that cannot run as they are (a removed or unticked model, an undefined tier)
 function sxBad(){var c=sxConf(),n=0;sxHarn().forEach(h=>{var R=sxRoute("global",h),M=c.models,on=!R.tiers_in_cells||R.tiers_in_cells.value!==false;
   SXTIERS.forEach(t=>{var v=R.tiers[t]&&R.tiers[t].value;if(v&&!sxOk(M,h,v.model,v.effort))n++});
-  SXPH.forEach(p=>LEVELS.forEach(l=>SXPD[p].forEach(d=>{var x=sxGet(R.tables,[p,l,d]),u=sxUse(R,x&&x.value,on);if(!u[1]||!sxOk(M,h,u[1].model,u[1].effort))n++})))});return n}
+  SXPH.forEach(p=>LEVELS.forEach(l=>SXPD[p].forEach(d=>{var x=sxGet(R.tables,[p,l,d]),u=sxUse(R,x&&x.value,on);if(!x&&SXFB[d])return;if(!u[1]||!sxOk(M,h,u[1].model,u[1].effort))n++})))});return n}
 function sxDraftBar(){var n=sxBad();return'<div class="draft"><span>Unsaved changes to the global config.'+(n?' <b class="err">'+plural(n,"marked value")+" to fix first.</b>":"")+'</span><button class="btn sm" data-act="sxg" data-k="discard">Discard</button><button class="btn sm pri" data-act="sxg" data-k="save"'+(n?" disabled":"")+">Save</button></div>"}
 
 /* ---------- the settings card in the task header, editable in place ---------- */

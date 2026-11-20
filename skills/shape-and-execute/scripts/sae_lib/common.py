@@ -37,7 +37,7 @@ PHASES = ("shaping", "planning", "executing", "done", "abandoned")
 JOB_KINDS = ("research", "planning", "implementation", "integration", "validation", "review", "decision")
 WRITER_KINDS = ("implementation", "integration")
 JOB_STATUSES = ("pending", "running", "done", "failed", "parked")
-DIFFICULTIES = ("mechanical", "normal", "hard")
+DIFFICULTIES = ("mechanical", "easy", "normal", "hard")
 LEVELS = ("economy", "balanced", "premium")
 # Old level names, read as the new one; `sae` writes only LEVELS ([DECISION-LEVEL-PREMIUM]).
 OLD_LEVEL_NAMES = {"max": "premium"}

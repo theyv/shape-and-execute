@@ -43,6 +43,7 @@ table.rt{table-layout:fixed;min-width:560px}.rt th{padding:6px 8px;border-bottom
 .cell select,.tcard select{width:100%;background:var(--s2)}
 .cell.bad,.tcard.bad{outline:1px dashed var(--fail);outline-offset:-1px}.cell.own,.tcard.own{outline:1px solid var(--acc-bd);outline-offset:-1px}
 .foot{margin:10px 0 0;font-size:12px;color:var(--ink2)}
+.foot.fbn{margin:0 0 8px}.rt .cell.fb{outline:1px dashed var(--line);outline-offset:-1px}
 /* model lists (Global) */
 .ml{display:flex;flex-direction:column;gap:2px;max-width:620px}
 .mr{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:5px}.mr:hover{background:var(--hl)}

@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 from .common import EXIT_CONFIG, EXIT_OK, EXIT_USAGE, SaeError, emit, file_stamp
-from .config import config_path, detect_harness, load_config, validate_config, worktree_root
+from .config import config_fallback_line, config_path, detect_harness, load_config, validate_config, worktree_root
 from .findings import adr_rules
 from .gitutil import configured_hooks_path, find_root, git, git_ok, hash8, repo_cache_name, run
 from .markdown import split_frontmatter
@@ -40,6 +40,9 @@ def cmd_doctor(args) -> int:
     except SaeError:
         check(False, f"config {config_path()} missing or not JSON", "Run setup mode:\n  /shape-and-execute setup")
     if config_ok:
+        easy = config_fallback_line(config)  # [EASY-UPGRADE]: global routing
+        if easy:
+            check(None, easy)
         root = worktree_root(config)
         writable = root.is_dir() and os.access(root, os.W_OK)
         check(writable, f"worktree root {root}", f"mkdir -p {shlex.quote(str(root))}")

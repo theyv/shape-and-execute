@@ -56,7 +56,7 @@ from .graph import (
 from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
 from .reviews import fix_job_command, materialize_integration_review
-from .routing import model_text, resolve_model, routing_text, short_text
+from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
 from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
@@ -140,6 +140,9 @@ def cmd_status(args) -> int:
         if data["worktree"]:
             lines.append(f"Task worktree: {data['worktree']}")
         lines += [data["settings_card"], f"Last change: {age_text(data['last_change'])}"]
+        data["routing_notice"] = easy_fallback_notice(task)  # [EASY-UPGRADE]
+        if data["routing_notice"]:
+            lines.append(data["routing_notice"])
         approvals = ", ".join(f"{k} by {v['by']}" for k, v in data["approvals"].items())
         if approvals:
             lines.append(f"Approved: {approvals}")
