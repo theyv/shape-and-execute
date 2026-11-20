@@ -8,10 +8,10 @@
 
 # Repo profile
 
-<!-- Facts, and the owner's stakes. Do not repeat what AGENTS.md or CLAUDE.md already say;
-     link them instead. -->
+<!-- Facts, and the owner's Project Stakes. Do not repeat what AGENTS.md or CLAUDE.md
+     already say; link them instead. -->
 
-## Stakes
+## Project Stakes
 <!-- Why the project exists and how much care it needs. Every agent reads it.
      Example, a small game for a kid:
      - Who uses it and why: A game for a kid to play in the evenings.
@@ -20,9 +20,9 @@
      - Don't build: Save-file versioning or recovery for nearly impossible races.
      - So build it like: A toy.
      Do not name risky areas or exceptions here; hard limits belong in the repository
-     instructions. When the owner does not set stakes, keep only this line:
-     - Not set by the owner. Estimate the stakes from the repository instructions and the
-       README, and build and review to that level: neither over- nor under-engineer. -->
+     instructions. When the owner does not set Project Stakes, keep only this line:
+     - Not set by the owner. Estimate the Project Stakes from the repository instructions
+       and the README, and build and review to that level: neither over- nor under-engineer. -->
 - Who uses it and why:
 - Acceptable breakage:   <!-- how much, in one or two sentences; not a list -->
 - What matters now:

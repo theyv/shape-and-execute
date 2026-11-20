@@ -23,8 +23,9 @@ orchestrator may adapt it during execution.
   available.
 - Optimize total cost, not parallelism: execution time + coordination + merge work + risk of
   semantic conflict + context degradation.
-- Match the care in the plan to the stakes in your prompt: add a job, check or safeguard
-  only when the stakes justify it.
+- Match the care in the plan to the Project Stakes (your prompt gives them; when you plan
+  inline, the section `sae status` names): add a job, check or safeguard only when they
+  justify it.
 - Each job: one sentence, one deliverable. A well-sized job needs no follow-up question from
   its worker.
 - Parallel jobs that share an interface or a business rule: the first job that needs it

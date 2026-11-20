@@ -53,8 +53,9 @@ Repeat until `sae next` reports that all jobs are done.
    - review `changes-required` (a job or the integration) → when `sae collect` reports a
      park at the round limit, follow what it prints: the choice is the user's, in every
      mode, and a job is dropped (`sae job drop`) only on the user's word. Otherwise triage
-     against the stakes: a finding that needs more care than they justify is
-     `[beyond stakes]`; log each finding you set aside with the `--let-go` line `sae`
+     against the Project Stakes (the section `sae status` names), the bar the reviewer used:
+     a finding that needs more care than the Project Stakes justify is
+     `[beyond Project Stakes]`; log each finding you set aside with the `--let-go` line `sae`
      prints. For the rest, add one fix job with the printed command; split a round only
      when its findings touch unrelated parts and one job would not fit one context. The fix
      job names each finding's `Expected` and every `Also in` place, never only one
