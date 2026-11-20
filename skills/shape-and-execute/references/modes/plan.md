@@ -9,16 +9,8 @@ execute.
   deep: `sae job add <task> PLAN --kind planning` (its difficulty is the task difficulty).
   `sae next <task>` prints the next-step card: show it and wait (ok, change, refine first, skip;
   skip means you plan inline). Then `sae dispatch <task> PLAN` and spawn a subagent with the
-  printed prompt, model and effort. When it prints a COMMAND (a job in the other harness), run
-  it in the background; when it fails or `sae` refuses, follow the fallback rule printed with
-  it. Collect it when it returns. When `sae` refuses a later `--resume` of the done planner
-  because the other harness is missing, PLAN stays done and is not parked: outside
-  `full-auto`, ask the user, log the yes
-  (`sae log <task> decision "harness fallback: PLAN: <why>" --by human --job PLAN`), then run
-  the fallback command, keeping `--resume`. When the COMMAND started and then failed, PLAN is
-  running again: outside `full-auto`, park it
-  (`sae job park <task> PLAN --reason "harness fallback: <why>"`), ask the user, and on the
-  yes run the fallback command, keeping `--resume`.
+  printed prompt, model and effort; when it prints a COMMAND instead, follow what it prints.
+  Collect it when it returns.
 - **Inline** for a small task (one or two jobs, shallow shaping): load
   [roles/planner.md](../roles/planner.md) — how to design the graph and write job files —
   and plan yourself.
@@ -38,9 +30,8 @@ send the printed message), then check again.
 ## 3. Plan review (when `plan` is a review point)
 
 A clean `sae check` makes `REVIEW-PLAN` due. `sae next <task>` prints its next-step card: show it
-and wait (skip turns the `plan` review point off with `sae set`). Dispatch it. When the printed
-output is a COMMAND (review in the other harness), run it in the background; when it fails,
-run the IF IT FAILS line printed with it. Collect it; `sae` reads the COMMAND's tokens itself.
+and wait (skip turns the `plan` review point off with `sae set`). Dispatch it. When it prints
+a COMMAND, follow what it prints. Collect it.
 
 For `changes-required`, resume the done planner:
 `sae dispatch <task> PLAN --resume --reason "plan review: changes required"`, send the printed

@@ -56,12 +56,11 @@ assumptions.
 
 Do not ask for rewrites only because you prefer another style.
 
-Output (template `templates/review.md`): frontmatter `target` and `verdict` (`pass`,
-`pass-with-notes`, `changes-required`); then each finding with its severity (`blocking`,
-`major`, `minor`) and the template's fields. `Expected` is what the fix must make true.
-`Suggested fix` is a proposal; when patches would not converge, propose a change of
-approach. When the broken rule applies in more places, search for them and list them under
-`Also in`. Short and concrete.
+Output (template `templates/review.md`): frontmatter `target` and `verdict`, then each
+finding in the template's fields. `Expected` is what the fix must make true; `Suggested fix`
+is a proposal, and a change of approach when patches would not converge. When the broken
+rule applies in more places, search for them and list them under `Also in`. Short and
+concrete.
 
 Grade every finding against the stakes in your prompt. Report everything you find; the
 stakes decide only whether it blocks. A finding that needs more care than the stakes

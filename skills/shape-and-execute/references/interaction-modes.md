@@ -53,9 +53,9 @@ Inside its own worktree a job may delete and rewrite freely: git can restore eve
 
 ## Safety net for full-auto
 
-Nothing reaches the base branch without the user. Every `[agent]` decision, settled disputed
-finding, finding let go, routing exception and amendment appears in the final report, so the
-user reviews them before merging.
+Nothing reaches the base branch without the user. The final report lists every `[agent]`
+decision and everything else to check before merging (execute.md, "Finish", step 3), so the
+user reviews them first.
 Two stops hold in every mode: a hold the user set after a job, and a review that still says
 `changes-required` after `max-review-rounds` changes-required rounds (default 3; it parks the
 job, or the task for the integration review).

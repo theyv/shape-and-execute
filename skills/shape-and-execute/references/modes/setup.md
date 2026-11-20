@@ -14,19 +14,13 @@ the Codex catalog (families with their newest versions, older versions, efforts)
 subagent cap and the default worktree root for this OS. With a config they print the model
 lists, the tiers and one routing table per phase and harness.
 
-A config without an `easy` column is valid: `easy` jobs use the `mechanical` cell, and `sae`
-says so. To upgrade it, propose these changes and save them after the user's yes (step 4),
-then skip the guide:
-
-1. Tiers: the tier table of step 3. Claude: sonnet · high becomes L2, the old L2 and L3
-   become L3 and L4, and the old L4 goes. Codex: the four tiers of the table.
-2. Relabel the tier of every cell and keep its model · effort. Claude: old L2 → L3, old L3 →
-   L4, old L4 → L4 (with tiers in cells on, those cells now run opus · high). Codex execution
-   and research: balanced L1–L4 by difficulty, economy one tier lower (at least L1), premium
-   one tier higher (at most L4). Codex planning and review: the tier with the nearest
-   model · effort.
-3. Add the `easy` column to the execution and research tables, with the cells of step 3. For
-   a family the config does not list, copy the `mechanical` cell.
+A config without an `easy` column works: `easy` jobs use the `mechanical` cell, and `sae`
+says so. To upgrade it, propose these changes, save them after the user's yes (step 4), and
+skip the guide: the tiers of step 3; every cell keeps its model · effort and gets a new tier
+label (Claude: L2 → L3, L3 → L4, L4 stays, and say that cells on the old L4, opus · xhigh,
+run opus · high in tier mode; Codex execution and research: the label step 3 shows there;
+Codex planning and review: the tier nearest to its model · effort); the `easy` columns of
+step 3 (a family the config does not list copies its `mechanical` cell).
 
 A schema-1 config (rungs and level maps) makes `sae` exit 2. Then `sae setup show` prints the
 proposed conversion: each rung becomes a tier, each cell points to the tier that the old level
@@ -65,8 +59,8 @@ family (the newest version of it), switched on:
 |---|---|---|
 | Claude | sonnet | low, medium, high, xhigh, max |
 | Claude | opus | low, medium, high, xhigh, max |
-| Codex | terra | low, medium, high, xhigh, max |
 | Codex | luna | low, medium, high, xhigh, max |
+| Codex | terra | low, medium, high, xhigh, max |
 | Codex | sol | low, medium, high, xhigh, max, ultra |
 | Codex | astra | low, medium, high, xhigh, max, ultra |
 
@@ -78,7 +72,7 @@ catalog of `sae setup show`, never type them.
 part (model list and routing) out. With one:
 - Keep only the efforts that the catalog lists for the family's newest version.
 - A seed family missing from the catalog is replaced, in the tiers and the cells, by the
-  nearest stronger family that is there (terra → luna → sol → astra), else the nearest weaker one; drop
+  nearest stronger family that is there (luna → terra → sol → astra), else the nearest weaker one; drop
   its entry. Keep each effort when the new model's list has it, else take the nearest effort in
   that list (the stronger on a tie). Effort order: low, medium, high, xhigh, max, ultra.
 
