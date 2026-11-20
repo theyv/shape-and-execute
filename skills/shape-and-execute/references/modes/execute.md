@@ -2,7 +2,8 @@
 
 You are the orchestrator. You schedule, dispatch, integrate and record. You never implement:
 every change to the repository is a job for a worker, even a one-job task. Keep your context
-small: read a result body only when a job is parked or failed, or lists disputed findings.
+small: read a result body only when a job is parked or failed, or lists disputed findings. One
+exception: when `sae collect` reports an Approach proposal, read that section.
 
 ## Start
 
@@ -30,11 +31,21 @@ Repeat until `sae next` reports that all jobs are done.
 1. `sae next <task>`. Read its reminder block every time. A next-step card during execution (an
    integration review, research): show it and continue, without waiting.
 2. For every ready job, up to the parallelism it offers: `sae dispatch <task> <ID>`, then spawn
-   a subagent with the printed PROMPT, MODEL and EFFORT. When the output is a COMMAND (a review
-   in the other harness), run it in the background; when it fails, run the IF IT FAILS line
-   printed with it.
+   a subagent with the printed PROMPT, MODEL and EFFORT. When the output is a COMMAND (a job in
+   the other harness), run it in the background. When it fails, or `sae` refuses because the
+   other harness is missing, `sae` prints a fallback command (the IF IT FAILS line). For a
+   review, run it. For any other job, run it only in `full-auto`. In the other modes park the
+   job (`sae job park <task> <ID> --reason "harness fallback: <why>"`), ask the user and
+   continue with independent work; on the user's yes, run the fallback command with
+   `--resume`. One exception: when `sae` refuses to reopen a done job with `--resume` (a
+   research or planning follow-up) because the other harness is missing, the job stays done
+   and is not parked; outside `full-auto`, ask the user, log the yes
+   (`sae log <task> decision "harness fallback: <ID>: <why>" --by human --job <ID>`), then run
+   the fallback command, keeping `--resume`. When its COMMAND started and then failed, the job
+   is running again: park it as above. `sae` records each fallback run as a routing
+   exception; later dispatches use routing again.
 3. When a subagent returns: `sae collect <task> <ID>`, adding `--tokens`, `--duration-s` and
-   `--agent-ref` when your harness reports them. A COMMAND review needs no `--tokens`: `sae` reads
+   `--agent-ref` when your harness reports them. A COMMAND job needs no `--tokens`: `sae` reads
    them from the output the COMMAND kept, then deletes that output. When you run a harness
    yourself, keep its output outside `.tasks/`. Then act on the outcome:
    - `done` → nothing to do; `sae` merges the job or adds its review.
@@ -49,15 +60,30 @@ Repeat until `sae next` reports that all jobs are done.
    - "Closed finding …" → nothing to do: the job resolved it and `sae` committed the closure
      on the task branch. "Finding stays open: …" → the worker did not list it as resolved;
      its result says why. Mention it in your report; it stays for the next triage.
-   - job review `changes-required` → add fix jobs
-     (`sae job add <task> <ID>-FIX-1 --kind implementation --fix-of <ID> --reason "<review>: changes required"`),
-     or accept it when the mode lets you decide: `sae merge <task> <ID> --accept-review "<why>"`.
-     After `max-review-rounds` changes-required rounds (default 3), the job parks for the user.
-   - integration review `changes-required` → add fix jobs
-     (`sae job add <task> INTEGRATION-FIX-1 --kind implementation --fix-of <round ID> --reason "<why>"`).
-     When they are merged, `sae` adds the next round. After `max-review-rounds` changes-required
-     rounds (default 3), the task parks: ask the user in every mode — more fix jobs, or finish
-     with an override.
+   - review `changes-required` (a job or the integration) → first check whether `sae collect`
+     reported a park at the round limit: after `max-review-rounds` changes-required rounds
+     (default 3), the job, or for the integration the task, parks for the user. Then add no fix
+     job and accept nothing, because a fix job unparks the job: the choice is the user's. Relay
+     the story `sae` prints and ask, in every mode: change the approach, reduce the
+     requirement, or another round; add your recommendation and its reason. Wait for the
+     answer, then act on it with the commands below. To change the approach, a job may be
+     dropped, only on the user's word: `sae job drop <task> <ID> --reason "<why>"`.
+     Without a park, triage against the stakes. A finding that needs more care than the
+     stakes justify becomes `[beyond stakes]` in your report. Log each finding you set aside
+     with its reason: `sae log <task> decision "<finding>: <reason>" --job <REVIEW-ID> --let-go`.
+     For the rest, add fix jobs
+     (`sae job add <task> <FIX-ID> --kind implementation --fix-of <ID or round ID> --reason "<review>: changes required"`),
+     with a fresh `<FIX-ID>` for each fix job: `<ID>-FIX-1`, then `<ID>-FIX-2`, ….
+     A fix job states each finding's `Expected` and
+     every place under `Also in`; it does not limit the worker to single instances; each "do
+     not" in it gives its reason ("because …"), also when it rules out a fix that a review
+     proposed. One round gets one fix job unless its findings touch unrelated parts and one job
+     would not fit one context. When no finding is left, accept the review when the mode lets
+     you decide: `sae merge <task> <ID> --accept-review "<why>"` for a job,
+     `sae accept-review <task> <REVIEW-ID> --reason "<why>"` for the integration. A finding
+     that proposes a change of approach is a decision (below).
+   - "Approach proposal" reported for a result → read that section of the result; it is a
+     decision (below).
 4. While anything waits for the user, keep dispatching independent jobs.
 
 **Holds and changes.** On the user's word: a hold after any job (`sae hold <task> <ID>`,
@@ -71,8 +97,12 @@ A worker parks with a decision request, or you meet a decision yourself.
 
 1. If the answer follows from the spec, the brief, the repository or earlier decisions, it is
    not a real decision: answer it.
-2. Otherwise classify it (see interaction-modes.md). When it needs analysis, do not research
-   it in your own context: `sae decision new <task> --from <ID>`, dispatch, collect.
+2. Otherwise classify it (see interaction-modes.md). When its analysis would fill your
+   context (several files, review rounds or options to compare), do not do it yourself:
+   `sae decision new <task> --from <ID>` or `--question "<question>"`, dispatch, collect.
+   The job it concerns need not park; independent work continues. Typical cases: a finding
+   proposes a change of approach; a worker's Approach proposal; two results contradict each
+   other; a fix chain near its round limit.
 3. Apply the mode table:
    - **decide** → `sae log <task> decision "<summary>" --by agent --class <class> --job <ID>`;
    - **ask** → ask the user now (grill format), then log it with `--by human`;
@@ -85,7 +115,7 @@ A worker parks with a decision request, or you meet a decision yourself.
    `sae new "<title>" --backlog --source <task>`, write its intent, and record the cut as an
    amendment. When you decide alone, file a `follow-up` finding instead: only the user puts
    work into the backlog.
-6. Resume the worker: `sae dispatch <task> <ID> --resume --reason "decision: <file or summary>"`.
+6. When the job parked, resume the worker: `sae dispatch <task> <ID> --resume --reason "decision: <file or summary>"`.
 
 ## Disputed findings
 
@@ -137,9 +167,10 @@ When `sae next` reports that all jobs are done:
    changes to the files, and only then run `sae finish <task>`. With no new quotes, run it
    at once. Add `--with-open` only when the user accepts open items. When it
    refuses because a review's last round says `changes-required`, or a check is stale: add fix
-   jobs, or, only on the user's word, `--override "<reason>"`.
+   jobs, accept the round (Loop, step 3), or, only on the user's word, `--override "<reason>"`.
 3. Report to the user from the printed final report: what was delivered, what to check before
-   merging (agent decisions, settled disputes, amendments, overridden gates), open items,
+   merging (agent decisions, settled disputes, findings let go with their reasons, routing
+   exceptions, dropped jobs, amendments, overridden gates), open items,
    findings, backlog items and decision-record drafts, the branch, and the task worktree path
    to test in. Nothing was pushed; the user merges or opens a merge request; `sae` removes the
    task worktree after the merge.

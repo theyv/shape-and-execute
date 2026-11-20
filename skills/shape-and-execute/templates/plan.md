@@ -15,7 +15,8 @@
 <!-- <file> → owner job, "edited only in <JOB-ID>", or "trivial conflict accepted". -->
 
 ## Integration points
-<!-- Where work meets again; contract jobs. -->
+<!-- Where work meets again; the job that builds a shared interface or rule first, or a
+     contract job. -->
 
 ## Final validation
 <!-- A separate final validation job, or why the last job's validation is enough. -->

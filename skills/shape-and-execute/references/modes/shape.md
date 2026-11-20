@@ -26,6 +26,10 @@ Keep the start short and concrete. The deep work comes after research.
 Ask one round in the grill format ([grill.md](../grill.md) — question format and rules). It has:
 
 - 2–4 questions about intent, scope or success that the repository cannot answer;
+- when `sae status` shows `stakes: not set`, one question about the project's stakes: a
+  draft of the Stakes section of `templates/repo/profile.md`, based on AGENTS.md (or
+  CLAUDE.md) and the README. Write the answer into the profile that `sae status` names (the
+  main worktree's copy); when the user skips, write the template's "not set" line there.
 - a **depth proposal** in one sentence with its reason:
   - "Grill only" — the area is familiar and the outcome is clear;
   - "Research: <topic>, <topic> at level <research level>" — there is an unknown external API
@@ -41,12 +45,14 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
 
 1. One research job per distinct unknown. Usually 2–5; one is enough when the task is hard in
    orchestration rather than in knowledge.
-   `sae job add <task> <TOPIC-ID> --kind research --difficulty normal|hard`
+   `sae job add <task> <TOPIC-ID> --kind research --difficulty mechanical|easy|normal|hard`
 2. Fill `jobs/<TOPIC-ID>.md`: the questions, what is already known, the limits.
 3. `sae next <task>` prints the next-step card for the batch. Show it and wait (ok, change,
    refine first, skip).
 4. For each job: `sae dispatch <task> <TOPIC-ID>`, then spawn a subagent with the printed
-   prompt, model and effort. Run them in parallel.
+   prompt, model and effort. Run them in parallel. When it prints a COMMAND (a job in the
+   other harness), run it in the background; when it fails or `sae` refuses, follow the
+   fallback rule printed with it.
 5. Use the wait:
    - ask for settings changes: interaction mode, levels for planning, execution and review,
      review points and provider. Apply what the user asks with `sae set`;
@@ -56,7 +62,14 @@ After every answer round, update `intent.md`. Move resolved items out of "Open q
 7. Follow-up questions — the ones you have after putting the reports together, or later during
    grilling — go to the research agent that holds the context:
    - write them under `## Follow-up questions` in that topic's job file;
-   - `sae dispatch <task> <TOPIC-ID> --resume --reason "follow-up questions"`;
+   - `sae dispatch <task> <TOPIC-ID> --resume --reason "follow-up questions"`. When `sae`
+     refuses because the other harness is missing, the job stays done and is not parked:
+     outside `full-auto`, ask the user, log the yes
+     (`sae log <task> decision "harness fallback: <TOPIC-ID>: <why>" --by human --job <TOPIC-ID>`),
+     then run the fallback command, keeping `--resume`. When the COMMAND started and then
+     failed, the job is running again: outside `full-auto`, park it
+     (`sae job park <task> <TOPIC-ID> --reason "harness fallback: <why>"`), ask the user, and
+     on the yes run the fallback command, keeping `--resume`;
    - resume that agent with the printed message (Claude Code: SendMessage; Codex: send_input
      or followup_task). If it cannot be resumed, spawn a new one with the same message;
    - collect again.
