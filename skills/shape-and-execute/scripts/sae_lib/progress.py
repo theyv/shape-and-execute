@@ -57,6 +57,7 @@ from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .prompts import build_prompt, external_review_command
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
+from .stakes import find_stakes, profile_path, status_line as stakes_status_line
 from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
@@ -139,7 +140,10 @@ def cmd_status(args) -> int:
                             + ([f"layout: {data['layout']}"] if data["layout"] else []))]
         if data["worktree"]:
             lines.append(f"Task worktree: {data['worktree']}")
-        lines += [data["settings_card"], f"Last change: {age_text(data['last_change'])}"]
+        found = find_stakes(task.root)  # [STAKES-LOOKUP]: read at status time, like a dispatch
+        lines += [data["settings_card"], stakes_status_line(task.root, found),
+                  f"Last change: {age_text(data['last_change'])}"]
+        data["stakes"] = {"source": str(found.path) if found else None, "profile": str(profile_path(task.root))}
         data["routing_notice"] = easy_fallback_notice(task)  # [EASY-UPGRADE]
         if data["routing_notice"]:
             lines.append(data["routing_notice"])

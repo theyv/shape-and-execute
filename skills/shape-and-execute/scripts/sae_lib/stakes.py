@@ -1,0 +1,174 @@
+"""Project Stakes: where they are read from, the block of every dispatch prompt, the profile writer.
+
+[STAKES-LOOKUP], [STAKES-POINTER], [AMEND-1], [AMEND-2]. One profile for every reader and writer:
+`.tasks/repo/profile.md` of the main worktree, also while a task runs in its task worktree.
+Reading happens at dispatch and status time, so a viewer edit reaches the next dispatch.
+`sae` never writes AGENTS.md or CLAUDE.md.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from .common import read_text, write_atomic
+from .gitutil import main_worktree
+from .markdown import strip_html_comments
+
+SECTION_TITLE = "Project Stakes"
+INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")  # read after the profile, in this order
+LONG_SECTION_LINES = 15  # a longer section is named in the prompt, not pasted
+# The five labels of the profile template's section; a line with a label and no value is empty.
+LABELS = ("Who uses it and why", "Acceptable breakage", "What matters now", "Don't build", "So build it like")
+_LABEL_ONLY = re.compile(r"^\s*[-*]?\s*(?:" + "|".join(re.escape(l).replace("'", "['’]") for l in LABELS)
+                         + r")\s*:\s*$", re.I)
+_HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
+
+
+@dataclass
+class Stakes:
+    path: Path   # the file that holds the section
+    text: str    # the section without HTML comments and without empty label lines
+
+    @property
+    def in_profile(self) -> bool:
+        return self.path.name == "profile.md"
+
+
+def profile_path(root: Path) -> Path:
+    """The one profile: `.tasks/repo/profile.md` of the main worktree of `root`'s repository."""
+    return main_worktree(root) / ".tasks" / "repo" / "profile.md"
+
+
+def _body_start(lines: list[str]) -> int:
+    """The first line after the frontmatter (0 without frontmatter)."""
+    if lines and lines[0].rstrip("\r") == "---":
+        for end in range(1, len(lines)):
+            if lines[end].rstrip("\r") == "---":
+                return end + 1
+    return 0
+
+
+def _headings(lines: list[str]):
+    """(index, depth, title) of every heading outside the frontmatter and fenced code."""
+    fence = False
+    for index in range(_body_start(lines), len(lines)):
+        line = lines[index]
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        match = None if fence else _HEADING.match(line)
+        if match:
+            yield index, len(match.group(1)), match.group(2).strip()
+
+
+def _find_section(lines: list[str]) -> tuple[int, int] | None:
+    """(heading line, end line) of the level-2 Project Stakes section; the end is the next
+    heading of level 1 or 2, or the end of the file."""
+    start = None
+    for index, depth, title in _headings(lines):
+        if start is not None and depth <= 2:
+            return start, index
+        if start is None and depth == 2 and title.lower() == SECTION_TITLE.lower():
+            start = index
+    return (start, len(lines)) if start is not None else None
+
+
+def section_text(path: Path) -> str | None:
+    """The Project Stakes section of a Markdown file with HTML comments stripped and blank edges
+    trimmed; None when the file or the section is missing."""
+    text = read_text(path, None)
+    if text is None:
+        return None
+    lines = text.split("\n")
+    found = _find_section(lines)
+    if not found:
+        return None
+    body = strip_html_comments("\n".join(lines[found[0] + 1:found[1]]))
+    out: list[str] = []
+    for line in (l.rstrip() for l in body.split("\n")):
+        if line or (out and out[-1]):  # collapse runs of blank lines
+            out.append(line)
+    return "\n".join(out).strip("\n")
+
+
+def _content(text: str) -> str:
+    """`text` without empty label lines; "" when nothing else is left."""
+    kept = "\n".join(line for line in text.split("\n") if not _LABEL_ONLY.match(line))
+    return kept.strip("\n") if kept.strip() else ""
+
+
+def find_stakes(root: Path) -> Stakes | None:
+    """The Project Stakes of the repository of `root`: the profile's section, then AGENTS.md's,
+    then CLAUDE.md's, all in the main worktree. The first section with content wins; None when none
+    has ([STAKES-LOOKUP], [AMEND-2])."""
+    home = main_worktree(root)
+    for path in (profile_path(root), *(home / name for name in INSTRUCTION_FILES)):
+        text = section_text(path)
+        if text is not None and _content(text):
+            return Stakes(path, _content(text))
+    return None
+
+
+def status_line(root: Path, found: Stakes | None) -> str:
+    """The `sae status` line for the result of `find_stakes`: the source, or `not set` with the
+    profile path to write them to."""
+    if found:
+        return f"Project Stakes: {found.path}"
+    return f'Project Stakes: not set (write them to {profile_path(root)}, section "{SECTION_TITLE}")'
+
+
+def prompt_block(root: Path) -> str:
+    """The one stakes block of a dispatch prompt ([STAKES-POINTER], [AMEND-1]): the header and the
+    section text, the header and the source of a long section, or the "not set" text."""
+    from .prompts import STAKES_LINE, STAKES_LONG_SUFFIX, STAKES_NOT_SET_LINE  # prompts imports this module
+    found = find_stakes(root)
+    if not found:
+        return STAKES_NOT_SET_LINE
+    header = STAKES_LINE.format(path=found.path)
+    if len(found.text.split("\n")) > LONG_SECTION_LINES:
+        return header[:-1] + "." + STAKES_LONG_SUFFIX.format(limit=LONG_SECTION_LINES)
+    return f"{header}\n{found.text}"
+
+
+def save_profile_stakes(root: Path, text: str) -> Path:
+    """Replace the Project Stakes section of the profile with `text` and return the profile path.
+
+    Only that section changes: the bytes of every other line stay. A comment right under the
+    heading (the template's help) is kept. A missing section is added where the template puts
+    it, before the first other `##` section; a missing profile is created. Raises ValueError
+    when `text` holds a heading of level 1 or 2, which would split the section."""
+    body = text.strip("\n")
+    if any(d <= 2 for _, d, _ in _headings(body.split("\n"))):
+        raise ValueError(f"The {SECTION_TITLE} text cannot hold a heading of level 1 or 2.")
+    path = profile_path(root)
+    lines = (read_text(path, "") or "").split("\n")
+    if lines == [""]:
+        lines = ["# Repo profile", ""]
+    new = ([f"## {SECTION_TITLE}", *body.split("\n")] if body else [f"## {SECTION_TITLE}"]) + [""]
+    found = _find_section(lines)
+    if found:
+        start, end = found
+        keep = _leading_comment(lines, start + 1, end)
+        lines[start:end] = [lines[start], *keep, *new[1:]]
+    else:
+        before = next((i for i, d, _ in _headings(lines) if d == 2), None)
+        if before is None:
+            tail = lines[:-1] if lines[-1] == "" else lines
+            lines = tail + ([""] if tail and tail[-1] else []) + new
+        else:
+            lines[before:before] = ([""] if before and lines[before - 1].strip() else []) + new
+    write_atomic(path, "\n".join(lines))
+    return path
+
+
+def _leading_comment(lines: list[str], start: int, end: int) -> list[str]:
+    """The HTML comment that follows the section heading, blank lines before it included."""
+    at = start
+    while at < end and not lines[at].strip():
+        at += 1
+    if at >= end or not lines[at].lstrip().startswith("<!--"):
+        return []
+    while at < end and "-->" not in lines[at]:
+        at += 1
+    return lines[start:at + 1] if at < end else []
