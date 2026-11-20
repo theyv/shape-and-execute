@@ -21,6 +21,27 @@ from .tasks import Task, as_list, job_file, job_meta, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
 
 
+# [PROMPT-SAE] Texts that dispatch prompts carry. Fill them with str.format; reword them only in the
+# prompt-text job of a task, so the owner reads every prompt change in one diff.
+# [STAKES-POINTER] one stakes line in every dispatch prompt: the source, or the "not set" line.
+STAKES_LINE = 'Stakes (read before you start): {path}, section "Stakes"'
+STAKES_NOT_SET_LINE = ("Stakes: not set. Estimate them from the repository instructions and the README, and work to\n"
+                       "that level: neither over- nor under-engineer.")
+# [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
+APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
+# [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
+APPROACH_PARAGRAPH = """FIX {fix} of {target}. The job parks for the owner after review round {max_rounds}.
+Before you patch, read the earlier review rounds of this job and answer in your result:
+1. Do the findings share one cause? Typical causes: the same value computed in several
+   places; a function that gets a new special case in every round; a requirement read
+   wider than the spec states.
+2. Would a different approach remove that cause, so the same kind of finding cannot come
+   back? Typical approaches: one function that every place calls; a value stored once
+   instead of derived; a smaller reading of the requirement.
+If yes and it fits your job, use it. If your job forbids it, still make your best fix and
+describe the approach under "Approach proposal" in your result."""
+
+
 def profile_meta(task: Task) -> dict:
     profile = read_text(tasks_dir(task.root) / "repo" / "profile.md")
     return split_frontmatter(profile)[0] if profile else {}

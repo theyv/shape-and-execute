@@ -15,15 +15,21 @@ resolved: []          # finding files of your job's resolves that you fixed or c
 <!-- Only the ones the code does not make obvious. Tag them [agent]. -->
 
 ## Decision request
-<!-- Only when status is parked.
+<!-- Only when status is parked. Delete when it does not apply.
 **Discovery:** … **Why blocked:** … **Decision required:** … **Known options:** … -->
 
 ## Disputed findings
 <!-- Only when your job answers a review. Each review finding you believe wrong and did not
-     implement: the review file and finding number, why it is wrong, the evidence. -->
+     implement: the review file and finding number, why it is wrong, the evidence.
+     Delete when it does not apply. -->
+
+## Approach proposal
+<!-- Only when a different approach would stop the same kind of finding from coming back.
+     The approach in a few sentences, and why. Delete when it does not apply. -->
 
 ## Risks
-<!-- Work for later is not a risk: file it as a `follow-up` finding. -->
+<!-- Work for later is not a risk: file it as a `follow-up` finding. Delete when it does not
+     apply. -->
 
 ## Findings filed
-<!-- Paths of findings created with `sae finding new`. -->
+<!-- Paths of findings created with `sae finding new`. Delete when it does not apply. -->

@@ -9,7 +9,9 @@ execute.
   deep: `sae job add <task> PLAN --kind planning` (its difficulty is the task difficulty).
   `sae next <task>` prints the next-step card: show it and wait (ok, change, refine first, skip;
   skip means you plan inline). Then `sae dispatch <task> PLAN` and spawn a subagent with the
-  printed prompt, model and effort. Collect it when it returns.
+  printed prompt, model and effort. When it prints a COMMAND (a job in the other harness), run
+  it in the background; when it fails or `sae` refuses, follow the fallback rule printed with
+  it. Collect it when it returns.
 - **Inline** for a small task (one or two jobs, shallow shaping): load
   [roles/planner.md](../roles/planner.md) — how to design the graph and write job files —
   and plan yourself.

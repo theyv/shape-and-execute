@@ -23,17 +23,24 @@ orchestrator may adapt it during execution.
   available.
 - Optimize total cost, not parallelism: execution time + coordination + merge work + risk of
   semantic conflict + context degradation.
+- Match the care in the plan to the stakes in your prompt: add a job, check or safeguard
+  only when the stakes justify it.
 - Each job: one sentence, one deliverable. A well-sized job needs no follow-up question from
   its worker.
-- Parallel jobs that share an interface: add a contract job first (types, schema, API stubs).
-  It merges before the fan-out.
+- Parallel jobs that share an interface or a business rule: the first job that needs it
+  builds it once, as a thin working slice with its tests (walking skeleton, tracer bullet);
+  the other jobs wait for it. Add a separate contract job (contract first) only when the
+  spec already fixes the shape and several jobs must start at once.
 - Hot files (lockfile, route registry, migrations, barrel exports, translations; see the repo
   profile): give each one an owner job, or move those edits into one later job, or accept a
   trivial conflict (an append-only list).
 - Give a writer job a `scope` when you can: it also brings the records that guard those paths.
 - Read-only work (research, review, audits) parallelizes well. Many writers on shared files
   do not.
-- Set a difficulty per job: `mechanical`, `normal` or `hard`. It selects the model.
+- Set a difficulty per job; it selects the model. `mechanical`: follow a clear procedure.
+  `easy`: a simple change that needs local judgment. `normal`: design a solution for a
+  difficult implementation task. `hard`: especially demanding logic or complex UI
+  interactions.
 - Flag a job for review (`--review`) only when job reviews are on (`selected-jobs` or
   `all-jobs` among the review points in `settings.json`), and then when it is risky,
   security-sensitive, architecturally central, or hard to check with tests.

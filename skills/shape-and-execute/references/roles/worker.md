@@ -25,8 +25,14 @@ conflict is a decision: escalate it.
   was missing (documentation, structure, a huge file). `follow-up`: work outside the job that
   the task or the user clearly needs; never a wish list.
 - **Review findings are claims.** When your job answers a review (your prompt points to it),
-  check each finding against the code before you change anything. Do not implement a finding
-  you believe wrong: list it under `## Disputed findings` in your result, with the reason.
+  check each finding your job names against the code before you change anything. Make its
+  `Expected` true, also in every place under `Also in`. Its `Suggested fix` is a proposal:
+  use a better way when you find one, and say why. Do not implement a finding you believe
+  wrong: list it under `## Disputed findings` in your result, with the reason.
+- If you see a different approach that would stop the same kind of finding from coming
+  back, finish your job anyway and describe it under `## Approach proposal` in your result,
+  also when a "do not" in your job blocks it: name that limit and why its reason is weak.
+  The next review judges it.
 - Commit on your branch at meaningful checkpoints. Read [commit-message.md](../commit-message.md)
   before your first commit. Never push. Never switch branches.
 
@@ -65,9 +71,9 @@ decision at length.
 
 Write the result at the path in your prompt (template `templates/job-result.md`): frontmatter
 `status`, `summary`, `validation`, `changes`; then the validation evidence, decisions you took
-that the code does not make obvious (`[agent]`), disputed findings, risks, findings you filed. Work for later goes
-into a `follow-up` finding, not into the result. Keep it short: the code is the source of
-truth.
+that the code does not make obvious (`[agent]`), disputed findings, an approach proposal,
+risks, findings you filed. Work for later goes into a `follow-up` finding, not into the
+result. Keep it short: the code is the source of truth. Leave out sections that do not apply.
 
 When your job file lists findings in `resolves`, put each one you fixed, or found already
 fixed, in the result's `resolved` field. `sae` closes them when your job succeeds. Leave out

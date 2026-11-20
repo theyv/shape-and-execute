@@ -14,6 +14,20 @@ the Codex catalog (families with their newest versions, older versions, efforts)
 subagent cap and the default worktree root for this OS. With a config they print the model
 lists, the tiers and one routing table per phase and harness.
 
+A config without an `easy` column is valid: `easy` jobs use the `mechanical` cell, and `sae`
+says so. To upgrade it, propose these changes and save them after the user's yes (step 4),
+then skip the guide:
+
+1. Tiers: the tier table of step 3. Claude: sonnet · high becomes L2, the old L2 and L3
+   become L3 and L4, and the old L4 goes. Codex: the four tiers of the table.
+2. Relabel the tier of every cell and keep its model · effort. Claude: old L2 → L3, old L3 →
+   L4, old L4 → L4 (with tiers in cells on, those cells now run opus · high). Codex execution
+   and research: balanced L1–L4 by difficulty, economy one tier lower (at least L1), premium
+   one tier higher (at most L4). Codex planning and review: the tier with the nearest
+   model · effort.
+3. Add the `easy` column to the execution and research tables, with the cells of step 3. For
+   a family the config does not list, copy the `mechanical` cell.
+
 A schema-1 config (rungs and level maps) makes `sae` exit 2. Then `sae setup show` prints the
 proposed conversion: each rung becomes a tier, each cell points to the tier that the old level
 map chose, and the model lists hold the models the rungs used. Claude rungs had no effort:
@@ -28,8 +42,8 @@ Show this before the proposal, in the conversation language:
 How models are chosen
 - Each phase (research, planning, execution, review)
   has a level: economy, balanced or premium.
-- Each job has a difficulty: mechanical, normal or hard.
-  Planning and review are never mechanical.
+- Each job has a difficulty: mechanical, easy, normal
+  or hard. Planning and review use only normal and hard.
 - A routing table per harness and phase maps
   level x difficulty to a model and an effort, directly
   or through a tier (L1-L4: one named model + effort).
@@ -51,82 +65,84 @@ family (the newest version of it), switched on:
 |---|---|---|
 | Claude | sonnet | low, medium, high, xhigh, max |
 | Claude | opus | low, medium, high, xhigh, max |
+| Codex | terra | low, medium, high, xhigh, max |
 | Codex | luna | low, medium, high, xhigh, max |
 | Codex | sol | low, medium, high, xhigh, max, ultra |
 | Codex | astra | low, medium, high, xhigh, max, ultra |
 
 Drop a family the user does not want; it can be ticked on again later. Other families (for
-example haiku, fable, terra) and older Codex versions can be added; pick Codex versions from the
+example haiku, fable) and older Codex versions can be added; pick Codex versions from the
 catalog of `sae setup show`, never type them.
 
 **Codex against the catalog.** Without a Codex catalog in `sae setup show`, leave the Codex
 part (model list and routing) out. With one:
 - Keep only the efforts that the catalog lists for the family's newest version.
 - A seed family missing from the catalog is replaced, in the tiers and the cells, by the
-  nearest stronger family that is there (luna → sol → astra), else the nearest weaker one; drop
+  nearest stronger family that is there (terra → luna → sol → astra), else the nearest weaker one; drop
   its entry. Keep each effort when the new model's list has it, else take the nearest effort in
   that list (the stronger on a tie). Effort order: low, medium, high, xhigh, max, ultra.
 
-**Tiers** (model · effort):
+**Tiers** (model · effort). They follow the difficulties: at the balanced level, each
+difficulty of execution and research has its own tier.
 
-| tier | Claude | Codex |
-|---|---|---|
-| L1 | sonnet · medium | luna · xhigh |
-| L2 | opus · medium | sol · low |
-| L3 | opus · high | sol · medium |
-| L4 | opus · xhigh | sol · high |
+| tier | difficulty | Claude | Codex |
+|---|---|---|---|
+| L1 | mechanical | sonnet · medium | terra · medium |
+| L2 | easy | sonnet · high | sol · medium |
+| L3 | normal | opus · medium | sol · high |
+| L4 | hard | opus · high | sol · xhigh |
 
 **Routing tables**, "tiers in cells" on. Each cell is tier · model · effort: the tier applies
 while tiers in cells is on, the model · effort when the user turns it off. Save both in every
 cell.
 
-| claude · research | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · sonnet · medium | L1 · sonnet · medium | L2 · sonnet · high |
-| balanced | L1 · sonnet · medium | L2 · sonnet · high | L3 · opus · low |
-| premium | L2 · sonnet · high | L3 · opus · low | L4 · opus · medium |
+| claude · research | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 · sonnet · medium | L1 · sonnet · medium | L1 · sonnet · medium | L3 · sonnet · high |
+| balanced | L1 · sonnet · medium | L2 · sonnet · high | L3 · sonnet · high | L4 · opus · low |
+| premium | L3 · sonnet · high | L3 · opus · medium | L4 · opus · low | L4 · opus · medium |
 
-| claude · execution | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · sonnet · medium | L1 · sonnet · high | L2 · opus · low |
-| balanced | L1 · sonnet · high | L2 · opus · medium | L3 · opus · high |
-| premium | L2 · opus · low | L3 · opus · high | L4 · opus · xhigh |
+| claude · execution | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 · sonnet · medium | L1 · sonnet · medium | L1 · sonnet · high | L3 · opus · low |
+| balanced | L1 · sonnet · high | L2 · sonnet · high | L3 · opus · medium | L4 · opus · high |
+| premium | L3 · opus · low | L3 · opus · medium | L4 · opus · high | L4 · opus · xhigh |
 
 | claude · planning | normal | hard |
 |---|---|---|
-| economy | L2 · sonnet · high | L3 · opus · medium |
-| balanced | L3 · opus · high | L4 · opus · xhigh |
+| economy | L3 · sonnet · high | L4 · opus · medium |
+| balanced | L4 · opus · high | L4 · opus · xhigh |
 | premium | L4 · opus · xhigh | L4 · opus · xhigh |
 
 | claude · review | normal | hard |
 |---|---|---|
-| economy | L1 · sonnet · high | L2 · opus · medium |
-| balanced | L2 · opus · medium | L3 · opus · high |
-| premium | L3 · opus · high | L4 · opus · xhigh |
+| economy | L1 · sonnet · high | L3 · opus · medium |
+| balanced | L3 · opus · medium | L4 · opus · high |
+| premium | L4 · opus · high | L4 · opus · xhigh |
 
-| codex · research | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · luna · high | L1 · luna · xhigh | L2 · sol · low |
-| balanced | L1 · luna · xhigh | L3 · sol · medium | L4 · sol · high |
-| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| codex · research | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 · terra · medium | L1 · terra · medium | L2 · sol · medium | L3 · sol · high |
+| balanced | L1 · terra · medium | L2 · sol · medium | L3 · sol · high | L4 · sol · xhigh |
+| premium | L2 · sol · medium | L3 · sol · high | L4 · sol · xhigh | L4 · sol · xhigh |
 
-| codex · execution | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · luna · xhigh | L1 · luna · xhigh | L2 · sol · low |
-| balanced | L2 · sol · low | L3 · sol · medium | L4 · sol · high |
-| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| codex · execution | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 · terra · medium | L1 · terra · medium | L2 · sol · medium | L3 · sol · high |
+| balanced | L1 · terra · medium | L2 · sol · medium | L3 · sol · high | L4 · sol · xhigh |
+| premium | L2 · sol · medium | L3 · sol · high | L4 · sol · xhigh | L4 · sol · xhigh |
 
 | codex · planning | normal | hard |
 |---|---|---|
-| economy | L2 · sol · low | L3 · sol · medium |
-| balanced | L4 · sol · high | L4 · sol · xhigh |
+| economy | L2 · sol · low | L2 · sol · medium |
+| balanced | L3 · sol · high | L4 · sol · xhigh |
 | premium | L4 · sol · xhigh | L4 · sol · max |
 
 | codex · review | normal | hard |
 |---|---|---|
-| economy | L2 · sol · low | L3 · sol · medium |
-| balanced | L3 · sol · medium | L4 · sol · high |
-| premium | L4 · sol · high | L4 · sol · xhigh |
+| economy | L2 · sol · low | L2 · sol · medium |
+| balanced | L2 · sol · medium | L3 · sol · high |
+| premium | L3 · sol · high | L4 · sol · xhigh |
 
 **Defaults for new tasks:** interaction mode `critical-only`; levels per phase; review points
 `spec, plan, selected-jobs, integration` (a second model checks the spec against the intent
@@ -148,19 +164,22 @@ Codex exact version or effort that the catalog does not offer, and backs up the 
 
 ## 5. Harness permissions
 
-`sae setup snippets` prints what each harness needs:
+Writer jobs need git writes in their worktree and often local sockets for their checks. For
+now SaE starts them with a bypass request:
 
-- **Codex:** a permission profile that lets git write `.git` (but keeps `.git/hooks` and
-  `.git/config` read-only) and makes the worktree root writable. Without it, Codex blocks every
-  commit and merge.
+- **Orchestrator session:** run it with full access (Claude Code: bypassed permissions;
+  Codex: `codex --yolo`). Its subagents inherit it.
+- **Jobs in the other harness:** `sae dispatch` prints a launch command without a sandbox.
 - **Codex subagent cap:** `[agents] max_threads`. By default a Codex session holds only 3
-  subagents (6 on older models); parallel writers, reviews and research then fail with "agent
-  thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to set it.
-- **Claude Code:** the worktree root in `additionalDirectories`, and optional allow rules for
-  `git` and the `sae` command for users who do not run with bypassed permissions.
+  subagents (6 on older models); parallel writers, reviews and research then fail with
+  "agent thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to
+  set it.
 
-Show each snippet, explain it in one sentence, and apply it only after the user says yes. Back
-up the file first.
+A sandboxed setup waits in the backlog. `sae setup snippets` prints a draft of it; its Codex
+git rule does not work in linked worktrees yet.
+
+Show each change, explain it in one sentence, and apply it only after the user says yes.
+Back up the file first.
 
 ## 6. Verify
 

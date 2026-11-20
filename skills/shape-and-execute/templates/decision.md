@@ -7,7 +7,8 @@ decision: <one line, or "HUMAN DECISION REQUIRED">
 # Decision: <DECISION-ID>
 
 ## Question
-<!-- Pointer to the decision request this answers. -->
+<!-- Pointer to the question this answers: a decision request, a job, a review round or the
+     orchestrator's question. -->
 
 ## Why
 
