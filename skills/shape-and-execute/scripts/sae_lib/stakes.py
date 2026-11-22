@@ -79,8 +79,10 @@ def section_text(path: Path) -> str | None:
     """The Project Stakes section of a Markdown file with HTML comments stripped and blank edges
     trimmed; None when the file or the section is missing."""
     text = read_text(path, None)
-    if text is None:
-        return None
+    return None if text is None else _section_text(text)
+
+
+def _section_text(text: str) -> str | None:
     lines = text.split("\n")
     found = _find_section(lines)
     if not found:
@@ -97,11 +99,22 @@ def section_revision(path: Path) -> str:
     """A revision of the Project Stakes section exactly as stored (heading to end, comments and
     spaces included): a SHA-256 of its raw text, "" when the file or the section is missing. Any
     change to the stored section changes it, also one that `section_text` strips."""
-    lines = (read_text(path, None) or "").split("\n")
+    return _section_revision(read_text(path, None) or "")
+
+
+def _section_revision(text: str) -> str:
+    lines = text.split("\n")
     found = _find_section(lines)
     if not found:
         return ""
     return hashlib.sha256("\n".join(lines[found[0]:found[1]]).encode()).hexdigest()
+
+
+def section_and_revision(path: Path) -> tuple[str | None, str]:
+    """`section_text` and `section_revision` of one read of `path`: a save between two reads can
+    never pair an old section with the revision of a newer one."""
+    text = read_text(path, None)
+    return (None, "") if text is None else (_section_text(text), _section_revision(text))
 
 
 def _content(text: str) -> str:

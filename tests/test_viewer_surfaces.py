@@ -302,6 +302,46 @@ class OverlappingStakesSaveTests(SaeTestCase):
         self.assertIn("changed since this page read them", second["error"])
         self.assertEqual(profile.read_text(), saved)
 
+    def test_a_save_during_a_settings_load_never_pairs_an_old_draft_with_the_new_base(self):
+        """Another tab saves right after the load's k-th read of the profile, for every k. The loading
+        tab then saves from what it got: a 200 is allowed only when its draft already held the other
+        tab's edit; otherwise it is a conflict and the other tab's edit stays."""
+        read = stakes.read_text
+        sb = self.sandbox()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        profile.parent.mkdir(parents=True)
+        k = 0
+        while True:
+            k += 1
+            profile.write_text(PROFILE)
+            other = "- So build it like: The other tab's edit."
+            state = {"reads": 0, "saved": None}
+
+            def read_then_save(path, default=None):
+                text = read(path, default)
+                if state["saved"] is None and Path(path) == profile:
+                    state["reads"] += 1
+                    if state["reads"] == k:
+                        state["saved"] = ()  # one save only, also not from the save's own reads
+                        base = stakes.section_revision(profile)
+                        state["saved"] = server.save_stakes({"repo": "R", "text": other, "base": base})
+                return text
+
+            with mock.patch.object(server, "repo_by_key", return_value=sb.repo), \
+                    mock.patch.object(stakes, "read_text", read_then_save):
+                data = server.stakes_data(sb.repo)
+            if state["saved"] is None:  # k is past the load's last read
+                break
+            self.assertEqual(state["saved"][0], 200, state["saved"])
+            with mock.patch.object(server, "repo_by_key", return_value=sb.repo):
+                code, answer = server.save_stakes({"repo": "R", "text": data["draft"] + "\n- x", "base": data["base"]})
+            if "The other tab's edit" in data["draft"]:
+                self.assertEqual(code, 200, (k, answer))
+            else:
+                self.assertEqual(code, 409, (k, data, answer))
+                self.assertIn("The other tab's edit", stakes.section_text(profile))
+        self.assertGreater(k, 1)  # the load read the profile at least once
+
     def test_a_save_of_trailing_spaces_only_moves_the_base(self):
         self.assert_second_save_conflicts(lambda t: t.replace("- What matters now:", "- What matters now:   "))
 

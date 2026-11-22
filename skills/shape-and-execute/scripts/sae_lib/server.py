@@ -494,9 +494,10 @@ def stakes_data(root: Path) -> dict:
     them (only from the profile, or when no source has any). `base` is the revision of the profile's
     own section as stored (`stakes.section_revision`, "" when missing); a save sends it back so that it
     never overwrites a change made in the meantime, even one that leaves the shown text as it was.
-    `draft` fills the edit box: the section, or the five empty labels."""
+    `draft` fills the edit box: the section, or the five empty labels. `draft` and `base` come from one
+    read of the profile (`stakes.section_and_revision`)."""
     from .gitutil import main_worktree
-    from .stakes import LABELS, SECTION_TITLE, find_stakes, profile_path, section_revision, section_text
+    from .stakes import LABELS, SECTION_TITLE, find_stakes, profile_path, section_and_revision
     home = main_worktree(root)
 
     def shown(path: Path) -> str:
@@ -505,11 +506,12 @@ def stakes_data(root: Path) -> dict:
         return str(path)
 
     found, profile = find_stakes(root), profile_path(root)
-    own = section_text(profile) or ""
+    own, base = section_and_revision(profile)
+    own = own or ""
     return {"title": SECTION_TITLE, "source": str(found.path) if found else None,
             "source_name": shown(found.path) if found else None, "text": found.text if found else None,
             "editable": found is None or found.in_profile, "profile": str(profile), "profile_name": shown(profile),
-            "base": section_revision(profile), "draft": own if own.strip() else "\n".join(f"- {label}:" for label in LABELS)}
+            "base": base, "draft": own if own.strip() else "\n".join(f"- {label}:" for label in LABELS)}
 
 
 def prototype_path(url_path: str) -> Path:
