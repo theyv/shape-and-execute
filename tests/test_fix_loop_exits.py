@@ -126,6 +126,26 @@ class DecisionAnytimeTests(FixLoopCase):
         self.assertEqual(sb.state(task)["jobs"]["DECISION-REVIEW-INTEGRATION-1"]["status"], "done")
         self.assertEqual(sb.json("status", "dpark")["parked_task"], "REVIEW-INTEGRATION")  # it only advised
 
+    def test_decision_job_from_a_plan_review_runs_before_plan_approval(self):
+        """REVIEW-INTEGRATION finding 5: a decision job only advises, so it dispatches and collects
+        in planning, in time for the plan decision it informs. Other kinds keep the phase rule."""
+        sb = self.sandbox(points=["plan"])
+        task = sb.new_task("Plan advice", "dplan")
+        sb.approve_spec("dplan")
+        sb.sae("job", "add", "dplan", "WORK", "--kind", "implementation")
+        sb.job_file(task, "WORK", verify=["true"])
+        self.review(sb, task, "dplan", "REVIEW-PLAN", "plan", "changes-required")
+        sb.json("decision", "new", "dplan", "--from", "REVIEW-PLAN")
+        self.assertIn("DECISION-REVIEW-PLAN-1", [r["id"] for r in sb.json("next", "dplan")["ready"]])
+        prompt = sb.json("dispatch", "dplan", "DECISION-REVIEW-PLAN-1")["prompt"]
+        self.assertIn("reviews/REVIEW-PLAN.md", prompt)
+        sb.result(task, "decisions/DECISION-REVIEW-PLAN-1.md",
+                  **{"class": "open-tradeoff", "recommendation": "human-required", "decision": "split WORK"})
+        sb.sae("collect", "dplan", "DECISION-REVIEW-PLAN-1")
+        self.assertEqual(sb.state(task)["jobs"]["DECISION-REVIEW-PLAN-1"]["status"], "done")
+        self.assertEqual(sb.json("status", "dplan")["phase"], "planning")
+        self.assertIn("phase planning", sb.sae("dispatch", "dplan", "WORK", code=1).stderr)  # writers wait
+
     def test_gate_order_during_a_hold(self):
         """A decision job passes a hold, a writer still waits, and a missing CLI changes nothing."""
         sb = self.sandbox()
@@ -530,6 +550,37 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         report = self.report(sb.sae("finish", "lettitle").stdout)
         self.assertEqual(self.section(report, "## Findings let go"), [
             "- REVIEW-INTEGRATION: Odd log — let go: cosmetic",
+            "- REVIEW-INTEGRATION: Slow path — accepted: slow only in tests"])
+
+    def test_let_go_by_title_names_exactly_one_finding(self):
+        """REVIEW-INTEGRATION finding 6: an absent title is refused, and a title with a colon is
+        reported once, with its reason; the decision stores the finding and the reason apart."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letcolon")
+        sb.json("dispatch", "letcolon", "REVIEW-INTEGRATION")
+        path = sb.task_dir(task) / "reviews" / "REVIEW-INTEGRATION.md"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("---\ntarget: integration\nverdict: changes-required\n---\n\n# Review\n\n## Findings\n\n"
+                        "### Retry: lost write — major\n**Expected:** kept\n\n### Slow path — minor\n**Expected:** fast\n")
+        sb.sae("collect", "letcolon", "REVIEW-INTEGRATION")
+        before = self.snapshot(sb, task)
+        refused = sb.sae("log", "letcolon", "decision", "Retry: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn('REVIEW-INTEGRATION has no finding titled "Retry"; its findings are: Retry: lost write; '
+                      'Slow path.', refused)
+        refused = sb.sae("log", "letcolon", "decision", "Missing: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn('has no finding titled "Missing"', refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+        sb.sae("log", "letcolon", "decision", "Retry: lost write: the queue retries it", "--job",
+               "REVIEW-INTEGRATION", "--let-go")
+        event = [e for e in sb.events(task) if e["type"] == "decision" and e.get("let_go")][-1]
+        self.assertEqual((event["finding"], event["reason"]), ("Retry: lost write", "the queue retries it"))
+        sb.sae("accept-review", "letcolon", "REVIEW-INTEGRATION", "--reason", "slow only in tests")
+        self.final(sb, task, "letcolon")
+        report = self.report(sb.sae("finish", "letcolon").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-INTEGRATION: Retry: lost write — let go: the queue retries it",
             "- REVIEW-INTEGRATION: Slow path — accepted: slow only in tests"])
 
     def test_let_go_refuses_a_blank_reason(self):

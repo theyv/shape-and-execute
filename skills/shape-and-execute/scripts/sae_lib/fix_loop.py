@@ -266,31 +266,52 @@ def by_title(task: Task, review_id: str) -> bool:
     return done and not any(n for n, _ in round_findings(task, review_id))
 
 
-def let_go_errors(task: Task, review_id: str, summary: str) -> str | None:
-    """Why a --let-go summary does not name exactly one finding of the round with a reason, or None.
-    A review that numbers no finding takes "<finding title>: <reason>"."""
+def title_let_go(titles: list[str], summary: str | None) -> tuple[str | None, str]:
+    """(title, reason) of a --let-go summary "<finding title>: <reason>" for a review that numbers
+    none of its findings: the longest title of the review that the summary starts with, followed
+    by a colon, so a title with a colon stays whole ("Retry: lost write: rare"). (None, "") when
+    the summary starts with no title of the review."""
+    text = str(summary or "").strip()
+    matches = [t for t in set(titles) if text.startswith(t) and text[len(t):].lstrip().startswith(":")]
+    if not matches:
+        return None, ""
+    title = max(matches, key=len)
+    return title, text[len(title):].lstrip()[1:].strip()
+
+
+def resolve_let_go(task: Task, review_id: str, summary: str) -> tuple[str | None, str, str | None]:
+    """(finding, reason, error) of a --let-go summary: the one finding of the round it names (its
+    number, or its title when the review numbers none) and the reason apart, or the error why it
+    names no single finding with a reason ([TRIAGE])."""
     review = task.jobs[review_id]
     if review["status"] != "done":
-        return (f"{review_id} is {review['status']}: it has no findings to let go yet. Log them after "
-                f"sae collect {task.id} {review_id}.")
+        return None, "", (f"{review_id} is {review['status']}: it has no findings to let go yet. Log them after "
+                          f"sae collect {task.id} {review_id}.")
     number, reason = let_go_finding(summary)
     line = let_go_line(task, review_id)
     if by_title(task, review_id):
-        title, _, reason = str(summary or "").partition(":")
-        if number is not None or not title.strip():
-            return f"{review_id} numbers none of its findings: name the finding by its title.\n  {line}"
-        if not reason.strip():
-            return f"--let-go needs a reason after \"{title.strip()}:\":\n  {line}"
-        return None
+        titles = [t for _, t in round_findings(task, review_id)]
+        title, reason = title_let_go(titles, summary)
+        if title is None:
+            if number is not None or not str(summary or "").partition(":")[0].strip():
+                return None, "", f"{review_id} numbers none of its findings: name the finding by its title.\n  {line}"
+            named = str(summary or "").partition(":")[0].strip()
+            return None, "", (f"{review_id} has no finding titled \"{named}\"; its findings are: "
+                              f"{'; '.join(titles)}.\n  {line}")
+        if titles.count(title) != 1:
+            return None, "", f"{review_id} has more than one finding titled \"{title}\":\n  {line}"
+        if not reason:
+            return None, "", f"--let-go needs a reason after \"{title}:\":\n  {line}"
+        return title, reason, None
     if number is None:
-        return f"--let-go names one finding of {review_id} by its number:\n  {line}"
+        return None, "", f"--let-go names one finding of {review_id} by its number:\n  {line}"
     numbers = [n for n, _ in round_findings(task, review_id) if n]
     if numbers.count(number) != 1:
         problem = f"has no finding {number}" if number not in numbers else f"numbers finding {number} more than once"
-        return f"{review_id} {problem}; its findings are {', '.join(numbers)}:\n  {line}"
+        return None, "", f"{review_id} {problem}; its findings are {', '.join(numbers)}:\n  {line}"
     if not reason:
-        return f"--let-go needs a reason after \"{number}:\":\n  {line}"
-    return None
+        return None, "", f"--let-go needs a reason after \"{number}:\":\n  {line}"
+    return number, reason, None
 
 
 def let_go_lines(task: Task, events: list[dict]) -> list[str]:
@@ -306,17 +327,22 @@ def let_go_lines(task: Task, events: list[dict]) -> list[str]:
         if not event.get("let_go"):
             continue
         review_id = str(event.get("job"))
-        number, reason = let_go_finding(event.get("summary"))
-        if number is None:  # by title: the review numbers none of its findings
-            title, _, reason = str(event.get("summary") or "").partition(":")
-            title, reason = title.strip(), reason.strip()
-            key = (review_id, title)
-            line = f"- {review_id}: {title} — let go: {reason}" if reason else f"- {review_id}: {event.get('summary')}"
-        else:
-            if review_id not in titles:
-                titles[review_id] = {n: t for n, t in round_findings(task, review_id) if n}
-            key = (review_id, number)
-            line = f"- {review_id}: {titles[review_id].get(number) or f'finding {number}'} — let go: {reason}"
+        if review_id not in titles:
+            titles[review_id] = {n: t for n, t in round_findings(task, review_id) if n}
+        finding, reason = event.get("finding"), str(event.get("reason") or "")
+        if finding is None:  # logged before sae stored the finding and the reason apart
+            finding, reason = let_go_finding(event.get("summary"))
+            if finding is None:
+                finding, reason = title_let_go([t for _, t in round_findings(task, review_id)], event.get("summary"))
+            if finding is None:
+                finding, _, reason = str(event.get("summary") or "").partition(":")
+                finding, reason = finding.strip(), reason.strip()
+        finding = str(finding)
+        key = (review_id, finding)
+        if titles[review_id]:  # a numbered review: the finding is its number
+            line = f"- {review_id}: {titles[review_id].get(finding) or f'finding {finding}'} — let go: {reason}"
+        else:  # by title: the review numbers none of its findings
+            line = f"- {review_id}: {finding} — let go: {reason}" if reason else f"- {review_id}: {event.get('summary')}"
         let_go.add(key)
         if key in lines_of:
             lines[lines_of[key]] = line
