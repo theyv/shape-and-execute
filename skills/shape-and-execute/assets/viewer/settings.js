@@ -164,21 +164,23 @@ function sxAskRow(ro){var a=sxAsk(T()),now=sxAskNow(a);
 /* ---------- Project settings: the Project Stakes ([STAKES-VIEWER], [AMEND-2]) ----------
    The server reads them as a dispatch does (server.stakes_data). From the profile, or not set: editable, saved on
    Save; from AGENTS.md or CLAUDE.md: read-only, "edit there". The edit lives in SX.stk until Save or Discard, so a
-   refresh keeps it; its `base` is the section the edit started from, and the server refuses a save over a newer one. */
+   refresh keeps it; its `base` is the section the edit started from, and the server refuses a save over a newer one.
+   While a save is pending (`saving`) the box and both buttons are disabled, so no text typed after Save is lost. */
 var sxStk=()=>{var c=sxData(),d=c&&(c.proj||c.task);return d&&d.stakes||null},
  sxStkDraft=()=>SX.stk&&SX.stk.repo===S.repo?SX.stk:null;
 function sxStakesSec(){var k=sxStk(),dr=sxStkDraft(),ctl,
   head='<section class="sg"><div class="sh"><h3>Project settings</h3><span class="d">in this repository: every task and every agent reads them</span></div>';
   if(!k)return head+empty("Loading…")+"</section>";
   if(!k.editable)ctl='<pre class="stk ro">'+esc(k.text)+'</pre><p class="note">From <span class="mono">'+esc(k.source_name)+"</span>: edit them there. sae never writes AGENTS.md or CLAUDE.md.</p>";
-  else{var v=dr?dr.text:k.draft;
-    ctl='<textarea class="stk" data-act="sxst" data-k="stakes" rows="'+Math.max(6,Math.min(16,v.split("\n").length+1))+'" aria-label="Project Stakes">'+esc(v)+"</textarea>"+
-     '<div class="stkb"><button class="btn sm pri" data-act="sxsv" data-k="save"'+(dr&&dr.text!==k.draft?"":" disabled")+'>Save</button><button class="btn sm" data-act="sxsv" data-k="discard"'+(dr?"":" disabled")+">Discard</button>"+
+  else{var v=dr?dr.text:k.draft,busy=!!(dr&&dr.saving);
+    ctl='<textarea class="stk" data-act="sxst" data-k="stakes" rows="'+Math.max(6,Math.min(16,v.split("\n").length+1))+'" aria-label="Project Stakes"'+(busy?" disabled":"")+">"+esc(v)+"</textarea>"+
+     '<div class="stkb"><button class="btn sm pri" data-act="sxsv" data-k="save"'+(dr&&!busy&&dr.text!==k.draft?"":" disabled")+'>Save</button><button class="btn sm" data-act="sxsv" data-k="discard"'+(dr&&!busy?"":" disabled")+">Discard</button>"+
      '<span class="inh">'+(k.source?"Save writes the section in "+esc(k.profile_name):"Not set. Save writes them to "+esc(k.profile_name))+"; nothing else in the file changes.</span></div>"}
   var src=k.source?'<span class="inh'+(k.editable?" set":"")+'">from '+esc(k.source_name)+(k.editable?"":" · edit there")+"</span>":'<span class="inh">not set: agents estimate them</span>';
   return head+sxRow("Project Stakes","stakes",ctl,src)+"</section>"}
-function sxStakesSave(){var dr=sxStkDraft(),rk=S.repo;if(!dr)return;sxSay("Saving…");
-  post("stakes",{repo:rk,text:dr.text,base:dr.base}).then(r=>{if(S.repo!==rk)return;
+function sxStakesSave(){var dr=sxStkDraft(),rk=S.repo;if(!dr||dr.saving)return;dr.saving=true;sxSay("Saving…");
+  D.querySelectorAll('[data-act="sxst"],[data-act="sxsv"]').forEach(e=>{e.disabled=true});
+  post("stakes",{repo:rk,text:dr.text,base:dr.base}).then(r=>{dr.saving=false;if(S.repo!==rk)return;
     if(!r.ok)sxSay(r.error||"Not saved.",true,r.command);
     else{if(SX.stk===dr)SX.stk=null;var k=r.result&&r.result.stakes;sxSay("Saved the Project Stakes in "+(k?k.profile_name:"the repo profile")+". Every agent reads them from its next dispatch.",false,r.command)}
     sxLoad(true);renderMain()})}
@@ -300,7 +302,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dat
       if(x&&!L.some(r=>r.model===x.model))L.push(sxClone(x))}});
   else if(a==="sxg"){if(k==="save")sxGlobalSave();else{SX.draft=null;sxSay("Discarded the unsaved global changes.");renderMain()}}
   else if(a==="sxsv"){if(k==="save")sxStakesSave();else{SX.stk=null;sxSay("Discarded the unsaved Project Stakes.");renderMain()}}});
-D.addEventListener("input",ev=>{var e=ev.target;if(!e.dataset||e.dataset.act!=="sxst")return;var k=sxStk();if(!k||!k.editable)return;
+D.addEventListener("input",ev=>{var e=ev.target;if(!e.dataset||e.dataset.act!=="sxst")return;var k=sxStk();if(!k||!k.editable||SX.stk&&SX.stk.saving)return;
   var dr=sxStkDraft()||(SX.stk={repo:S.repo,text:k.draft,base:k.base});dr.text=e.value;dr.sel=[e.selectionStart,e.selectionEnd];dr.el=e;
   var b=D.querySelector('[data-act="sxsv"][data-k="save"]'),x=D.querySelector('[data-act="sxsv"][data-k="discard"]');if(b)b.disabled=e.value===k.draft;if(x)x.disabled=false});
 // a refresh redraws the box; when the page puts the focus back (refocus in app.js), the caret goes back too

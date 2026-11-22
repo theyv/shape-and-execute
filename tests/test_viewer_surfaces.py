@@ -11,13 +11,20 @@ from __future__ import annotations
 
 import re
 import shutil
+import sys
+import threading
+import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from saetest import SKILL_DIR, Sandbox, dispatch_workspace
+from saetest import SCRIPTS, SKILL_DIR, Sandbox, SaeTestCase, dispatch_workspace
 from test_fix_loop_exits import FixLoopCase
 from test_fix_loop_guidance import GuidanceCase
 from test_viewer_server import ViewerServerCase, request, run_node
+
+sys.path.insert(0, str(SCRIPTS))
+from sae_lib import server, stakes  # noqa: E402
 
 NODE = shutil.which("node")
 TEMPLATE = SKILL_DIR / "templates" / "repo" / "profile.md"
@@ -41,6 +48,22 @@ ctx.TASK = ctx.DATA && ctx.DATA.state ? ctx.DATA : null;
 console.log(JSON.stringify(vm.runInContext(`readHash(); IDX = {sae: "sae", root: "/r", tasks: [], repo: "r"};
   S.task = TASK ? TASK.state.task.id : null; S.repo = "R"; ` + process.argv[6], ctx)));
 """
+
+# A Project Stakes save that stays pending: `post` keeps the callback, document listeners are kept so the
+# test can type into the box, and `done` answers the save. Prints what was sent, the section while pending,
+# the draft after the typing, the draft after success and the message.
+PENDING_SAVE_JS = PAGE_JS.replace("addEventListener() {}, createElement: el}};",
+                                  "addEventListener(t, f) { (L[t] = L[t] || []).push(f) }, createElement: el}};") \
+    .replace("const els = {};", "const els = {}, L = {};").replace("ctx.window = ctx;", "ctx.window = ctx; ctx.L = L;") \
+    .replace("process.argv[6], ctx)", """`
+  SX.cur = {key: "R|null", proj: DATA}; var sent, done;
+  post = (route, body) => { sent = body; return {then(f) { done = f }} }; sxLoad = () => {}; renderMain = () => {};
+  SX.stk = {repo: "R", text: "first", base: ""}; sxStakesSave();
+  var pending = sxStakesSec();
+  L.input.forEach(f => f({target: {dataset: {act: "sxst"}, value: "first second", selectionStart: 12, selectionEnd: 12}}));
+  var typed = SX.stk && SX.stk.text;
+  done({ok: true, result: {stakes: DATA.stakes}});
+  ({sent, pending, typed, after: SX.stk, msg: SX.msg})`, ctx)""")
 
 CARD = "var g = graph(TASK), c = id => g.cards.find(x => x.id === id) || null;"
 
@@ -174,6 +197,11 @@ class ProjectStakesTests(ViewerCase):
         self.assertEqual(profile.read_text(), before)
         code, answer, _ = self.save(sb, {"text": None})
         self.assertEqual(code, 400, answer)
+        # a save without the section it started from could overwrite a newer one
+        code, answer, _ = self.save(sb, {"text": "- So build it like: A toy."})
+        self.assertEqual(code, 400, answer)
+        self.assertIn("base", answer["error"])
+        self.assertEqual(profile.read_text(), before)
 
     def test_stakes_from_agents_md_or_claude_md_are_read_only(self):
         sb = self.sandbox()
@@ -197,6 +225,19 @@ class ProjectStakesTests(ViewerCase):
                 self.assertEqual(instructions.read_text(), before)
                 self.assertFalse((sb.repo / ".tasks" / "repo" / "profile.md").exists())
 
+    def test_typing_is_blocked_while_a_save_is_pending(self):
+        # post never answers until `done` runs: the draft "first" is submitted, the owner types, then the save succeeds
+        stakes = {"editable": True, "draft": "", "base": "", "source": None, "source_name": None,
+                  "profile_name": ".tasks/repo/profile.md", "text": None}
+        out = run_node(PENDING_SAVE_JS, "app.js", "task-views.js", "settings.js", data={"stakes": stakes})
+        self.assertEqual(out["sent"], {"repo": "R", "text": "first", "base": ""})
+        self.assertRegex(out["pending"], r'<textarea class="stk"[^>]*aria-label="Project Stakes" disabled>')
+        self.assertRegex(out["pending"], r'data-act="sxsv" data-k="save" disabled')
+        self.assertRegex(out["pending"], r'data-act="sxsv" data-k="discard" disabled')
+        self.assertEqual(out["typed"], "first", "an edit made while the save is pending must not enter the sent draft")
+        self.assertIsNone(out["after"])
+        self.assertIn("Saved the Project Stakes", out["msg"])
+
     def test_the_help_shows_the_template_example_word_for_word(self):
         help_text = text(page(None, "HELP.stakes"))
         example = template_example()
@@ -207,6 +248,38 @@ class ProjectStakesTests(ViewerCase):
         self.assertIn("Planners and workers size their work by them", help_text)
         self.assertIn("hard limits belong in the repository instructions", help_text)
         self.assertNotIn("[beyond stakes]", help_text)
+
+
+class OverlappingStakesSaveTests(SaeTestCase):
+    """[STAKES-VIEWER]: two saves from the same base, on two request threads, give one success and one conflict."""
+
+    def test_overlapping_saves_from_one_base(self):
+        sb = self.sandbox()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        profile.parent.mkdir(parents=True)
+        profile.write_text(PROFILE)
+        base = stakes.section_text(profile) or ""
+        write = stakes.save_profile_stakes
+
+        def slow_write(root, text):  # the first writer holds the window between check and write open
+            time.sleep(0.3)
+            return write(root, text)
+
+        answers = []
+        with mock.patch.object(server, "repo_by_key", return_value=sb.repo), \
+                mock.patch.object(stakes, "save_profile_stakes", slow_write):
+            threads = [threading.Thread(target=lambda t=t: answers.append(
+                server.save_stakes({"repo": "R", "text": f"- So build it like: {t}.", "base": base})))
+                for t in ("A toy", "A tool")]
+            for thread in threads:
+                thread.start()
+                time.sleep(0.05)
+            for thread in threads:
+                thread.join()
+        self.assertEqual(sorted(code for code, _ in answers), [200, 409], answers)
+        saved = next(a for code, a in answers if code == 200)["result"]["stakes"]["text"]
+        self.assertEqual(stakes.section_text(profile), saved)
+        self.assertIn("changed since this page read them", next(a for code, a in answers if code == 409)["error"])
 
 
 class LaunchAndExceptionTests(ViewerCase):

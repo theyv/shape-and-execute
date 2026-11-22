@@ -622,11 +622,23 @@ WRITE_ROUTES = {
 }
 
 
+# One lock per profile: the base check and the write of a Project Stakes save are one step, so two
+# overlapping saves from the same base give one success and one conflict. Request threads of the one
+# viewer server are the only writers of the section, so a process lock is enough.
+_STAKES_LOCKS: dict[str, threading.Lock] = {}
+_STAKES_LOCKS_GUARD = threading.Lock()
+
+
+def stakes_lock(profile: Path) -> threading.Lock:
+    with _STAKES_LOCKS_GUARD:
+        return _STAKES_LOCKS.setdefault(str(profile.resolve()), threading.Lock())
+
+
 def save_stakes(body: dict) -> tuple[int, dict]:
     """[STAKES-VIEWER] POST /api/stakes {repo, text, base}: replaces only the Project Stakes section
     of `.tasks/repo/profile.md` in the repository's main worktree (`stakes.save_profile_stakes`).
     Refused when the stakes come from AGENTS.md or CLAUDE.md (SaE never writes those: edit them
-    there) and when the profile's section changed since the page read it (`base`)."""
+    there), without a `base`, and when the profile's section changed since the page read it (`base`)."""
     from .stakes import SECTION_TITLE, find_stakes, profile_path, save_profile_stakes, section_text
     root = repo_by_key(body.get("repo"))
     text = body.get("text")
@@ -637,18 +649,21 @@ def save_stakes(body: dict) -> tuple[int, dict]:
     def refused(status: int, error: str) -> tuple[int, dict]:
         return status, {"ok": False, "code": 1, "result": None, "error": error, "command": command}
 
-    found = find_stakes(root)
-    if found and not found.in_profile:
-        return refused(409, f"The {SECTION_TITLE} come from {found.path.name}: edit them there. "
-                            "sae never writes AGENTS.md or CLAUDE.md.")
     base = body.get("base")
-    if isinstance(base, str) and base != (section_text(profile_path(root)) or ""):
-        return refused(409, f"The {SECTION_TITLE} in the profile changed since this page read them. "
-                            "Copy your text, reload, and save again.")
-    try:
-        path = save_profile_stakes(root, text)
-    except ValueError as exc:
-        return refused(400, str(exc))
+    if not isinstance(base, str):
+        raise RequestError(400, "base: expected the section text the edit started from, as a string.")
+    with stakes_lock(profile_path(root)):
+        found = find_stakes(root)
+        if found and not found.in_profile:
+            return refused(409, f"The {SECTION_TITLE} come from {found.path.name}: edit them there. "
+                                "sae never writes AGENTS.md or CLAUDE.md.")
+        if base != (section_text(profile_path(root)) or ""):
+            return refused(409, f"The {SECTION_TITLE} in the profile changed since this page read them. "
+                                "Copy your text, reload, and save again.")
+        try:
+            path = save_profile_stakes(root, text)
+        except ValueError as exc:
+            return refused(400, str(exc))
     return 200, {"ok": True, "code": 0, "result": {"path": str(path), "stakes": stakes_data(root)}, "error": None,
                  "command": command}
 
