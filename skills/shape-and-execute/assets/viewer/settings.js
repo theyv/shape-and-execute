@@ -164,7 +164,7 @@ function sxAskRow(ro){var a=sxAsk(T()),now=sxAskNow(a);
 /* ---------- Project settings: the Project Stakes ([STAKES-VIEWER], [AMEND-2]) ----------
    The server reads them as a dispatch does (server.stakes_data). From the profile, or not set: editable, saved on
    Save; from AGENTS.md or CLAUDE.md: read-only, "edit there". The edit lives in SX.stk until Save or Discard, so a
-   refresh keeps it; its `base` is the section the edit started from, and the server refuses a save over a newer one.
+   refresh keeps it; its `base` is the revision of the stored section the edit started from, and the server refuses a save over a newer one.
    While a save is pending (`saving`) the box and both buttons are disabled, so no text typed after Save is lost. */
 var sxStk=()=>{var c=sxData(),d=c&&(c.proj||c.task);return d&&d.stakes||null},
  sxStkDraft=()=>SX.stk&&SX.stk.repo===S.repo?SX.stk:null;

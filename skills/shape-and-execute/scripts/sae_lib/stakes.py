@@ -8,6 +8,7 @@ Reading happens at dispatch and status time, so a viewer edit reaches the next d
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -90,6 +91,17 @@ def section_text(path: Path) -> str | None:
         if line or (out and out[-1]):  # collapse runs of blank lines
             out.append(line)
     return "\n".join(out).strip("\n")
+
+
+def section_revision(path: Path) -> str:
+    """A revision of the Project Stakes section exactly as stored (heading to end, comments and
+    spaces included): a SHA-256 of its raw text, "" when the file or the section is missing. Any
+    change to the stored section changes it, also one that `section_text` strips."""
+    lines = (read_text(path, None) or "").split("\n")
+    found = _find_section(lines)
+    if not found:
+        return ""
+    return hashlib.sha256("\n".join(lines[found[0]:found[1]]).encode()).hexdigest()
 
 
 def _content(text: str) -> str:

@@ -258,7 +258,8 @@ class OverlappingStakesSaveTests(SaeTestCase):
         profile = sb.repo / ".tasks" / "repo" / "profile.md"
         profile.parent.mkdir(parents=True)
         profile.write_text(PROFILE)
-        base = stakes.section_text(profile) or ""
+        with mock.patch.object(server, "repo_by_key", return_value=sb.repo):
+            base = server.stakes_data(sb.repo)["base"]
         write = stakes.save_profile_stakes
 
         def slow_write(root, text):  # the first writer holds the window between check and write open
@@ -280,6 +281,32 @@ class OverlappingStakesSaveTests(SaeTestCase):
         saved = next(a for code, a in answers if code == 200)["result"]["stakes"]["text"]
         self.assertEqual(stakes.section_text(profile), saved)
         self.assertIn("changed since this page read them", next(a for code, a in answers if code == 409)["error"])
+
+    def assert_second_save_conflicts(self, change):
+        """A first save that changes the stored section but not the shown text (comments and trailing
+        spaces are stripped from it) still moves the base: a second save from the same base gets a
+        conflict, not an overwrite."""
+        sb = self.sandbox()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        profile.parent.mkdir(parents=True)
+        profile.write_text(PROFILE)
+        with mock.patch.object(server, "repo_by_key", return_value=sb.repo):
+            base = server.stakes_data(sb.repo)["base"]
+            shown = stakes.section_text(profile)
+            code, first = server.save_stakes({"repo": "R", "text": change(shown), "base": base})
+            self.assertEqual(code, 200, first)
+            self.assertEqual(stakes.section_text(profile), shown)  # the shown text did not change
+            saved = profile.read_text()
+            code, second = server.save_stakes({"repo": "R", "text": "- So build it like: A toy.", "base": base})
+        self.assertEqual(code, 409, second)
+        self.assertIn("changed since this page read them", second["error"])
+        self.assertEqual(profile.read_text(), saved)
+
+    def test_a_save_of_trailing_spaces_only_moves_the_base(self):
+        self.assert_second_save_conflicts(lambda t: t.replace("- What matters now:", "- What matters now:   "))
+
+    def test_a_save_of_a_comment_only_moves_the_base(self):
+        self.assert_second_save_conflicts(lambda t: t + "\n<!-- a note -->")
 
 
 class LaunchAndExceptionTests(ViewerCase):

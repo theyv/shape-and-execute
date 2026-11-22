@@ -114,8 +114,9 @@ help (`HELP.stakes`) holds the example of `templates/repo/profile.md` word for w
 - **Server data**: `stakes` in the settings answer (`server.stakes_data`, from `stakes.find_stakes`):
   `{title, source, source_name, text, editable, profile, profile_name, base, draft}`. `editable` is
   true when the stakes come from the profile or no source has any; stakes from AGENTS.md or
-  CLAUDE.md are read-only with "edit there". `draft` fills the edit box; `base` is the profile's
-  section as the page read it.
+  CLAUDE.md are read-only with "edit there". `draft` fills the edit box; `base` is a revision of the
+  profile's section exactly as stored when the page read it (`stakes.section_revision`, a hash of
+  its raw text), so a change to comments or spaces alone also moves it.
 - **Save**: `POST /api/stakes {repo, text, base}` (`server.save_stakes`, the one entry of
   `DIRECT_ROUTES`) calls `stakes.save_profile_stakes`: only the Project Stakes section of
   `.tasks/repo/profile.md` in the main worktree changes. It refuses (409) while AGENTS.md or

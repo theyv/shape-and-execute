@@ -491,11 +491,12 @@ def settings_data(key: str, task_id: str | None) -> dict:
 def stakes_data(root: Path) -> dict:
     """[STAKES-VIEWER] The Project Stakes for the Project tab, read as a dispatch reads them
     (`stakes.find_stakes`): the text and the file it comes from, and whether the viewer may edit
-    them (only from the profile, or when no source has any). `base` is the profile's own section as
-    it is now (comments stripped, "" when missing); a save sends it back so that it never overwrites
-    a change made in the meantime. `draft` fills the edit box: the section, or the five empty labels."""
+    them (only from the profile, or when no source has any). `base` is the revision of the profile's
+    own section as stored (`stakes.section_revision`, "" when missing); a save sends it back so that it
+    never overwrites a change made in the meantime, even one that leaves the shown text as it was.
+    `draft` fills the edit box: the section, or the five empty labels."""
     from .gitutil import main_worktree
-    from .stakes import LABELS, SECTION_TITLE, find_stakes, profile_path, section_text
+    from .stakes import LABELS, SECTION_TITLE, find_stakes, profile_path, section_revision, section_text
     home = main_worktree(root)
 
     def shown(path: Path) -> str:
@@ -508,7 +509,7 @@ def stakes_data(root: Path) -> dict:
     return {"title": SECTION_TITLE, "source": str(found.path) if found else None,
             "source_name": shown(found.path) if found else None, "text": found.text if found else None,
             "editable": found is None or found.in_profile, "profile": str(profile), "profile_name": shown(profile),
-            "base": own, "draft": own if own.strip() else "\n".join(f"- {label}:" for label in LABELS)}
+            "base": section_revision(profile), "draft": own if own.strip() else "\n".join(f"- {label}:" for label in LABELS)}
 
 
 def prototype_path(url_path: str) -> Path:
@@ -638,8 +639,9 @@ def save_stakes(body: dict) -> tuple[int, dict]:
     """[STAKES-VIEWER] POST /api/stakes {repo, text, base}: replaces only the Project Stakes section
     of `.tasks/repo/profile.md` in the repository's main worktree (`stakes.save_profile_stakes`).
     Refused when the stakes come from AGENTS.md or CLAUDE.md (SaE never writes those: edit them
-    there), without a `base`, and when the profile's section changed since the page read it (`base`)."""
-    from .stakes import SECTION_TITLE, find_stakes, profile_path, save_profile_stakes, section_text
+    there), without a `base`, and when the profile's stored section changed since the page read it
+    (`base`, its revision)."""
+    from .stakes import SECTION_TITLE, find_stakes, profile_path, save_profile_stakes, section_revision
     root = repo_by_key(body.get("repo"))
     text = body.get("text")
     if not isinstance(text, str):
@@ -651,13 +653,13 @@ def save_stakes(body: dict) -> tuple[int, dict]:
 
     base = body.get("base")
     if not isinstance(base, str):
-        raise RequestError(400, "base: expected the section text the edit started from, as a string.")
+        raise RequestError(400, "base: expected the revision of the section the edit started from, as a string.")
     with stakes_lock(profile_path(root)):
         found = find_stakes(root)
         if found and not found.in_profile:
             return refused(409, f"The {SECTION_TITLE} come from {found.path.name}: edit them there. "
                                 "sae never writes AGENTS.md or CLAUDE.md.")
-        if base != (section_text(profile_path(root)) or ""):
+        if base != section_revision(profile_path(root)):
             return refused(409, f"The {SECTION_TITLE} in the profile changed since this page read them. "
                                 "Copy your text, reload, and save again.")
         try:
