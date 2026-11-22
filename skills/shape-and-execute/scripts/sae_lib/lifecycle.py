@@ -36,6 +36,7 @@ from .graph import fix_target, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
 from .launch import exception_report_lines
+from .fix_loop import fix_loop_report_lines
 from .prompts import REVIEW_OUTPUT_SUFFIX
 from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, merge_job
@@ -377,11 +378,13 @@ def final_report(task: Task, with_open: bool, kept: list[str] | None = None) -> 
                                        + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})"
                                        for e in reviews]
     lines += exception_report_lines(task)  # [HARNESS-FALLBACK]
+    lines += fix_loop_report_lines(task, events)  # [LET-GO-REPORT], [ACCEPT-INTEGRATION], [JOB-DROP]
     overridden = [e for e in events if e["type"] == "gate.overridden"]
     if overridden:
         lines += ["", "## Overridden gates"] + [f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
                                                 f"Reason: {e.get('reason')}" for e in overridden]
-    agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"]
+    agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"
+             and not e.get("let_go")]  # a finding let go is listed under "Findings let go"
     lines += ["", "## To check before you merge"]
     lines += [f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
               + (f" ({e['class']})" if e.get("class") else "") for e in agent] \
@@ -724,8 +727,10 @@ def register_finish(sub, command):
                 "no last review round (integration, or a job review of an unmerged job) says changes-required;\n"
                 "no stale checks (a round or final validation after a late merge has not run, or a done writer\n"
                 "that the checks would not cover is still unmerged); the final validation and the integration\n"
-                "review done. --override passes the verdict and stale-check gates with the owner's reason; it is\n"
-                "logged and listed in the final report. Before the commit, harness output logs (*.codex.jsonl,\n"
+                "review done. An integration round accepted with sae accept-review passes like a pass, and the\n"
+                "gates ignore dropped jobs (sae job drop). --override passes the verdict and stale-check gates\n"
+                "with the owner's reason; it is logged and listed in the final report, as are the findings let\n"
+                "go, the accepted integration rounds and the dropped jobs. Before the commit, harness output logs (*.codex.jsonl,\n"
                 "*.claude.json) in the record's jobs/ and reviews/ go, and the committed files outside\n"
                 ".tasks/repo/ get ~ for your home folder. Never pushes.",
                 ["finish claims-status", "finish claims-status --with-open",

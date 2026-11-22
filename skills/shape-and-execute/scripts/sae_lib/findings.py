@@ -54,22 +54,51 @@ from .tasks import (
 from .viewer import remember_repo_safely, stamped_items
 
 
+def decision_source(task, source: str | None) -> tuple[str, list[str]]:
+    """[DECISION-ANYTIME]: the objective and the inputs of a decision job about `source`: the
+    decision request of a parked job, a review round's review file, or any other job's job file
+    and result. Without a source, the question in the job file is the only input."""
+    if source is None:
+        return "Answer the question below.", []
+    job = task.jobs[source]
+    result = rel(result_file(task, source), task.dir)
+    if job["status"] == "parked":
+        return (f"Answer the decision request of {source}.",
+                [f"- The section \"Decision request\" of {result}."])
+    if job["kind"] == "review":
+        return (f"Advise on the review round {source} (target {job.get('target')}).",
+                [f"- The review file of the round: {result}."])
+    inputs = [f"- The job file of {source}: {rel(job_file(task, source), task.dir)}."]
+    if result_file(task, source).exists():
+        inputs.append(f"- Its result: {result}.")
+    return f"Advise on {source}.", inputs
+
+
 def cmd_decision_new(args) -> int:
     root, _ = find_root()
     with open_task(root, args.task) as task:
-        source = task.job(args.from_job)
-        if source["status"] != "parked":
-            fail(EXIT_USAGE, f"{args.from_job} is {source['status']}; decision jobs answer parked jobs.")
-        n = 1 + sum(1 for i in task.jobs if i.startswith(f"DECISION-{args.from_job}-"))
-        job_id = f"DECISION-{args.from_job}-{n}"
+        question = (args.question or "").strip() or None
+        if not args.from_job and not question:
+            fail(EXIT_USAGE, f"Name what the decision is about: --from <job or review round>, "
+                             f"--question \"<question>\", or both.\n  sae decision new {task.id} --question \"<question>\"")
+        if args.from_job:
+            task.job(args.from_job)
+        stem = f"DECISION-{args.from_job}" if args.from_job else "DECISION"
+        n = 1
+        while f"{stem}-{n}" in task.jobs:
+            n += 1
+        job_id = f"{stem}-{n}"
+        objective, inputs = decision_source(task, args.from_job)
+        if question and args.from_job:
+            objective = "Answer the question below, about " + args.from_job + "."
         task.jobs[job_id] = new_job("decision", [], args.difficulty, target=args.from_job)
-        result = rel(result_file(task, args.from_job), task.dir)
-        write_atomic(job_file(task, job_id),
-                     f"---\nid: {job_id}\n---\n\n# {job_id}: decision for {args.from_job}\n\n## Objective\n"
-                     f"Answer the decision request of {args.from_job}.\n\n## Inputs\n"
-                     f"- The section \"Decision request\" of {result}.\n")
+        about = f" for {args.from_job}" if args.from_job else ""
+        text = (f"---\nid: {job_id}\n---\n\n# {job_id}: decision{about}\n\n## Objective\n{objective}\n"
+                + (f"\n## Question\n{question}\n" if question else "")
+                + ("\n## Inputs\n" + "\n".join(inputs) + "\n" if inputs else ""))
+        write_atomic(job_file(task, job_id), text)
         task.event("job.added", job=job_id, kind="decision", needs=[], difficulty=args.difficulty,
-                   target=args.from_job, reason=f"decision for {args.from_job}")
+                   target=args.from_job, reason=f"decision{about}" + (f": {question}" if question else ""))
         emit(args, f"Added {job_id}. Dispatch it: sae dispatch {task.id} {job_id}", {"job": job_id})
     return EXIT_OK
 
@@ -79,11 +108,14 @@ def cmd_log(args) -> int:
     with open_task(root, args.task) as task:
         if args.job:
             task.job(args.job)
+        if args.let_go and (args.type != "decision" or not args.job or task.jobs[args.job]["kind"] != "review"):
+            fail(EXIT_USAGE, "--let-go logs one finding set aside in triage: a decision with --job <REVIEW-ID>.\n"
+                             f"  sae log {task.id} decision \"<finding>: <reason>\" --job <REVIEW-ID> --let-go")
         if args.type == "decision":
             if args.decision_class and args.decision_class not in DECISION_CLASSES:
                 fail(EXIT_USAGE, f"--class must be one of {', '.join(DECISION_CLASSES)}")
             fields = {"class": args.decision_class, "by": args.by, "summary": args.summary, "job": args.job,
-                      "file": args.file}
+                      "file": args.file, "let_go": True if args.let_go else None}
             task.event("decision", **{k: v for k, v in fields.items() if v is not None})
         elif args.type == "amendment":
             if not args.amend_id:
@@ -379,14 +411,22 @@ def close_resolved(task, job_ids: list[str], out: list[str]) -> list[str]:
 
 def register_decision(sub, command):
     """Add the `decision` command group to the parser; returns the group parser."""
-    decision = sub.add_parser("decision", help="Create a decision job for a parked job.",
+    decision = sub.add_parser("decision", help="Create a decision job: for a job, a review round or a question.",
                               description="sae decision new --help for details.")
     decision_sub = decision.add_subparsers(dest="decision_command", metavar="<new>", parser_class=Parser)
-    p = command(decision_sub, "new", "Add DECISION-<ID>-<n> for a parked job; prints the new ID.",
-                "Its job file points to the ## Decision request section of the parked result.",
-                ["decision new claims-status --from STATUS-API"], [0, 1], cmd_decision_new)
+    p = command(decision_sub, "new", "Add a decision job (DECISION-<ID>-<n>, or DECISION-<n> for a question); "
+                                     "prints the new ID.",
+                "--from takes any job or review round, --question a question; give one or both. The job file points\n"
+                "to the parked job's ## Decision request, the review round's review file, or another job's job\n"
+                "file and result, and holds the question. The job it concerns need not park. A decision job only\n"
+                "advises: it dispatches and collects also during a hold or while the task is parked.",
+                ["decision new claims-status --from STATUS-API",
+                 "decision new claims-status --from REVIEW-INTEGRATION-2",
+                 'decision new claims-status --question "Keep the cache, or read through every time?"'],
+                [0, 1], cmd_decision_new)
     p.add_argument("task")
-    p.add_argument("--from", dest="from_job", required=True, metavar="ID")
+    p.add_argument("--from", dest="from_job", metavar="ID")
+    p.add_argument("--question", help="the question the decision job answers; alone or with --from")
     p.add_argument("--difficulty", choices=DIFFICULTIES, default="normal")
     return decision
 
@@ -397,8 +437,10 @@ def register_log(sub, command):
                 "Write an amendment into specs.md under ## Amendments first, then log it with its --id.\n"
                 "--by: human | agent | joint (default agent; agent entries appear in the final report).\n"
                 "A --by human log closes the open asks of its --job (sae ask), or without --job the open asks\n"
-                "without a job.",
+                "without a job. --let-go: a decision that sets one review finding aside in triage, with --job\n"
+                "<REVIEW-ID> and the summary \"<finding>: <reason>\"; the final report lists it under Findings let go.",
                 ['log claims-status decision "Cache status for 60 s" --by agent --class open-tradeoff --job STATUS-API',
+                 'log claims-status decision "Retry on timeout: beyond the Project Stakes" --job REVIEW-STATUS-API --let-go',
                  'log claims-status amendment "Drop CSV export" --id AMEND-1 --by human'], [0, 1], cmd_log)
     p.add_argument("task")
     p.add_argument("type", choices=("decision", "amendment", "note"))
@@ -408,6 +450,7 @@ def register_log(sub, command):
     p.add_argument("--class", dest="decision_class", choices=DECISION_CLASSES)
     p.add_argument("--id", dest="amend_id", metavar="AMEND-ID")
     p.add_argument("--file")
+    p.add_argument("--let-go", action="store_true", help="one finding of the --job review set aside in triage")
 
 
 def register_finding(sub, command):

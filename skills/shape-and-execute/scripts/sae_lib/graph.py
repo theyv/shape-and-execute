@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .common import (
     BRIEF_MAX_LINES,
+    FINAL_STATUSES,
     JOB_ID_RE,
     JOB_KINDS,
     KINDS_BY_PHASE,
@@ -85,7 +86,31 @@ def last_round(task: Task, target: str) -> str | None:
 
 
 def requires_changes(job: dict) -> bool:
+    """The round said changes-required; it still counts toward `max-review-rounds` after an
+    acceptance. For what blocks the task, use `unaccepted_changes`."""
     return job["status"] == "done" and job.get("verdict") == "changes-required"
+
+
+def unaccepted_changes(job: dict) -> bool:
+    """A changes-required round that nobody accepted ([ACCEPT-INTEGRATION]): `sae accept-review`
+    sets `accepted` on an integration round, and the task then continues as after a pass."""
+    return requires_changes(job) and not job.get("accepted")
+
+
+def is_dropped(job: dict) -> bool:
+    """[JOB-DROP]: the owner decided the job must never merge; final like `done`."""
+    return job["status"] == "dropped"
+
+
+def live_writers(task: Task) -> list[str]:
+    """The writer jobs that count for the integration review and the final validation: every
+    writer except the dropped ones ([JOB-DROP])."""
+    return [i for i, j in task.jobs.items() if j["kind"] in WRITER_KINDS and not is_dropped(j)]
+
+
+def round_fixes(task: Task, review_id: str) -> list[str]:
+    """The fix jobs of an integration review round that still count: dropped ones do not."""
+    return [i for i, j in task.jobs.items() if j.get("fix_of") == review_id and not is_dropped(j)]
 
 
 def fix_target(task: Task, job_id: str) -> str | None:
@@ -100,11 +125,11 @@ def integration_parked(task: Task) -> str | None:
     """The integration review round that parks the task, or None: its `max-review-rounds`-th (or
     later) changes-required round while no fix job of that round exists."""
     rounds = review_rounds(task, "integration")
-    if not rounds or not requires_changes(task.jobs[rounds[-1]]):
+    if not rounds or not unaccepted_changes(task.jobs[rounds[-1]]):
         return None
     if sum(1 for i in rounds if requires_changes(task.jobs[i])) < max_review_rounds(task.settings):
         return None
-    if any(j.get("fix_of") == rounds[-1] for j in task.jobs.values()):
+    if round_fixes(task, rounds[-1]):
         return None
     return rounds[-1]
 
@@ -120,31 +145,37 @@ def works_on_unmerged(task: Task, job: dict, need: str) -> bool:
 
 
 def waits_for(task: Task, job_id: str) -> list[str]:
-    """What a pending job waits for; empty when it is ready."""
+    """What a pending job waits for; empty when it is ready. A decision job only advises, so it
+    passes a hold and the parked task ([DECISION-ANYTIME])."""
     jobs = task.jobs
     job = jobs[job_id]
     reasons = []
+    integration_round = job["kind"] == "review" and job.get("target") == "integration"
     for need in job["needs"]:
         other = jobs.get(need)
         if other is None:
             reasons.append(f"{need} (unknown job)")
+        elif is_dropped(other):
+            if not integration_round:  # integration rounds ignore dropped jobs ([JOB-DROP])
+                reasons.append(f"{need} (dropped)")
         elif other["status"] != "done":
             reasons.append(need)
         elif (other["kind"] in WRITER_KINDS and task.uses_worktrees and not other["merged"]
               and not works_on_unmerged(task, job, need)):
             reasons.append(f"{need} (merge)")
     if job["final"]:
-        open_jobs = [i for i, j in jobs.items() if i != job_id and j["status"] != "done"]
+        open_jobs = [i for i, j in jobs.items() if i != job_id and j["status"] not in FINAL_STATUSES]
         if open_jobs:
             reasons.append("all other jobs: " + ", ".join(open_jobs))
         last = last_round(task, "integration")
-        if last and requires_changes(jobs[last]):
+        if last and unaccepted_changes(jobs[last]):
             reasons.append(f"{last} (changes-required: fix jobs, then the next round)")
-    parked = integration_parked(task)
-    if parked:
-        reasons.append(f"the task is parked: {parked} requires changes again")
-    for held in active_holds(task):
-        reasons.append(f"hold after {held}")
+    if job["kind"] != "decision":
+        parked = integration_parked(task)
+        if parked:
+            reasons.append(f"the task is parked: {parked} requires changes again")
+        for held in active_holds(task):
+            reasons.append(f"hold after {held}")
     if not kind_allowed_now(task, job):
         reasons.append(f"phase {task.phase}")
     return reasons

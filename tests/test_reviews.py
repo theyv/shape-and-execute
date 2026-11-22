@@ -390,7 +390,9 @@ class ReviewNoticeTests(ReviewFlowCase):
         self.run_writer(sb, task, "narrow-job-review-notices", "A-LONG-CORE-JOB-IDENTIFIER")
         job_review = self.review(sb, task, "narrow-job-review-notices", "REVIEW-A-LONG-CORE-JOB-IDENTIFIER",
                                  "A-LONG-CORE-JOB-IDENTIFIER", "changes-required")["collect"]
-        self.assertIn("changes required. Add fix jobs:", job_review)
+        # audit 2026-11-20, proposal 2: the lead line sends the orchestrator to triage first
+        self.assertIn("A-LONG-CORE-JOB-IDENTIFIER: changes required. Triage first (execute.md, Loop step 3).",
+                      job_review)
         open_jobs = sb.sae("finish", "narrow-job-review-notices", code=3).stderr
         self.assertIn("Open jobs: SIDE", open_jobs)
         refused = sb.sae("finish", "narrow-job-review-notices", "--with-open", code=3).stderr

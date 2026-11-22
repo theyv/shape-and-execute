@@ -42,7 +42,8 @@ from .config import (
     task_difficulty,
 )
 from .gitutil import find_root, git_user
-from .graph import last_round, requires_changes, run_check
+from .fix_loop import register_job_drop
+from .graph import is_dropped, last_round, requires_changes, run_check
 from .launch import register_job_park
 from .routing import PLANNER_ID, TASK_TARGETS, override_key, planned_planner, planned_review_target, resolve_model
 from .session_tokens import record_session_snapshot
@@ -197,11 +198,19 @@ def cmd_job_add(args) -> int:
             fail(EXIT_USAGE, "The task already has a final job.")
         if args.fix_of:
             target = task.job(args.fix_of)
+            if is_dropped(target):  # [JOB-DROP]: a fix of a dropped job would carry its commits
+                fail(EXIT_USAGE, f"--fix-of {args.fix_of}: {args.fix_of} is dropped; dropped jobs never merge. "
+                                 f"Add an ordinary job: sae job add {task.id} {job_id} --kind implementation "
+                                 f"--reason \"<why>\"")
             integration_round = target["kind"] == "review" and target.get("target") == "integration"
             if args.kind != "implementation" or (target["kind"] not in WRITER_KINDS and not integration_round):
                 fail(EXIT_USAGE, "--fix-of: a fix job is an implementation job that fixes a writer job, or the "
                                  "findings of an integration review round.")
             last = last_round(task, "integration")
+            if integration_round and target.get("accepted"):
+                fail(EXIT_USAGE, f"--fix-of {args.fix_of}: the round was accepted (sae accept-review), so it needs "
+                                 f"no fix jobs. Add an ordinary job: sae job add {task.id} {job_id} --kind "
+                                 f"implementation --reason \"<why>\"")
             if integration_round and (args.fix_of != last or not requires_changes(target)):
                 if requires_changes(task.jobs[last]):
                     fail(EXIT_USAGE, f"--fix-of {args.fix_of}: fix jobs answer the last integration review round. "
@@ -411,10 +420,12 @@ def register_check(sub, command):
 
 def register_job(sub, command):
     """Add the `job` command group to the parser; returns the group parser."""
-    job = sub.add_parser("job", help="Add, edit or remove a job of the graph.", parents=[],
-                         description="Graph changes, per-job model overrides and parking for a harness fallback. "
-                                     "sae job <add|edit|remove|override|park> --help.")
-    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override|park>", parser_class=Parser)
+    job = sub.add_parser("job", help="Add, edit, remove, override, park or drop a job of the graph.", parents=[],
+                         description="Graph changes, per-job model overrides, parking for a harness fallback and "
+                                     "dropping a job on the owner's word. "
+                                     "sae job <add|edit|remove|override|park|drop> --help.")
+    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override|park|drop>",
+                                 parser_class=Parser)
     p = command(job_sub, "add", "Register a job and scaffold jobs/<ID>.md.",
                 f"Kinds: {', '.join(k for k in JOB_KINDS if k not in ('review', 'decision'))} (sae adds review jobs;\n"
                 "decision jobs come from sae decision new). ID: UPPER-KEBAB. --needs: jobs that must be done (and\n"
@@ -472,4 +483,5 @@ def register_job(sub, command):
     p.add_argument("--clear", action="store_true", help="remove the override")
     p.add_argument("--reason", help="why (logged)")
     register_job_park(job_sub, command)
+    register_job_drop(job_sub, command)
     return job
