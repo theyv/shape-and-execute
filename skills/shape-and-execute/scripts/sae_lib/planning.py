@@ -43,6 +43,7 @@ from .config import (
 )
 from .gitutil import find_root, git_user
 from .graph import last_round, requires_changes, run_check
+from .launch import register_job_park
 from .routing import PLANNER_ID, TASK_TARGETS, override_key, planned_planner, planned_review_target, resolve_model
 from .session_tokens import record_session_snapshot
 from .tasks import Task, is_generated, job_file, new_job, open_task, template
@@ -411,8 +412,9 @@ def register_check(sub, command):
 def register_job(sub, command):
     """Add the `job` command group to the parser; returns the group parser."""
     job = sub.add_parser("job", help="Add, edit or remove a job of the graph.", parents=[],
-                         description="Graph changes and per-job model overrides. sae job <add|edit|remove|override> --help.")
-    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override>", parser_class=Parser)
+                         description="Graph changes, per-job model overrides and parking for a harness fallback. "
+                                     "sae job <add|edit|remove|override|park> --help.")
+    job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override|park>", parser_class=Parser)
     p = command(job_sub, "add", "Register a job and scaffold jobs/<ID>.md.",
                 f"Kinds: {', '.join(k for k in JOB_KINDS if k not in ('review', 'decision'))} (sae adds review jobs;\n"
                 "decision jobs come from sae decision new). ID: UPPER-KEBAB. --needs: jobs that must be done (and\n"
@@ -469,4 +471,5 @@ def register_job(sub, command):
     p.add_argument("--effort", help="an effort that model accepts")
     p.add_argument("--clear", action="store_true", help="remove the override")
     p.add_argument("--reason", help="why (logged)")
+    register_job_park(job_sub, command)
     return job
