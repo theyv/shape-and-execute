@@ -359,6 +359,29 @@ class WriterTests(StakesCase):
             stakes.save_profile_stakes(sb.repo, "- One.\n## Hot files\n- Two.")
         self.assertFalse((sb.repo / ".tasks" / "repo" / "profile.md").exists())
 
+    def test_text_with_an_unclosed_code_fence_is_refused_and_the_next_section_stays(self):
+        # REVIEW-INTEGRATION 1: an open fence would hide `## Validation commands`, and the next save would delete it
+        sb = self.home()
+        path = self.profile(sb, "- Old.\n")
+        before = path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "code fence"):
+            stakes.save_profile_stakes(sb.repo, "- Example:\n```\nmake smoke")
+        self.assertEqual(path.read_bytes(), before)
+        # a closed fence, also one holding a heading line, keeps the next section
+        stakes.save_profile_stakes(sb.repo, "- Example:\n```\n## not a section\n```")
+        stakes.save_profile_stakes(sb.repo, "- Corrected.")
+        self.assertEqual(path.read_text(), section("- Corrected.\n"))
+
+    def test_a_stored_section_with_an_unclosed_code_fence_is_never_overwritten(self):
+        # the stored section's end is ambiguous: a save would replace every section after the fence
+        sb = self.home()
+        path = self.profile(sb, "- Example:\n```\nmake smoke\n")
+        before = path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "code fence"):
+            stakes.save_profile_stakes(sb.repo, "- Corrected.")
+        self.assertEqual(path.read_bytes(), before)
+        self.assertIn("## Validation commands", path.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
