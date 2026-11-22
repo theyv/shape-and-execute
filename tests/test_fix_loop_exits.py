@@ -79,17 +79,19 @@ class DecisionAnytimeTests(FixLoopCase):
         self.assertIn("reviews/REVIEW-A.md", text)
         self.assertNotIn("Decision request", text)
         prompt = sb.json("dispatch", "dsrc", "DECISION-REVIEW-A-1")["prompt"]
-        self.assertIn(f"Review round — the findings:          {sb.task_dir(task) / 'reviews' / 'REVIEW-A.md'}",
+        self.assertIn("- Review round REVIEW-A — the findings: reviews/REVIEW-A.md", text)
+        self.assertIn(f"Review round REVIEW-A — the findings:  {sb.task_dir(task) / 'reviews' / 'REVIEW-A.md'}",
                       prompt)
         self.assertNotIn("Decision request", prompt)
         # a done job that did not park: its job file and result, no Decision request section
         sb.json("decision", "new", "dsrc", "--from", "A", "--question", "Is the cache worth it?")
         text = (sb.task_dir(task) / "jobs" / "DECISION-A-1.md").read_text()
         self.assertIn("## Question\nIs the cache worth it?", text)
-        self.assertIn("jobs/A.result.md", text)
+        # one list of inputs: the job file with relative paths, the prompt with absolute ones
+        self.assertIn("## Inputs\n- Job file of A: jobs/A.md\n- Result of A: jobs/A.result.md\n", text)
         prompt = sb.json("dispatch", "dsrc", "DECISION-A-1")["prompt"]
-        self.assertIn(f"Job file of A: {sb.task_dir(task) / 'jobs' / 'A.md'}", prompt)
-        self.assertIn(f"Result of A: {sb.task_dir(task) / 'jobs' / 'A.result.md'}", prompt)
+        self.assertIn(f"Job file of A:                         {sb.task_dir(task) / 'jobs' / 'A.md'}\n"
+                      f"Result of A:                           {sb.task_dir(task) / 'jobs' / 'A.result.md'}", prompt)
         self.assertNotIn("Decision request", prompt)
         # a parked job: as before, the Decision request of its result
         sb.sae("dispatch", "dsrc", "P")
@@ -100,9 +102,9 @@ class DecisionAnytimeTests(FixLoopCase):
         self.assertEqual(sb.json("decision", "new", "dsrc", "--from", "P")["job"], "DECISION-P-1")
         text = (sb.task_dir(task) / "jobs" / "DECISION-P-1.md").read_text()
         self.assertIn('Answer the decision request of P.', text)
-        self.assertIn('- The section "Decision request" of jobs/P.result.md.', text)
+        self.assertIn('- Decision request of P (section "Decision request"): jobs/P.result.md', text)
         prompt = sb.json("dispatch", "dsrc", "DECISION-P-1")["prompt"]
-        self.assertIn(f'Decision request (section "Decision request"): {sb.task_dir(task) / "jobs" / "P.result.md"}',
+        self.assertIn(f'Decision request of P (section "Decision request"): {sb.task_dir(task) / "jobs" / "P.result.md"}',
                       prompt)
 
     def test_decision_job_runs_while_the_round_limit_parks_the_task(self):
@@ -157,14 +159,15 @@ class ChangesRequiredLinesTests(FixLoopCase):
                             settings=["review=selected-jobs"])
         self.run_writer(sb, task, "lines", "A")
         out = self.review_with(sb, task, "lines", "REVIEW-A", "A", "changes-required", ["One"])
-        self.assertIn("\n".join([
-            "A: changes required. Triage first (execute.md, Loop step 3).",
+        self.assertEqual(out.strip().split("\n"), [
+            "REVIEW-A: done — verdict: changes-required",
+            "Triage the findings first (references/modes/execute.md, Loop step 3).",
             "Fix job for the findings you keep:",
             f'  sae job add {task} A-FIX-1 --kind implementation --fix-of A --reason "REVIEW-A: changes required"',
             "Each finding you set aside, logged with its reason:",
             f'  sae log {task} decision "<number>: <reason>" --job REVIEW-A --let-go',
-            "Or accept when the mode lets you decide:",
-            f'  sae merge {task} A --accept-review "<why>"']), out)
+            "Or accept the round when the mode lets you decide:",
+            f'  sae merge {task} A --accept-review "<why>"'])  # no close: finish would wait for A's merge
         sb.sae("job", "add", "lines", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--reason", "round 1")
         sb.job_file(task, "A-FIX-1")
         self.run_writer(sb, task, "lines", "A-FIX-1")
@@ -178,19 +181,23 @@ class ChangesRequiredLinesTests(FixLoopCase):
         sb = self.sandbox()
         task = self.integration_task(sb, "ilines")
         out = self.review_with(sb, task, "ilines", "REVIEW-INTEGRATION", "integration", "changes-required", ["One"])
-        self.assertIn("\n".join([
-            "REVIEW-INTEGRATION: changes required. Triage first (execute.md, Loop step 3).",
+        lines = [
+            "Triage the findings first (references/modes/execute.md, Loop step 3).",
             "Fix job for the findings you keep (sae adds the next round when it is merged):",
             f'  sae job add {task} INTEGRATION-FIX-1 --kind implementation --fix-of REVIEW-INTEGRATION '
             f'--reason "REVIEW-INTEGRATION: changes required"',
             "Each finding you set aside, logged with its reason:",
             f'  sae log {task} decision "<number>: <reason>" --job REVIEW-INTEGRATION --let-go',
-            "Or accept when the mode lets you decide:",
-            f'  sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"']), out)
-        self.assertIn(f'sae finish {task} --override "<reason>"', out)  # still there, on the owner's word
+            "Or accept the round when the mode lets you decide:",
+            f'  sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"',
+            "Or close anyway, on the user's word:",
+            f'  sae finish {task} --override "<reason>"']
+        self.assertEqual(out.strip().split("\n"), ["REVIEW-INTEGRATION: done — verdict: changes-required"] + lines)
         refused = sb.sae("finish", "ilines", code=3).stderr
         self.assertIn(f'sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"', refused)
-        self.assertIn(f'sae accept-review {task} REVIEW-INTEGRATION', sb.sae("next", "ilines").stdout)
+        self.assertIn("  - or close anyway, on the user's word:", refused)
+        # sae next names the round, then the same ways forward
+        self.assertIn("\n".join(["REVIEW-INTEGRATION requires changes."] + lines), sb.sae("next", "ilines").stdout)
 
 
 class AcceptIntegrationTests(FixLoopCase):
@@ -224,10 +231,10 @@ class AcceptIntegrationTests(FixLoopCase):
         sb = self.sandbox()
         task = self.integration_task(sb, "acclimit")
         sb.sae("set", "acclimit", "max-review-rounds=1")
-        out = self.review_with(sb, task, "acclimit", "REVIEW-INTEGRATION", "integration", "changes-required", ["X"])
-        self.assertIn(f'sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"', out)
+        self.review_with(sb, task, "acclimit", "REVIEW-INTEGRATION", "integration", "changes-required", ["X"])
+        self.assertIn(f'sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"', sb.sae("next", "acclimit").stdout)
         self.assertEqual(sb.json("status", "acclimit")["parked_task"], "REVIEW-INTEGRATION")
-        sb.sae("accept-review", "acclimit", "REVIEW-INTEGRATION", "--reason", "owner: good enough")
+        sb.sae("accept-review", "acclimit", "REVIEW-INTEGRATION", "--reason", "user: good enough")
         self.assertIsNone(sb.json("status", "acclimit")["parked_task"])
         self.assertEqual([r["id"] for r in sb.json("next", "acclimit")["ready"]], ["FINAL"])
         refused = sb.sae("job", "add", "acclimit", "INTEGRATION-FIX-1", "--kind", "implementation",
@@ -241,6 +248,8 @@ class AcceptIntegrationTests(FixLoopCase):
                             settings=["review=selected-jobs,integration"])
         self.run_writer(sb, task, "accref", "A")
         self.review_with(sb, task, "accref", "REVIEW-A", "A", "changes-required", ["One"])
+        self.assertIn(f'--reason is empty: sae accept-review {task} REVIEW-A --reason "<why>"',
+                      sb.sae("accept-review", "accref", "REVIEW-A", "--reason", "", code=1).stderr)
         refused = sb.sae("accept-review", "accref", "REVIEW-A", "--reason", "x", code=1).stderr
         self.assertIn(f'sae merge {task} A --accept-review "<why>"', refused)
         sb.sae("accept-review", "accref", "A", "--reason", "x", code=1)  # not a review round
@@ -332,8 +341,13 @@ class JobDropTests(FixLoopCase):
         self.assertIn(f'sae job edit {task} FINAL --needs "LEFT" --reason "RIGHT is dropped"', refused)
         self.assertEqual(self.snapshot(sb, task), before)
         sb.sae("job", "edit", "drop", "FINAL", "--needs", "LEFT", "--reason", "RIGHT is dropped")
-        out = sb.sae("job", "drop", "drop", "RIGHT", "--reason", "owner: wrong approach").stdout
-        self.assertIn("Dropped RIGHT, RIGHT-FIX-1, REVIEW-RIGHT, REVIEW-RIGHT-2: owner: wrong approach", out)
+        # FIX-LOOP-TEXTS issue 8: argparse owns a missing --reason; sae names an empty one
+        self.assertIn("the following arguments are required: --reason",
+                      sb.sae("job", "drop", "drop", "RIGHT", code=1).stderr)
+        self.assertIn("--reason is empty: give the user's reason to drop the job.",
+                      sb.sae("job", "drop", "drop", "RIGHT", "--reason", " ", code=1).stderr)
+        out = sb.sae("job", "drop", "drop", "RIGHT", "--reason", "user: wrong approach").stdout
+        self.assertIn("Dropped RIGHT, RIGHT-FIX-1, REVIEW-RIGHT, REVIEW-RIGHT-2: user: wrong approach", out)
         jobs = sb.state(task)["jobs"]
         for member in ("RIGHT", "RIGHT-FIX-1", "REVIEW-RIGHT", "REVIEW-RIGHT-2"):
             self.assertEqual(jobs[member]["status"], "dropped", member)
@@ -361,8 +375,14 @@ class JobDropTests(FixLoopCase):
         self.assertIn("All jobs done", sb.sae("next", "drop").stdout)
         report = self.report(sb.sae("finish", "drop").stdout)  # no --with-open, no --override
         self.assertEqual(self.section(report, "## Dropped jobs"), [
-            "- RIGHT (with RIGHT-FIX-1, REVIEW-RIGHT, REVIEW-RIGHT-2): owner: wrong approach",
+            "- RIGHT (with RIGHT-FIX-1, REVIEW-RIGHT, REVIEW-RIGHT-2): user: wrong approach",
             "  Their branches stay; nothing of them was merged."])
+        # FIX-LOOP-TEXTS issue 10: the dropped group's reviews are no open verdicts, and a member
+        # that never ran is no job line; "Dropped jobs" names them
+        self.assertEqual([line for line in self.section(report, "## Reviews") if "RIGHT" in line], [])
+        jobs_section = self.section(report, "## Jobs")
+        self.assertFalse([line for line in jobs_section if line.startswith("- REVIEW-RIGHT-2 ")])
+        self.assertIn("- RIGHT · implementation · dropped", jobs_section)
         files = sb.git("ls-tree", "-r", "--name-only", f"task/{task}").splitlines()
         self.assertIn("left.txt", files)
         self.assertNotIn("right.txt", files)
@@ -468,15 +488,49 @@ class ReviewFixLoopExitsTests(FixLoopCase):
 
     def test_let_go_refuses_an_absent_finding(self):
         """REVIEW-FIX-LOOP-EXITS-2 finding 2: the number must name exactly one finding of the
-        review; a review without numbered findings has none to let go."""
+        review."""
         sb = self.sandbox()
         task = self.integration_task(sb, "letabs")
-        self.review_with(sb, task, "letabs", "REVIEW-INTEGRATION", "integration", "changes-required", [])
+        self.review_with(sb, task, "letabs", "REVIEW-INTEGRATION", "integration", "changes-required", ["One"])
         before = self.snapshot(sb, task)
         refused = sb.sae("log", "letabs", "decision", "2: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
                          code=1).stderr
-        self.assertIn("REVIEW-INTEGRATION has no finding 2", refused)
+        self.assertIn("REVIEW-INTEGRATION has no finding 2; its findings are 1:", refused)
         self.assertEqual(self.snapshot(sb, task), before)
+
+    def test_let_go_by_title_when_the_review_numbers_no_finding(self):
+        """FIX-LOOP-TEXTS issue 14: a review without numbered findings still lets a finding go, by
+        its title; a review without a verdict says when its findings can go."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "lettitle")
+        sb.json("dispatch", "lettitle", "REVIEW-INTEGRATION")
+        refused = sb.sae("log", "lettitle", "decision", "1: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn(f"REVIEW-INTEGRATION is running: it has no findings to let go yet. Log them after "
+                      f"sae collect {task} REVIEW-INTEGRATION.", refused)
+        path = sb.task_dir(task) / "reviews" / "REVIEW-INTEGRATION.md"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("---\ntarget: integration\nverdict: changes-required\n---\n\n# Review\n\n## Findings\n\n"
+                        "### Slow path — major\n**Expected:** fast\n\n### Odd log — minor\n**Expected:** quiet\n")
+        out = sb.sae("collect", "lettitle", "REVIEW-INTEGRATION").stdout
+        line = f'sae log {task} decision "<finding>: <reason>" --job REVIEW-INTEGRATION --let-go'
+        self.assertIn(f"  {line}", out)
+        before = self.snapshot(sb, task)
+        refused = sb.sae("log", "lettitle", "decision", "2: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertEqual(refused.strip().split("\n")[-2:], [
+            "REVIEW-INTEGRATION numbers none of its findings: name the finding by its title.", f"  {line}"])
+        refused = sb.sae("log", "lettitle", "decision", "Odd log:", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn('--let-go needs a reason after "Odd log:"', refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+        sb.sae("log", "lettitle", "decision", "Odd log: cosmetic", "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("accept-review", "lettitle", "REVIEW-INTEGRATION", "--reason", "slow only in tests")
+        self.final(sb, task, "lettitle")
+        report = self.report(sb.sae("finish", "lettitle").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-INTEGRATION: Odd log — let go: cosmetic",
+            "- REVIEW-INTEGRATION: Slow path — accepted: slow only in tests"])
 
     def test_let_go_refuses_a_blank_reason(self):
         """REVIEW-FIX-LOOP-EXITS-2 finding 2: "2:" names a finding but gives no reason."""
@@ -524,10 +578,11 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         sb.json("decision", "new", "dlim", "--from", "A")
         text = (sb.task_dir(task) / "jobs" / "DECISION-A-1.md").read_text()
         self.assertNotIn("Decision request", text)
-        self.assertIn("- The review round that parked it: reviews/REVIEW-A.md.", text)
+        self.assertIn("## Inputs\n- Review round that parked A: reviews/REVIEW-A.md\n- Job file of A: jobs/A.md\n"
+                      "- Result of A: jobs/A.result.md\n", text)
         prompt = sb.json("dispatch", "dlim", "DECISION-A-1")["prompt"]
         self.assertNotIn("Decision request", prompt)
-        self.assertIn(f"Review round that parked A: {sb.task_dir(task) / 'reviews' / 'REVIEW-A.md'}", prompt)
+        self.assertIn(f"Review round that parked A:            {sb.task_dir(task) / 'reviews' / 'REVIEW-A.md'}", prompt)
 
 
 if __name__ == "__main__":

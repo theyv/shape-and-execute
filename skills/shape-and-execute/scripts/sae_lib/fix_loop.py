@@ -8,16 +8,34 @@ import re
 
 from .common import EXIT_OK, EXIT_USAGE, WRITER_KINDS, changed_by, emit, fail, iso, read_text
 from .gitutil import find_root
-from .graph import fix_target, is_dropped, last_round, requires_changes, review_rounds
+from .graph import fix_target, is_dropped, last_changes_round, last_round, requires_changes, review_rounds
 from .markdown import md_section, split_frontmatter, strip_html_comments
 from .tasks import Task, open_task, result_file
+
+# Pointers into the skill's files name the path relative to the skill folder.
+EXECUTE_MD = "references/modes/execute.md"
 
 
 # ------------------------------------------------------------- changes-required lines
 
+def fix_job_command(task: Task, target: str) -> str:
+    """The `sae job add` line of the next fix job of a job, or of an integration review round,
+    with the first free `-FIX-<n>`; its reason names the changes-required round it answers."""
+    review = target in task.jobs and task.jobs[target]["kind"] == "review"
+    stem = "INTEGRATION" if review else target
+    n = 1
+    while f"{stem}-FIX-{n}" in task.jobs:
+        n += 1
+    round_id = target if review else last_changes_round(task, target) or f"REVIEW-{target}"
+    return (f"sae job add {task.id} {stem}-FIX-{n} --kind implementation --fix-of {target} "
+            f"--reason \"{round_id}: changes required\"")
+
+
 def let_go_line(task: Task, review_id: str) -> str:
-    """[TRIAGE]: the command that logs one finding the orchestrator sets aside, by its number."""
-    return f'sae log {task.id} decision "<number>: <reason>" --job {review_id} --let-go'
+    """[TRIAGE]: the command that logs one finding the orchestrator sets aside: by its number, or
+    by its title when the review numbers none."""
+    name = "<finding>" if by_title(task, review_id) else "<number>"
+    return f'sae log {task.id} decision "{name}: <reason>" --job {review_id} --let-go'
 
 
 def accept_line(task: Task, review_id: str, target: str | None) -> str:
@@ -28,15 +46,26 @@ def accept_line(task: Task, review_id: str, target: str | None) -> str:
     return f'sae merge {task.id} {target} --accept-review "<why>"'
 
 
-def changes_required_lines(task: Task, review_id: str, target: str, fix_command: str) -> list[str]:
-    """The message of a changes-required round below the round limit: the lead line, a fix job
-    with a fresh ID, the let-go line and the accept line (audit 2026-11-20, proposal 2)."""
-    lead = review_id if target == "integration" else target
-    after = " (sae adds the next round when it is merged)" if target == "integration" else ""
-    return [f"{lead}: changes required. Triage first (execute.md, Loop step 3).",
-            f"Fix job for the findings you keep{after}:", f"  {fix_command}",
-            "Each finding you set aside, logged with its reason:", f"  {let_go_line(task, review_id)}",
-            "Or accept when the mode lets you decide:", f"  {accept_line(task, review_id, target)}"]
+def close_anyway_command(task: Task) -> str:
+    return f'sae finish {task.id} --override "<reason>"'
+
+
+def changes_required_lines(task: Task, review_id: str, target: str) -> list[str]:
+    """The ways forward from a changes-required round below the round limit: triage, a fix job
+    with a fresh ID, the let-go line, the accept line and, for the integration, the close
+    (audit 2026-11-20, proposal 2). `sae collect` prints them after the round's verdict line,
+    `sae next` after a line that names the round."""
+    integration = target == "integration"
+    after = " (sae adds the next round when it is merged)" if integration else ""
+    lines = [f"Triage the findings first ({EXECUTE_MD}, Loop step 3).",
+             f"Fix job for the findings you keep{after}:", f"  {fix_job_command(task, review_id if integration else target)}",
+             "Each finding you set aside, logged with its reason:", f"  {let_go_line(task, review_id)}",
+             "Or accept the round when the mode lets you decide:", f"  {accept_line(task, review_id, target)}"]
+    # Not for a job's round: sae finish --override still waits for the final validation, which
+    # waits for the unmerged job.
+    if integration:
+        lines += ["Or close anyway, on the user's word:", f"  {close_anyway_command(task)}"]
+    return lines
 
 
 # ------------------------------------------------------------------- sae job drop
@@ -71,7 +100,7 @@ def cmd_job_drop(args) -> int:
         job = task.job(job_id)
         reason = (args.reason or "").strip()
         if not reason:
-            fail(EXIT_USAGE, "--reason is required: the owner's reason to drop the job.")
+            fail(EXIT_USAGE, "--reason is empty: give the user's reason to drop the job.")
         if job["kind"] not in WRITER_KINDS:
             fail(EXIT_USAGE, f"{job_id} is a {job['kind']} job; only writer jobs are dropped.")
         target = fix_target(task, job_id)
@@ -125,8 +154,8 @@ def cmd_job_drop(args) -> int:
 
 def register_job_drop(job_sub, command) -> None:
     """Add `sae job drop` to the `job` command group."""
-    p = command(job_sub, "drop", "Drop an unmerged writer job and its fix chain, on the owner's word.",
-                "Only on the owner's word. <ID> is a parked, failed or done writer job that is not merged. Its group\n"
+    p = command(job_sub, "drop", "Drop an unmerged writer job and its fix chain, on the user's word.",
+                "Only on the user's word. <ID> is a parked, failed or done writer job that is not merged. Its group\n"
                 "is dropped with it: every fix job that commits to its branch, an INTEGRATE-<ID> job that would\n"
                 "merge it, and their review rounds. Dropped is final: the jobs never merge (sae merge, collect and\n"
                 "finish refuse them), and the integration review, the final validation and the finish gates\n"
@@ -135,11 +164,11 @@ def register_job_drop(job_sub, command) -> None:
                 "worktrees or no git (the changes are already in the shared checkout), or a job outside the group\n"
                 "needs a member (it prints the sae job edit --needs call to run first). Logs a decision; the\n"
                 "final report lists the dropped jobs.",
-                ['job drop claims-status STATUS-API --reason "owner: the cache approach is wrong; rebuild it"'],
+                ['job drop claims-status STATUS-API --reason "user: the cache approach is wrong; rebuild it"'],
                 [0, 1], cmd_job_drop)
     p.add_argument("task")
     p.add_argument("id")
-    p.add_argument("--reason", required=True, help="the owner's reason; logged and listed in the final report")
+    p.add_argument("--reason", required=True, help="the user's reason; logged and listed in the final report")
 
 
 # --------------------------------------------------------------- sae accept-review
@@ -151,7 +180,7 @@ def cmd_accept_review(args) -> int:
         review = task.job(review_id)
         reason = (args.reason or "").strip()
         if not reason:
-            fail(EXIT_USAGE, f"--reason is required: sae accept-review {task.id} {review_id} --reason \"<why>\"")
+            fail(EXIT_USAGE, f"--reason is empty: sae accept-review {task.id} {review_id} --reason \"<why>\"")
         target = review.get("target")
         if review["kind"] != "review":
             fail(EXIT_USAGE, f"{review_id} is a {review['kind']} job, not a review round.")
@@ -188,7 +217,7 @@ def cmd_accept_review(args) -> int:
 def register_accept_review(sub, command) -> None:
     """Add the `accept-review` command to the parser."""
     p = command(sub, "accept-review", "Accept the last changes-required integration review round with a reason.",
-                "When the mode lets you decide, or on the owner's word at the round limit. The integration gate, the\n"
+                "When the mode lets you decide, or on the user's word at the round limit. The integration gate, the\n"
                 "final validation and sae finish then proceed as after a pass, without --override; a park at the\n"
                 "round limit ends. Logs a decision; the final report lists every finding of the round with this\n"
                 "reason. A job review is accepted with sae merge <task> <ID> --accept-review \"<why>\" instead.",
@@ -231,17 +260,34 @@ def round_findings(task: Task, review_id: str) -> list[tuple[str | None, str]]:
     return review_findings(read_text(result_file(task, review_id)) if review_id in task.jobs else None)
 
 
+def by_title(task: Task, review_id: str) -> bool:
+    """A done review that numbers none of its findings: a let-go names the finding by its title."""
+    done = review_id in task.jobs and task.jobs[review_id]["status"] == "done"
+    return done and not any(n for n, _ in round_findings(task, review_id))
+
+
 def let_go_errors(task: Task, review_id: str, summary: str) -> str | None:
-    """Why a --let-go summary does not name exactly one finding of the round with a reason, or None."""
+    """Why a --let-go summary does not name exactly one finding of the round with a reason, or None.
+    A review that numbers no finding takes "<finding title>: <reason>"."""
+    review = task.jobs[review_id]
+    if review["status"] != "done":
+        return (f"{review_id} is {review['status']}: it has no findings to let go yet. Log them after "
+                f"sae collect {task.id} {review_id}.")
     number, reason = let_go_finding(summary)
     line = let_go_line(task, review_id)
+    if by_title(task, review_id):
+        title, _, reason = str(summary or "").partition(":")
+        if number is not None or not title.strip():
+            return f"{review_id} numbers none of its findings: name the finding by its title.\n  {line}"
+        if not reason.strip():
+            return f"--let-go needs a reason after \"{title.strip()}:\":\n  {line}"
+        return None
     if number is None:
         return f"--let-go names one finding of {review_id} by its number:\n  {line}"
     numbers = [n for n, _ in round_findings(task, review_id) if n]
     if numbers.count(number) != 1:
-        found = f"its findings are {', '.join(numbers)}" if numbers else "its review lists no numbered findings yet"
         problem = f"has no finding {number}" if number not in numbers else f"numbers finding {number} more than once"
-        return f"{review_id} {problem}; {found}:\n  {line}"
+        return f"{review_id} {problem}; its findings are {', '.join(numbers)}:\n  {line}"
     if not reason:
         return f"--let-go needs a reason after \"{number}:\":\n  {line}"
     return None
@@ -249,11 +295,11 @@ def let_go_errors(task: Task, review_id: str, summary: str) -> str | None:
 
 def let_go_lines(task: Task, events: list[dict]) -> list[str]:
     """[LET-GO-REPORT]: every finding let go, once, with its reason: each finding a --let-go
-    decision names by number (the latest reason wins), then each other finding of an accepted
-    review or round with the acceptance reason."""
+    decision names by number, or by title when its review numbers none (the latest reason wins),
+    then each other finding of an accepted review or round with the acceptance reason."""
     decisions = [e for e in events if e["type"] == "decision"]
     titles: dict[str, dict[str, str]] = {}
-    let_go: dict[tuple[str, str], str] = {}
+    let_go: set[tuple[str, str]] = set()  # (review, number) or (review, title) of a finding let go
     lines_of: dict[tuple[str, str], int] = {}
     lines: list[str] = []
     for event in decisions:
@@ -261,15 +307,17 @@ def let_go_lines(task: Task, events: list[dict]) -> list[str]:
             continue
         review_id = str(event.get("job"))
         number, reason = let_go_finding(event.get("summary"))
-        if number is None:  # logged before let-go named a number
-            lines.append(f"- {review_id}: {event.get('summary')}")
-            continue
-        if review_id not in titles:
-            titles[review_id] = {n: t for n, t in round_findings(task, review_id) if n}
-        title = titles[review_id].get(number) or f"finding {number}"
-        line = f"- {review_id}: {title} — let go: {reason}"
-        key = (review_id, number)
-        let_go[key] = reason
+        if number is None:  # by title: the review numbers none of its findings
+            title, _, reason = str(event.get("summary") or "").partition(":")
+            title, reason = title.strip(), reason.strip()
+            key = (review_id, title)
+            line = f"- {review_id}: {title} — let go: {reason}" if reason else f"- {review_id}: {event.get('summary')}"
+        else:
+            if review_id not in titles:
+                titles[review_id] = {n: t for n, t in round_findings(task, review_id) if n}
+            key = (review_id, number)
+            line = f"- {review_id}: {titles[review_id].get(number) or f'finding {number}'} — let go: {reason}"
+        let_go.add(key)
         if key in lines_of:
             lines[lines_of[key]] = line
         else:
@@ -286,7 +334,7 @@ def let_go_lines(task: Task, events: list[dict]) -> list[str]:
         if not findings:
             lines.append(f"- {review_id}: every finding (no finding titles in its review file) — accepted: {reason}")
         lines += [f"- {review_id}: {title} — accepted: {reason}" for number, title in findings
-                  if not (number and (review_id, number) in let_go)]
+                  if (review_id, number or title) not in let_go]
     return lines
 
 

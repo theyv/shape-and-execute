@@ -27,7 +27,7 @@ from .common import (
 )
 from .config import cfg, load_config, max_review_rounds, max_verify_failures
 from .findings import close_resolved, resolution_notes
-from .fix_loop import accept_line, changes_required_lines
+from .fix_loop import EXECUTE_MD, accept_line, changes_required_lines, close_anyway_command, fix_job_command
 from .gitutil import find_root, git, run
 from .graph import (
     add_generated_job,
@@ -43,7 +43,7 @@ from .graph import (
     unaccepted_changes,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .park_story import INTEGRATION, PARK_OPENING, approach_proposal_line, mark_limit_park, option_lines
+from .park_story import INTEGRATION, PARK_OPENING, approach_proposal_line, mark_limit_park
 from .launch import command_tokens
 from .prompts import harness_output_files
 from .routing import override_key, resolve_model
@@ -422,17 +422,6 @@ def finish_merges(task: Task) -> list[str]:
             and not any(jobs[r]["status"] != "done" for r in review_rounds(task, i))]
 
 
-def fix_job_command(task: Task, target: str, reason: str = "<finding>") -> str:
-    """The `sae job add` line of the next fix job of a job, or of an integration review round,
-    with the first free `-FIX-<n>`."""
-    stem = "INTEGRATION" if target in task.jobs and task.jobs[target]["kind"] == "review" else target
-    n = 1
-    while f"{stem}-FIX-{n}" in task.jobs:
-        n += 1
-    return (f"sae job add {task.id} {stem}-FIX-{n} --kind implementation --fix-of {target} "
-            f"--reason \"{reason}\"")
-
-
 def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
     """[FINISH-VERDICT-GATE]: ([(review, fix-of target)], held-back jobs) for the last round of
     the integration review, and of each job review of an unmerged job, that says
@@ -491,7 +480,7 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
     """The gates of `sae finish`, checked before it merges anything. Refuses
     (exit 3), or returns the gates that `--override` passes: [{"gate", "jobs"}]."""
     jobs = task.jobs
-    forward = f"sae finish {task.id} --override \"<reason>\""
+    forward = close_anyway_command(task)
     running = [i for i, j in jobs.items() if j["status"] == "running"]
     if running:
         fail(EXIT_GATE, f"Still running: {', '.join(running)}. Collect them first:\n"
@@ -512,7 +501,7 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
                 lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}",
                           "  - or accept the round when the mode lets you decide:",
                           f"    {accept_line(task, review, 'integration' if review == target else target)}"]
-            lines += ["  - or close anyway, with the owner's reason:", f"    {forward}"]
+            lines += ["  - or close anyway, on the user's word:", f"    {forward}"]
             fail(EXIT_GATE, "\n".join(lines))
         overridden.append({"gate": "verdict", "jobs": [r for r, _ in verdicts] + sorted(verdict_held)})
     if stale:
@@ -520,7 +509,7 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
             fail(EXIT_GATE, "\n".join(["Finish refused: the checks do not cover the code that will be closed."]
                                       + [f"  - {p}" for p in stale]
                                       + ["Run the checks:", f"  sae next {task.id}",
-                                         "Or close anyway, with the owner's reason:", f"  {forward}"]))
+                                         "Or close anyway, on the user's word:", f"  {forward}"]))
         overridden.append({"gate": "stale", "jobs": sorted(stale_held) + finish_merges(task)})
     passed = held if override is not None else set()
     finals = [i for i, j in jobs.items() if j["final"] and j["status"] != "done" and i not in passed]
@@ -589,7 +578,7 @@ def cmd_collect(args) -> int:
         out: list[str] = [f"{job_id}: {status}" + (f" — {summary}" if summary else "")]
         if disputed:
             out.append(f"{disputed} disputed finding{'s' if disputed > 1 else ''}: settle "
-                       f"{'them' if disputed > 1 else 'it'} (see execute.md). Read {path}.")
+                       f"{'them' if disputed > 1 else 'it'} ({EXECUTE_MD}, Disputed findings). Read {path}.")
         proposal = approach_proposal_line(path, body) if status == "done" else None
         if proposal:  # [FIX-WORKER], audit 2026-11-20 proposal 3
             out.append(proposal)
@@ -617,7 +606,7 @@ def cmd_collect(args) -> int:
         else:
             job["status"] = "parked"
             out.append(f"Parked: {parked_reason(task, job_id)}")
-            out.append(f"Decision flow: answer it, or ask the user (mode table). To add a decision job:\n"
+            out.append(f"Decision flow ({EXECUTE_MD}): answer it, or ask the user (mode table). To add a decision job:\n"
                        f"  sae decision new {task.id} --from {job_id}")
         materialize_integration_review(task, out)
         emit(args, "\n".join(out), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
@@ -701,14 +690,13 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         subject["summary"] = (f"{review_id}: changes required after {subject['review_rounds']} review rounds "
                               f"(max-review-rounds {limit}) — human decision")
         mark_limit_park(task, review_id)
+        n = subject["review_rounds"]
         out.append("\n".join([PARK_OPENING,
-                               f"{target} parked: {subject['review_rounds']} review rounds required changes "
-                               f"(max-review-rounds is {limit}). The story to relay, round by round: "
-                               f"sae next {task.id}",
-                               *option_lines(task, target, review_id)]))
+                               f"{target} parked: {n} review round{'s' if n != 1 else ''} required changes "
+                               f"(max-review-rounds is {limit}). The story and the options to relay: "
+                               f"sae next {task.id}"]))
     else:
-        fix = fix_job_command(task, target, f"{review_id}: changes required")
-        out.append("\n".join(changes_required_lines(task, review_id, target, fix)))
+        out.append("\n".join(changes_required_lines(task, review_id, target)))
     return EXIT_OK
 
 
@@ -717,19 +705,15 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
     if verdict in POSITIVE_VERDICTS:
         out.append(f"{review_id}: {verdict}. The final validation can run.")
         return EXIT_OK
-    forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
         limit = max_review_rounds(task.settings)
         mark_limit_park(task, review_id)
         out.append("\n".join([PARK_OPENING,
                                f"The task is parked: {review_id} still requires changes after a fix round "
-                               f"(max-review-rounds is {limit}). The story to relay, round by round: "
-                               f"sae next {task.id}",
-                               *option_lines(task, INTEGRATION, review_id)]))
+                               f"(max-review-rounds is {limit}). The story and the options to relay: "
+                               f"sae next {task.id}"]))
     else:
-        fix = fix_job_command(task, review_id, f"{review_id}: changes required")
-        out.append("\n".join(changes_required_lines(task, review_id, "integration", fix)
-                              + ["Or, on the owner's word, close anyway:", f"  {forward}"]))
+        out.append("\n".join(changes_required_lines(task, review_id, INTEGRATION)))
     return EXIT_OK
 
 

@@ -9,18 +9,18 @@ import re
 from pathlib import Path
 
 from .config import max_review_rounds
-from .fix_loop import FINDING_HEADING_RE, accept_line
+from .fix_loop import EXECUTE_MD, FINDING_HEADING_RE, accept_line, close_anyway_command, fix_job_command
 from .graph import fix_target, integration_parked, requires_changes, review_rounds
 from .markdown import has_content, md_section, split_frontmatter, strip_html_comments
 from .tasks import Task, job_file, result_file
 
 # Audit 2026-11-20, proposal 2 (owner accepted): the opening of every park message at the round
-# limit and of every story.
-PARK_OPENING = ("Parked at the round limit: the choice is the user's, in every mode. Add no fix job and accept "
-                "nothing before the user answers: a fix job unparks the job. Relay the story with your "
-                "recommendation and its reason.")
+# limit and of every story, for a parked job and for the parked task.
+PARK_OPENING = ("Parked at the round limit: the choice is the user's, in every mode. Relay the story with your "
+                "recommendation and its reason, and run an option only after the user answers.")
 # Audit 2026-11-20, proposal 3: `sae collect` of a done result with an Approach proposal.
-APPROACH_PROPOSAL_COLLECT = "Approach proposal in {path}: read that section; it is a decision (execute.md, Decision flow)."
+APPROACH_PROPOSAL_COLLECT = ("Approach proposal in {path}: read that section; it is a decision "
+                             f"({EXECUTE_MD}, Decision flow).")
 INTEGRATION = "integration"
 INTEGRATION_LABEL = "REVIEW-INTEGRATION"  # the target name in the approach paragraph of an integration fix
 
@@ -208,25 +208,26 @@ def limit_parked_jobs(task: Task) -> list[str]:
 
 
 def park_options(task: Task, key: str, review_id: str) -> list[dict]:
-    """The choices at the round limit, each with its commands (audit 2026-11-20, proposal 2)."""
-    from .reviews import fix_job_command  # late import: reviews imports this module
+    """The choices at the round limit, each with the commands to run once the user chose it
+    (audit 2026-11-20, proposal 2). A parked task has no drop: the integration review runs only
+    after every writer merged, and a merged job cannot be dropped."""
     limit = max_review_rounds(task.settings)
-    fix_target_id = review_id if key == INTEGRATION else key
-    another = [fix_job_command(task, fix_target_id, "<finding>")]
+    integration = key == INTEGRATION
+    another = [fix_job_command(task, review_id if integration else key)]
     if limit < 10:
         another.append(f"sae set {task.id} max-review-rounds={limit + 1}")
-    drop = (f"sae job drop {task.id} {'<ID>' if key == INTEGRATION else key} --reason \"<why>\"  "
-            "(only on the user's word)")
+    approach = [] if integration else [f'sae job drop {task.id} {key} --reason "<why>"']
     options = [
         {"choice": "another round", "commands": another},
-        {"choice": "change the approach", "commands": [drop, f"sae decision new {task.id} --from {review_id}"]},
-        {"choice": "reduce the requirement",
-         "commands": ["an amendment: append it under ## Amendments in specs.md, then",
-                      f"sae log {task.id} amendment \"<summary>\" --id <AMEND-ID> --by human"]},
-        {"choice": "accept", "commands": [accept_line(task, review_id, INTEGRATION if key == INTEGRATION else key)]},
+        {"choice": "change the approach", "commands": approach + [f"sae decision new {task.id} --from {review_id}"]},
+        {"choice": "reduce the requirement: append an amendment under ## Amendments in specs.md, then log it",
+         "commands": [f"sae log {task.id} amendment \"<summary>\" --id <AMEND-ID> --by human"]},
+        {"choice": "accept", "commands": [accept_line(task, review_id, key)]},
     ]
-    if key == INTEGRATION:
-        options.append({"choice": "close anyway", "commands": [f"sae finish {task.id} --override \"<reason>\""]})
+    # Not for a parked job: sae finish --override still waits for the final validation, which
+    # waits for the unmerged job.
+    if integration:
+        options.append({"choice": "close anyway", "commands": [close_anyway_command(task)]})
     return options
 
 
@@ -290,12 +291,12 @@ def park_story_text(task: Task, story: dict) -> str:
     """The story as `sae next` and `sae status` print it."""
     key, n, limit = story["target"], story["changes_rounds"], story["max_rounds"]
     if key == INTEGRATION:
-        head = (f"The task is parked for the owner: {story['parked_by']} still requires changes after a fix round "
+        head = (f"The task is parked for the user: {story['parked_by']} still requires changes after a fix round "
                 f"({n} changes-required integration rounds, max-review-rounds {limit}). Nothing is dispatched "
-                "until the owner chooses (decision jobs still run).")
+                "until the user chooses (decision jobs still run).")
         lines = [story["opening"], head, f"Task: {story['objective']}"]
     else:
-        head = (f"{key} is parked for the owner: {n} review rounds required changes "
+        head = (f"{key} is parked for the user: {n} review round{'s' if n != 1 else ''} required changes "
                 f"(max-review-rounds {limit}).")
         lines = [story["opening"], head]
         if story["objective"]:

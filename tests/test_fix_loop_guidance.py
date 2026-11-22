@@ -17,10 +17,10 @@ from test_reviews import ReviewFlowCase
 sys.path.insert(0, str(SCRIPTS))
 from sae_lib.park_story import PARK_OPENING  # noqa: E402
 
-OPENING = "Add no fix job and accept nothing before the user answers"
+OPENING = "run an option only after the user answers"
 PARAGRAPH = "Before you patch, read the earlier review rounds of"
 POINTER = 'Read first: the "Approach proposal" in'
-COLLECT_PROPOSAL = "read that section; it is a decision (execute.md, Decision flow)."
+COLLECT_PROPOSAL = "read that section; it is a decision (references/modes/execute.md, Decision flow)."
 
 
 def review_text(target: str, verdict: str, findings: list[tuple[str, str]]) -> str:
@@ -89,16 +89,16 @@ class JobApproachCheckTests(GuidanceCase):
         self.assertIn(str(sb.task_dir(task) / "reviews" / "REVIEW-CORE-2.md"), second["prompt"])
         parked = self.review_round(sb, task, "jthree", "REVIEW-CORE-3", "CORE",
                                    [("Stale status after a bulk import", "Store the status once, not derived")])
-        # audit proposal 2: the park message opens with the round-limit line and points to the story
-        self.assertTrue(parked["collect"].split("\n", 2)[1].startswith(PARK_OPENING), parked["collect"])
-        self.assertIn(f"sae next {task}", parked["collect"])
-        self.assertIn(f"sae set {task} max-review-rounds=4", parked["collect"])
-        self.assertIn(f"sae job drop {task} CORE --reason", parked["collect"])
-        self.assertIn(f"sae decision new {task} --from REVIEW-CORE-3", parked["collect"])
+        # audit proposal 2: the park message opens with the round-limit line and points to the story,
+        # which alone prints the options in full
+        self.assertEqual(parked["collect"].strip().split("\n")[1:], [
+            PARK_OPENING,
+            "CORE parked: 3 review rounds required changes (max-review-rounds is 3). "
+            f"The story and the options to relay: sae next {task}"])
         for command in ("next", "status"):
             text = sb.sae(command, "jthree").stdout
             story = text[text.index(PARK_OPENING):]
-            self.assertIn("CORE is parked for the owner: 3 review rounds required changes (max-review-rounds 3).", story)
+            self.assertIn("CORE is parked for the user: 3 review rounds required changes (max-review-rounds 3).", story)
             self.assertIn("Objective of CORE: Cache the claim status for the portal.", story)
             self.assertIn("Its result: CORE", story)
             self.assertIn("Round 1 — REVIEW-CORE: changes-required\n  Finding: Stale status after an update\n"
@@ -110,8 +110,21 @@ class JobApproachCheckTests(GuidanceCase):
                           "    Suggested fix: Store the status once, not derived", story)
             for option in ("another round:", "change the approach:", "reduce the requirement:", "accept:"):
                 self.assertIn(f"  - {option}", story)
-            self.assertIn(f'sae merge {task} CORE --accept-review "<why>"', story)
-            self.assertIn(f'sae ask {task} "<question>" --job CORE', story)
+            self.assertIn("\n".join([
+                "Options:",
+                "  - another round:",
+                f'    sae job add {task} CORE-FIX-3 --kind implementation --fix-of CORE '
+                f'--reason "REVIEW-CORE-3: changes required"',
+                f"    sae set {task} max-review-rounds=4",
+                "  - change the approach:",
+                f'    sae job drop {task} CORE --reason "<why>"',
+                f"    sae decision new {task} --from REVIEW-CORE-3",
+                "  - reduce the requirement: append an amendment under ## Amendments in specs.md, then log it:",
+                f'    sae log {task} amendment "<summary>" --id <AMEND-ID> --by human',
+                "  - accept:",
+                f'    sae merge {task} CORE --accept-review "<why>"',
+                f'While you wait for the answer: sae ask {task} "<question>" --job CORE']), story)
+            self.assertNotIn("close anyway", story)  # sae finish --override would wait for CORE's merge
         data = sb.json("next", "jthree")
         self.assertEqual([s["target"] for s in data["park_stories"]], ["CORE"])
         story = data["park_stories"][0]
@@ -159,17 +172,23 @@ class IntegrationApproachCheckTests(GuidanceCase):
                       second["prompt"])
         parked = self.review_round(sb, task, "ithree", "REVIEW-INTEGRATION-3", "integration", [("Retry in RIGHT", "Same")])
         self.assertIn(PARK_OPENING + "\nThe task is parked: REVIEW-INTEGRATION-3", parked["collect"])
-        self.assertIn(f'sae accept-review {task} REVIEW-INTEGRATION-3 --reason "<why>"', parked["collect"])
+        self.assertNotIn("Options:", parked["collect"])
         for command in ("next", "status"):
             text = sb.sae(command, "ithree").stdout
             self.assertEqual(text.count(PARK_OPENING), 1, text)
             story = text[text.index(PARK_OPENING):]
-            self.assertIn("The task is parked for the owner: REVIEW-INTEGRATION-3", story)
+            self.assertIn("The task is parked for the user: REVIEW-INTEGRATION-3", story)
             self.assertIn("Task: ithree", story)
             self.assertIn("Round 1 — REVIEW-INTEGRATION: changes-required\n  Finding: Two retry rules\n"
                           "    Suggested fix: One retry helper\n  Fix INTEGRATION-FIX-1 (done): one helper\n"
                           "    Limit: Never change the API, because clients depend on it.", story)
-            self.assertIn(f'sae finish {task} --override "<reason>"', story)
+            self.assertIn("\n".join([
+                "  - change the approach:",  # no drop: every writer is merged before the integration review
+                f"    sae decision new {task} --from REVIEW-INTEGRATION-3",
+                "  - reduce the requirement: append an amendment under ## Amendments in specs.md, then log it:"]), story)
+            self.assertNotIn("<ID>", story)
+            self.assertIn(f'    sae accept-review {task} REVIEW-INTEGRATION-3 --reason "<why>"', story)
+            self.assertIn(f'  - close anyway:\n    sae finish {task} --override "<reason>"', story)
         self.assertEqual(sb.json("next", "ithree")["park_stories"][0]["target"], "integration")
 
     def test_one_round_the_fix_after_the_park_gets_the_paragraph(self):

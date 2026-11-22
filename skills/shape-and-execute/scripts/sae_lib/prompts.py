@@ -12,10 +12,10 @@ from typing import Callable
 from .common import (ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, glob_regex, in_scope, read_text,
                      sae_prefix)
 from .config import cfg
-from .findings import ADR_INDEX, adr_folders, adr_pointer_records
+from .findings import ADR_INDEX, adr_folders, adr_pointer_records, decision_inputs
 from .gitutil import git
-from .graph import fix_target, last_changes_round, review_rounds
-from .markdown import has_content, md_section, split_frontmatter
+from .graph import fix_target, review_rounds
+from .markdown import split_frontmatter
 from .park_story import approach_check, proposal_results
 from .routing import job_context
 from .stakes import prompt_block
@@ -237,25 +237,10 @@ def earlier_round(task: Task, review_id: str) -> str | None:
     return rounds[index - 1] if index > 0 else None
 
 
-def decision_source_lines(task: Task, target: str | None) -> list[str | None]:
-    """[DECISION-ANYTIME]: what a decision job is about, whichever applies: the parked job's
-    decision request, the review round's review file, or another job's job file and result.
-    Without a target the question in the job file is all."""
-    if target not in task.jobs:
-        return []
-    result = result_file(task, target)
-    if task.jobs[target]["kind"] == "review":
-        return [pointer("Review round — the findings:          ", result)]
-    request = md_section(split_frontmatter(read_text(result, "") or "")[1], "Decision request")
-    if has_content(request):
-        return [pointer("Decision request (section \"Decision request\"): ", result)]
-    parked_by = last_changes_round(task, target) if task.jobs[target]["status"] == "parked" else None
-    if parked_by:  # parked by sae at the review-round limit: no request, the review round says why
-        return [pointer(f"Review round that parked {target}: ", result_file(task, parked_by)),
-                pointer(f"Job file of {target}: ", job_file(task, target)),
-                pointer(f"Result of {target}: ", result)]
-    return [pointer(f"Job file of {target}: ", job_file(task, target)),
-            pointer(f"Result of {target}: ", result)]
+def decision_source_lines(task: Task, target: str | None) -> list[str]:
+    """[DECISION-ANYTIME]: the inputs of a decision job, the same list its job file holds
+    (`decision_inputs`), with absolute paths."""
+    return [f"{label + ':':<38} {path}" for label, path in decision_inputs(task, target)[1]]
 
 
 def approach_lines(task: Task, job_id: str) -> list[str]:
