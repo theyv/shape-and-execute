@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime as dt
 import os
 import shlex
 import shutil
@@ -70,12 +71,16 @@ def uncommitted_outside_tasks(root: Path) -> list[str]:
     return [p for p in paths if not p.startswith(".tasks/")]
 
 
-def require_on_task_branch(task: Task) -> None:
+def require_on_task_branch(task: Task, allow_dirty: bool = False) -> None:
+    """The task worktree is on the task branch and, unless `allow_dirty`, has no tracked changes
+    outside .tasks/. `allow_dirty` is for a writer that continues its own unfinished work."""
     branch = task.info.get("branch")
     current = git(task.root, "branch", "--show-current", check=False)
     if current != branch:
         fail(EXIT_GIT, f"The task worktree {task.root} is on {current or 'a detached HEAD'}, not on {branch}. "
                        f"Run there: git switch {branch}")
+    if allow_dirty:
+        return
     dirty = tracked_changes_outside_tasks(task.root)
     if dirty:
         fail(EXIT_GIT, f"Tracked files outside .tasks/ have uncommitted changes in {task.root}: "
@@ -164,13 +169,33 @@ def setup_worktree(live: Path, worktree: Path, task_id: str, job_id: str, log: P
     return notes
 
 
-def prepare_workspace(task: Task, job_id: str, config: dict | None) -> tuple[Path, str | None]:
+def continues_unfinished_writer(task: Task, job_id: str) -> bool:
+    """True when a writer that is running or parked after an attempt is the last writer that
+    started in the task: tracked edits in a chain checkout are then its own unfinished work
+    ([HARNESS-FALLBACK]). Another writer's first dispatch would have met the clean-checkout
+    guard, so no other writer started after it on a dirty checkout."""
+    job = task.jobs[job_id]
+    if job["kind"] not in WRITER_KINDS or job["status"] not in ("running", "parked") or not job["attempts"]:
+        return False
+    mine = job["attempts"][-1].get("started")
+    if not mine:
+        return False
+    mine = dt.datetime.fromisoformat(mine)
+    return not any(a.get("started") and dt.datetime.fromisoformat(a["started"]) >= mine
+                   for other_id, other in task.jobs.items()
+                   if other_id != job_id and other["kind"] in WRITER_KINDS for a in other["attempts"])
+
+
+def prepare_workspace(task: Task, job_id: str, config: dict | None,
+                      resume: bool = False) -> tuple[Path, str | None]:
+    """The job's workdir, ready. In the chain layout a resume that continues the same writer's
+    unfinished work keeps its uncommitted edits; any other dispatch needs a clean checkout."""
     job = task.jobs[job_id]
     workdir, branch = workspace_of(task, job_id, config)
     if job["kind"] not in WRITER_KINDS or not task.info.get("git"):
         return workdir, branch
     if not task.uses_worktrees:
-        require_on_task_branch(task)
+        require_on_task_branch(task, allow_dirty=resume and continues_unfinished_writer(task, job_id))
         return workdir, branch
     owner = workspace_owner(task, job_id)
     fresh = not task.jobs[owner]["attempts"]
