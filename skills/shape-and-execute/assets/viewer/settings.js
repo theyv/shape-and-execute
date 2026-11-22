@@ -2,12 +2,14 @@
    settings card in the task header, editable in place ([VIEWER-SETTINGS-HELP], [VIEWER-ROUTING-PANEL],
    [PROJECT-DEFAULTS]). Every change goes through the server, which runs the sae command:
    Task → sae set, Project → sae project set|unset, Global → sae setup save (the whole config).
+   The Project tab's first section, Project settings, holds the Project Stakes ([STAKES-VIEWER]): Save
+   posts them to the server's `stakes` route, which writes only that section of the repo profile.
    Task and Project save each change at once; Global is one document, so its changes collect in a
    draft until Save. Top-level names start with sx (or SX) so they never collide with app.js or
    task-views.js. */
 "use strict";
 TABS.push(["settings","Settings"]);
-var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draft:null,removed:{},msg:"",err:false,cmd:"",q:Promise.resolve()},
+var SX={tab:LSg("sae-stab")||"task",h:LSg("sae-harness")||"claude",cur:null,draft:null,removed:{},msg:"",err:false,cmd:"",q:Promise.resolve(),stk:null},
  SXTABS=[["task","Task"],["project","Project"],["global","Global"]],
  SXPH=["research","planning","execution","review"],SXD=["mechanical","easy","normal","hard"],SXTIERS=["L1","L2","L3","L4"],
  SXPD={research:SXD,planning:["normal","hard"],execution:SXD,review:["normal","hard"]}, // planning and review take only normal and hard
@@ -57,6 +59,12 @@ var SXMODE={
  tiers:"<p><b>Tiers</b> — four presets, each a model · effort, colored by number: L1 blue, L2 yellow, L3 orange, L4 red.</p>"+sxT([["on","every cell picks a tier; editing a tier changes every cell that uses it."],["off","cells pick a model · effort directly; the tiers are greyed out."]])+"<p>A cell can keep both a tier and a model · effort; the switch picks which one counts. Switching off below Global writes each tier's model · effort into the cells that had only a tier, on this level.</p>",
  models:"<p><b>Models</b> — the models offered in tiers and tables, lightest first. The order sets the colors: blue, yellow, orange, red, purple, brown. A family entry always means the newest version; sae resolves it at dispatch. Pin an older version only when you need it.</p>"+sxT([["checkbox","ticked: offered in tiers and tables. Unticked: kept in the list (and its color), not offered."],["↑ ↓","change the order, and so the colors."],["✕","remove the entry."]])+"<p>A cell or tier that uses a removed or unticked model shows \"(not in list)\" with a red dashed outline; Save waits until it changes.</p>",
  claudeold:"<p><b>Claude: families only</b> — the Agent tool accepts only family names and always runs the newest version of the family. \"Add family\" offers every Claude family sae knows that is not in the list. A family removed here comes back with its efforts; a new one takes the efforts of the families listed.</p>",
+ // [STAKES-VIEWER], [AMEND-2]: the example is the one in templates/repo/profile.md, word for word
+ stakes:"<p><b>Project Stakes</b> — why the project exists and how much care it needs, in five short lines. Every agent gets them in its prompt.</p>"+
+  "<p>How SaE uses them: reviewers report every finding and grade it against the Project Stakes; a finding that needs more care than they justify is a note marked <code>[beyond Project Stakes]</code> and does not block. Planners and workers size their work by them: neither over- nor under-engineered.</p>"+
+  "<p>Example, a small game for a kid:<br>- Who uses it and why: A game for a kid to play in the evenings.<br>- Acceptable breakage: Any. We restart and laugh; at worst a high score is lost.<br>- What matters now: Speed. We are still finding out what is fun.<br>- Don't build: Save-file versioning or recovery for nearly impossible races.<br>- So build it like: A toy.</p>"+
+  "<p>Do not name risky areas or exceptions here; hard limits belong in the repository instructions (AGENTS.md or CLAUDE.md).</p>"+
+  "<p>Where they are read: the Project Stakes section of <code>.tasks/repo/profile.md</code> in the main checkout, editable here. Without it, a Project Stakes section of AGENTS.md, then CLAUDE.md, shown read-only: edit them there. A save applies from the next dispatch.</p>",
  codexadd:"<p><b>Codex: older versions</b> — offered from the Codex model catalog on this machine (<code>models_cache.json</code>, or <code>codex debug models</code>), with the efforts each version accepts. Nothing is typed by hand.</p>"};
 
 /* ---------- data: GET /api/settings for the task (Task tab) and for the project (Project, Global) ---------- */
@@ -153,6 +161,30 @@ function sxAskRow(ro){var a=sxAsk(T()),now=sxAskNow(a);
   return sxRow("Ask signal","ask",sxSeg("sxv","task|ask-signal",sxAskOpts(a),a.set||"unset",ro,"Ask signal")+'<p class="mdesc">Tells you when a question waits for you: a red card frame, the "Needs you" banner, the tab title and icon.</p>',
    now?'<span class="inh">'+esc(now)+"</span>":a.set?'<span class="inh set">set here</span>':"")}
 
+/* ---------- Project settings: the Project Stakes ([STAKES-VIEWER], [AMEND-2]) ----------
+   The server reads them as a dispatch does (server.stakes_data). From the profile, or not set: editable, saved on
+   Save; from AGENTS.md or CLAUDE.md: read-only, "edit there". The edit lives in SX.stk until Save or Discard, so a
+   refresh keeps it; its `base` is the revision of the stored section the edit started from, and the server refuses a save over a newer one.
+   While a save is pending (`saving`) the box and both buttons are disabled, so no text typed after Save is lost. */
+var sxStk=()=>{var c=sxData(),d=c&&(c.proj||c.task);return d&&d.stakes||null},
+ sxStkDraft=()=>SX.stk&&SX.stk.repo===S.repo?SX.stk:null;
+function sxStakesSec(){var k=sxStk(),dr=sxStkDraft(),ctl,
+  head='<section class="sg"><div class="sh"><h3>Project settings</h3><span class="d">in this repository: every task and every agent reads them</span></div>';
+  if(!k)return head+empty("Loading…")+"</section>";
+  if(!k.editable)ctl='<pre class="stk ro">'+esc(k.text)+'</pre><p class="note">From <span class="mono">'+esc(k.source_name)+"</span>: edit them there. sae never writes AGENTS.md or CLAUDE.md.</p>";
+  else{var v=dr?dr.text:k.draft,busy=!!(dr&&dr.saving);
+    ctl='<textarea class="stk" data-act="sxst" data-k="stakes" rows="'+Math.max(6,Math.min(16,v.split("\n").length+1))+'" aria-label="Project Stakes"'+(busy?" disabled":"")+">"+esc(v)+"</textarea>"+
+     '<div class="stkb"><button class="btn sm pri" data-act="sxsv" data-k="save"'+(dr&&!busy&&dr.text!==k.draft?"":" disabled")+'>Save</button><button class="btn sm" data-act="sxsv" data-k="discard"'+(dr&&!busy?"":" disabled")+">Discard</button>"+
+     '<span class="inh">'+(k.source?"Save writes the section in "+esc(k.profile_name):"Not set. Save writes them to "+esc(k.profile_name))+"; nothing else in the file changes.</span></div>"}
+  var src=k.source?'<span class="inh'+(k.editable?" set":"")+'">from '+esc(k.source_name)+(k.editable?"":" · edit there")+"</span>":'<span class="inh">not set: agents estimate them</span>';
+  return head+sxRow("Project Stakes","stakes",ctl,src)+"</section>"}
+function sxStakesSave(){var dr=sxStkDraft(),rk=S.repo;if(!dr||dr.saving)return;dr.saving=true;sxSay("Saving…");
+  D.querySelectorAll('[data-act="sxst"],[data-act="sxsv"]').forEach(e=>{e.disabled=true});
+  post("stakes",{repo:rk,text:dr.text,base:dr.base}).then(r=>{dr.saving=false;if(S.repo!==rk)return;
+    if(!r.ok)sxSay(r.error||"Not saved.",true,r.command);
+    else{if(SX.stk===dr)SX.stk=null;var k=r.result&&r.result.stakes;sxSay("Saved the Project Stakes in "+(k?k.profile_name:"the repo profile")+". Every agent reads them from its next dispatch.",false,r.command)}
+    sxLoad(true);renderMain()})}
+
 /* ---------- routing: tiers row and one table per phase, on every level ---------- */
 // {tiers_in_cells, tiers, tables} with {value, source} leaves: from the server (Task, Project) or the draft (Global)
 function sxRoute(sc,h){if(sc!=="global"){var c=sxData(),d=c&&(sc==="task"?c.task:c.proj);return d&&d.routing?d.routing[h]||null:null}
@@ -214,7 +246,7 @@ function sxModelsSec(){var h=SX.h,M=(sxConf()||{}).models||{},L=M[h]||[],add=sxA
 /* ---------- the Settings tab ---------- */
 TAB.settings=t=>{sxLoad(false);var sc=SXTABS.some(x=>x[0]===SX.tab)?SX.tab:"task",c=sxData(),err=c&&(c.err||(c.proj||c.task||{}).config_error),name=(PROJ||[]).find(x=>x.key===S.repo),dr=SX.draft&&SX.draft.repo===S.repo;
   var body=!c||(!c.task&&!c.proj)?empty(err?esc(err):"Loading…"):
-   (err?'<p class="cfgerr">'+esc(err)+"</p>":"")+(sc==="global"&&dr?sxDraftBar():"")+sxDefaults(sc)+sxRouting(sc)+(sc==="global"&&sxHarn().length?sxModelsSec():"");
+   (err?'<p class="cfgerr">'+esc(err)+"</p>":"")+(sc==="global"&&dr?sxDraftBar():"")+(sc==="project"?sxStakesSec():"")+sxDefaults(sc)+sxRouting(sc)+(sc==="global"&&sxHarn().length?sxModelsSec():"");
   return'<div class="box sbox"><div class="tabs stabs" role="tablist" aria-label="Settings level">'+SXTABS.map(x=>'<button role="tab" aria-selected="'+(sc===x[0])+'" data-act="sxt" data-k="'+x[0]+'">'+x[1]+(x[0]==="project"&&name?"<i>"+esc(name.name)+"</i>":x[0]==="global"&&dr?"<i>unsaved</i>":"")+"</button>").join("")+
    '<span class="sp"></span>'+sxHelp("tabs")+'</div><div class="smsg'+(SX.err?" err":"")+'" role="status" aria-live="polite" title="'+esc(SX.cmd)+'">'+esc(SX.msg)+"</div>"+body+"</div>"};
 // the cells, tiers and the switch that cannot run as they are (a removed or unticked model, an undefined tier)
@@ -225,15 +257,17 @@ function sxDraftBar(){var n=sxBad();return'<div class="draft"><span>Unsaved chan
 
 /* ---------- the settings card in the task header, editable in place ---------- */
 var setPairs=(t,s)=>[["interaction",s.interaction],["research",s.levels.research],["planning",s.levels.planning],["execution",s.levels.execution],["review",s.review.points.length?s.review.points.join(", ")+" · "+s.levels.review+" · "+s.review.provider:"off"],["verify limit",vlimit(t,s)],["review limit",rlimit(t,s)]]; // no ask signal: it is in the Settings tab only ([ASK-SETTING-TEXT])
-function headerCard(t){var s=settingsOf(t);if(!s)return'<div class="card" aria-label="Settings"><span>settings.json is missing or invalid</span></div>';
-  if(sxRO())return'<div class="card" aria-label="Settings">'+setPairs(t,s).map(p=>"<div><span>"+p[0]+"</span> <b>"+esc(p[1])+"</b></div>").join("")+"</div>";
+// [NO-SANDBOX-VISIBLE]: the line `sae status` prints when the task sends a writer job to the other harness
+var sxBypass=t=>{var b=t&&t.status&&t.status.bypass;return b?'<div class="byp" role="note">⚠ '+esc(b)+"</div>":""};
+function headerCard(t){var s=settingsOf(t);if(!s)return'<div class="card" aria-label="Settings"><span>settings.json is missing or invalid</span>'+sxBypass(t)+"</div>";
+  if(sxRO())return'<div class="card" aria-label="Settings">'+setPairs(t,s).map(p=>"<div><span>"+p[0]+"</span> <b>"+esc(p[1])+"</b></div>").join("")+sxBypass(t)+"</div>";
   var sel=(k,opts,v)=>'<select data-act="hc" data-k="'+k+'" aria-label="'+k+'">'+opts.map(o=>sxOpt(o[0],v,o[1])).join("")+"</select>",pts=s.review.points,jobs=pts.find(x=>/-jobs$/.test(x)),lv=LEVELS.map(l=>[l,l]);
   return'<div class="card hc" aria-label="Task settings"><div><span>interaction</span>'+sel("interaction",MODES.map(m=>[m,m]),s.interaction)+"</div>"+
    [["research","research"],["planning","planning"],["execution","execution"],["review-level","review"]].map(x=>"<div><span>"+x[1]+"</span>"+sel(x[0],lv,sxGet(s,SXR[x[0]].p))+"</div>").join("")+
    "<div><span>reviews</span>"+["spec","plan","jobs","integration"].map(p=>'<label><input type="checkbox" data-act="hcp" data-k="'+p+'"'+((p==="jobs"?jobs:pts.includes(p))?" checked":"")+">"+p+"</label>").join("")+
     (jobs?sel("jobs",[["selected-jobs","agent-selected"],["all-jobs","all jobs"]],jobs):"")+"</div>"+
    "<div><span>reviewer</span>"+sel("reviewer",SXPROV,s.review.provider)+"</div><div><span>verify limit</span> <b>"+esc(vlimit(t,s))+"</b></div><div><span>review limit</span> <b>"+esc(rlimit(t,s))+"</b></div>"+
-   '<span class="smsg'+(SX.err?" err":"")+'" role="status" aria-live="polite">'+esc(SX.msg)+"</span></div>"}
+   sxBypass(t)+'<span class="smsg'+(SX.err?" err":"")+'" role="status" aria-live="polite">'+esc(SX.msg)+"</span></div>"}
 // review points after one checkbox: `jobs` stands for selected-jobs or all-jobs
 function sxToggle(pts,p,on){var o=(pts||[]).filter(x=>x!==p&&!(p==="jobs"&&/-jobs$/.test(x)));if(on)o.push(p==="jobs"?"selected-jobs":p);return sxPts(o)}
 var sxJobs=(pts,mode)=>sxPts((pts||[]).filter(x=>!/-jobs$/.test(x)).concat(mode));
@@ -266,7 +300,16 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dat
       else if(/^fam:/.test(v)){m=sxNewest(n);x=m&&{model:n,family:true,enabled:true,efforts:m.efforts.slice()}}
       else{m=sxCat().find(r=>r.model===n);x=m&&{model:n,family:false,enabled:true,efforts:m.efforts.slice()}}
       if(x&&!L.some(r=>r.model===x.model))L.push(sxClone(x))}});
-  else if(a==="sxg"){if(k==="save")sxGlobalSave();else{SX.draft=null;sxSay("Discarded the unsaved global changes.");renderMain()}}});
+  else if(a==="sxg"){if(k==="save")sxGlobalSave();else{SX.draft=null;sxSay("Discarded the unsaved global changes.");renderMain()}}
+  else if(a==="sxsv"){if(k==="save")sxStakesSave();else{SX.stk=null;sxSay("Discarded the unsaved Project Stakes.");renderMain()}}});
+D.addEventListener("input",ev=>{var e=ev.target;if(!e.dataset||e.dataset.act!=="sxst")return;var k=sxStk();if(!k||!k.editable||SX.stk&&SX.stk.saving)return;
+  var dr=sxStkDraft()||(SX.stk={repo:S.repo,text:k.draft,base:k.base});dr.text=e.value;dr.sel=[e.selectionStart,e.selectionEnd];dr.el=e;
+  var b=D.querySelector('[data-act="sxsv"][data-k="save"]'),x=D.querySelector('[data-act="sxsv"][data-k="discard"]');if(b)b.disabled=e.value===k.draft;if(x)x.disabled=false});
+// a refresh redraws the box; when the page puts the focus back (refocus in app.js), the caret goes back too
+D.addEventListener("mousedown",ev=>{if(ev.target.dataset&&ev.target.dataset.act==="sxst"&&SX.stk)SX.stk.el=ev.target},true);
+["keyup","mouseup"].forEach(n=>D.addEventListener(n,ev=>{var e=ev.target,dr=sxStkDraft();if(dr&&e.dataset&&e.dataset.act==="sxst")dr.sel=[e.selectionStart,e.selectionEnd]}));
+D.addEventListener("focusin",ev=>{var e=ev.target,dr=sxStkDraft();if(!dr||!e.dataset||e.dataset.act!=="sxst"||dr.el===e)return;dr.el=e;
+  if(dr.sel)try{e.setSelectionRange(dr.sel[0],dr.sel[1])}catch(_){}});
 D.addEventListener("change",ev=>{var e=ev.target,a=e.dataset&&e.dataset.act;if(!a||!/^(sx|hc)/.test(a))return;var k=e.dataset.k||"",P=k.split("|"),sc=P[0],t=T(),s=t&&settingsOf(t);
   if(a==="sxs"){if(e.value)sxRouteSet(sc,P[1],e.value)}
   else if(a==="sxp")sxSet(sc,"review",sxToggle(sxVal(sc,"review"),P[1],e.checked));
