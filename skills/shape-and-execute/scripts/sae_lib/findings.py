@@ -34,7 +34,7 @@ from .common import (
 )
 from .asks import asks_closed_text, close_answered_asks
 from .gitutil import find_root, git, git_ok, main_worktree, worktree_paths
-from .markdown import first_heading, split_frontmatter
+from .markdown import first_heading, has_content, md_section, split_frontmatter
 from .tasks import (
     append_event_to,
     as_list,
@@ -60,11 +60,19 @@ def decision_source(task, source: str | None) -> tuple[str, list[str]]:
     and result. Without a source, the question in the job file is the only input."""
     if source is None:
         return "Answer the question below.", []
+    from .graph import last_changes_round  # late import: graph imports this module
     job = task.jobs[source]
     result = rel(result_file(task, source), task.dir)
     if job["status"] == "parked":
-        return (f"Answer the decision request of {source}.",
-                [f"- The section \"Decision request\" of {result}."])
+        request = md_section(split_frontmatter(read_text(result_file(task, source), "") or "")[1], "Decision request")
+        if has_content(request):
+            return (f"Answer the decision request of {source}.",
+                    [f"- The section \"Decision request\" of {result}."])
+        parked_by = last_changes_round(task, source)
+        if parked_by:  # parked by sae at the review-round limit: the result holds no request
+            return (f"Advise on {source}: {parked_by} still requires changes at the review-round limit.",
+                    [f"- The review round that parked it: {rel(result_file(task, parked_by), task.dir)}.",
+                     f"- The job file of {source}: {rel(job_file(task, source), task.dir)}."])
     if job["kind"] == "review":
         return (f"Advise on the review round {source} (target {job.get('target')}).",
                 [f"- The review file of the round: {result}."])
@@ -110,7 +118,12 @@ def cmd_log(args) -> int:
             task.job(args.job)
         if args.let_go and (args.type != "decision" or not args.job or task.jobs[args.job]["kind"] != "review"):
             fail(EXIT_USAGE, "--let-go logs one finding set aside in triage: a decision with --job <REVIEW-ID>.\n"
-                             f"  sae log {task.id} decision \"<finding>: <reason>\" --job <REVIEW-ID> --let-go")
+                             f"  sae log {task.id} decision \"<number>: <reason>\" --job <REVIEW-ID> --let-go")
+        if args.let_go:
+            from .fix_loop import let_go_errors  # late import: graph imports this module
+            error = let_go_errors(task, args.job, args.summary)
+            if error:
+                fail(EXIT_USAGE, error)
         if args.type == "decision":
             if args.decision_class and args.decision_class not in DECISION_CLASSES:
                 fail(EXIT_USAGE, f"--class must be one of {', '.join(DECISION_CLASSES)}")
@@ -438,9 +451,10 @@ def register_log(sub, command):
                 "--by: human | agent | joint (default agent; agent entries appear in the final report).\n"
                 "A --by human log closes the open asks of its --job (sae ask), or without --job the open asks\n"
                 "without a job. --let-go: a decision that sets one review finding aside in triage, with --job\n"
-                "<REVIEW-ID> and the summary \"<finding>: <reason>\"; the final report lists it under Findings let go.",
+                "<REVIEW-ID> and the summary \"<number>: <reason>\" (the finding's number in the review); the final\n"
+                "report lists it under Findings let go.",
                 ['log claims-status decision "Cache status for 60 s" --by agent --class open-tradeoff --job STATUS-API',
-                 'log claims-status decision "Retry on timeout: beyond the Project Stakes" --job REVIEW-STATUS-API --let-go',
+                 'log claims-status decision "2: beyond the Project Stakes" --job REVIEW-STATUS-API --let-go',
                  'log claims-status amendment "Drop CSV export" --id AMEND-1 --by human'], [0, 1], cmd_log)
     p.add_argument("task")
     p.add_argument("type", choices=("decision", "amendment", "note"))

@@ -14,7 +14,7 @@ from .common import (ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, glob_re
 from .config import cfg
 from .findings import ADR_INDEX, adr_folders, adr_pointer_records
 from .gitutil import git
-from .graph import fix_target, review_rounds
+from .graph import fix_target, last_changes_round, review_rounds
 from .markdown import has_content, md_section, split_frontmatter
 from .routing import job_context
 from .stakes import prompt_block
@@ -248,6 +248,11 @@ def decision_source_lines(task: Task, target: str | None) -> list[str | None]:
     request = md_section(split_frontmatter(read_text(result, "") or "")[1], "Decision request")
     if has_content(request):
         return [pointer("Decision request (section \"Decision request\"): ", result)]
+    parked_by = last_changes_round(task, target) if task.jobs[target]["status"] == "parked" else None
+    if parked_by:  # parked by sae at the review-round limit: no request, the review round says why
+        return [pointer(f"Review round that parked {target}: ", result_file(task, parked_by)),
+                pointer(f"Job file of {target}: ", job_file(task, target)),
+                pointer(f"Result of {target}: ", result)]
     return [pointer(f"Job file of {target}: ", job_file(task, target)),
             pointer(f"Result of {target}: ", result)]
 

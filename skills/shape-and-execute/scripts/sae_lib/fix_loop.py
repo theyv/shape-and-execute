@@ -16,8 +16,8 @@ from .tasks import Task, open_task, result_file
 # ------------------------------------------------------------- changes-required lines
 
 def let_go_line(task: Task, review_id: str) -> str:
-    """[TRIAGE]: the command that logs one finding the orchestrator sets aside."""
-    return f'sae log {task.id} decision "<finding>: <reason>" --job {review_id} --let-go'
+    """[TRIAGE]: the command that logs one finding the orchestrator sets aside, by its number."""
+    return f'sae log {task.id} decision "<number>: <reason>" --job {review_id} --let-go'
 
 
 def accept_line(task: Task, review_id: str, target: str | None) -> str:
@@ -78,6 +78,10 @@ def cmd_job_drop(args) -> int:
         if target:
             fail(EXIT_USAGE, f"{job_id} is a fix job of {target} and commits to its branch. Drop the group: "
                              f"sae job drop {task.id} {target} --reason \"<why>\"")
+        target = job.get("target") if job["kind"] == "integration" else None
+        if target in task.jobs:  # INTEGRATE-<ID>: a retried merge of the target needs it again
+            fail(EXIT_USAGE, f"{job_id} resolves the merge conflict of {target}; dropped alone, {target} could "
+                             f"never merge. Drop the group: sae job drop {task.id} {target} --reason \"<why>\"")
         if job["merged"]:
             fail(EXIT_USAGE, f"{job_id} is merged already; a drop cannot take it out of the task branch.")
         if is_dropped(job):
@@ -126,11 +130,11 @@ def register_job_drop(job_sub, command) -> None:
                 "is dropped with it: every fix job that commits to its branch, an INTEGRATE-<ID> job that would\n"
                 "merge it, and their review rounds. Dropped is final: the jobs never merge (sae merge, collect and\n"
                 "finish refuse them), and the integration review, the final validation and the finish gates\n"
-                "ignore them. Branches and result files stay. Refuses before any change when: a fix job is named\n"
-                "alone (drop its target), a group member is running, the task has no worktrees or no git (the\n"
-                "changes are already in the shared checkout), or a job outside the group needs a member (it\n"
-                "prints the sae job edit --needs call to run first). Logs a decision; the final report lists\n"
-                "the dropped jobs.",
+                "ignore them. Branches and result files stay. Refuses before any change when: a fix job or an\n"
+                "INTEGRATE-<ID> job is named alone (drop its target), a group member is running, the task has no\n"
+                "worktrees or no git (the changes are already in the shared checkout), or a job outside the group\n"
+                "needs a member (it prints the sae job edit --needs call to run first). Logs a decision; the\n"
+                "final report lists the dropped jobs.",
                 ['job drop claims-status STATUS-API --reason "owner: the cache approach is wrong; rebuild it"'],
                 [0, 1], cmd_job_drop)
     p.add_argument("task")
@@ -212,36 +216,73 @@ def review_findings(text: str | None) -> list[tuple[str | None, str]]:
     return found
 
 
-def logged_alone(let_go: list[dict], review_id: str, number: str | None, title: str) -> bool:
-    """A finding of an accepted review that a --let-go decision already names: by its title at the
-    start of the summary, or by its number ("2", "#2", "finding 2")."""
-    for event in let_go:
-        if event.get("job") != review_id:
-            continue
-        summary = str(event.get("summary") or "").strip().lower()
-        head = summary.split(":", 1)[0].strip()
-        if summary.startswith(title.lower()) or (number and re.fullmatch(rf"(finding\s*)?#?{number}\.?", head)):
-            return True
-    return False
+LET_GO_RE = re.compile(r"^\s*(?:finding\s*)?#?(\d+)\.?\s*:\s*(.*)$", re.I | re.S)
+
+
+def let_go_finding(summary: str | None) -> tuple[str | None, str]:
+    """(number, reason) of a --let-go summary "<number>: <reason>" ("2", "#2", "finding 2");
+    (None, summary) when it names no number. A title never identifies a finding: one title can
+    start another ("Retry", "Retry on timeout")."""
+    m = LET_GO_RE.match(str(summary or ""))
+    return (m.group(1), m.group(2).strip()) if m else (None, str(summary or ""))
+
+
+def round_findings(task: Task, review_id: str) -> list[tuple[str | None, str]]:
+    return review_findings(read_text(result_file(task, review_id)) if review_id in task.jobs else None)
+
+
+def let_go_errors(task: Task, review_id: str, summary: str) -> str | None:
+    """Why a --let-go summary does not name exactly one finding of the round, or None."""
+    number, _ = let_go_finding(summary)
+    line = let_go_line(task, review_id)
+    if number is None:
+        return f"--let-go names one finding of {review_id} by its number:\n  {line}"
+    numbers = [n for n, _ in round_findings(task, review_id) if n]
+    if numbers and number not in numbers:
+        return f"{review_id} has no finding {number}; its findings are {', '.join(numbers)}:\n  {line}"
+    return None
 
 
 def let_go_lines(task: Task, events: list[dict]) -> list[str]:
-    """[LET-GO-REPORT]: every finding let go, with its reason: each --let-go decision, then each
-    finding of an accepted review or round that no --let-go decision named."""
+    """[LET-GO-REPORT]: every finding let go, once, with its reason: each finding a --let-go
+    decision names by number (the latest reason wins), then each other finding of an accepted
+    review or round with the acceptance reason."""
     decisions = [e for e in events if e["type"] == "decision"]
-    let_go = [e for e in decisions if e.get("let_go")]
-    lines = [f"- {e.get('job')}: {e.get('summary')}" for e in let_go]
+    titles: dict[str, dict[str, str]] = {}
+    let_go: dict[tuple[str, str], str] = {}
+    lines_of: dict[tuple[str, str], int] = {}
+    lines: list[str] = []
+    for event in decisions:
+        if not event.get("let_go"):
+            continue
+        review_id = str(event.get("job"))
+        number, reason = let_go_finding(event.get("summary"))
+        if number is None:  # logged before let-go named a number
+            lines.append(f"- {review_id}: {event.get('summary')}")
+            continue
+        if review_id not in titles:
+            titles[review_id] = {n: t for n, t in round_findings(task, review_id) if n}
+        title = titles[review_id].get(number) or f"finding {number}"
+        line = f"- {review_id}: {title} — let go: {reason}"
+        key = (review_id, number)
+        let_go[key] = reason
+        if key in lines_of:
+            lines[lines_of[key]] = line
+        else:
+            lines_of[key] = len(lines)
+            lines.append(line)
+    accepted_seen: set[str] = set()
     for event in decisions:
         review_id = event.get("accepted_review")
-        if not review_id:
+        if not review_id or review_id in accepted_seen:
             continue
+        accepted_seen.add(review_id)
         reason = event.get("reason") or event.get("summary")
-        text = read_text(result_file(task, review_id)) if review_id in task.jobs else None
-        findings = review_findings(text)
+        findings = round_findings(task, review_id)
         if not findings:
             lines.append(f"- {review_id}: every finding (no finding titles in its review file) — accepted: {reason}")
         lines += [f"- {review_id}: {title} — accepted: {reason}" for number, title in findings
-                  if not logged_alone(let_go, review_id, number, title)]
+                  if not (number and (review_id, number) in let_go)]
     return lines
 
 

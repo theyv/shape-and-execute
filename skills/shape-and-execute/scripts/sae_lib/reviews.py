@@ -34,6 +34,7 @@ from .graph import (
     fix_target,
     integration_parked,
     is_dropped,
+    last_changes_round,
     last_round,
     live_writers,
     place_final_after,
@@ -761,8 +762,9 @@ def cmd_merge(args) -> int:
             fail(EXIT_GATE, f"The last review of {args.id} requires changes. Add fix jobs, or "
                             f"--accept-review \"<why>\".")
         if args.accept_review:
-            # [LET-GO-REPORT]: an acceptance; the final report lists the findings of its last round
-            accepted = last_round(task, args.id)
+            # [LET-GO-REPORT]: the final report lists the findings of the completed changes-required
+            # round this merge bypasses; a newer round still pending holds no findings yet
+            accepted = last_changes_round(task, args.id)
             task.event("decision", **{"class": "consequential", "by": "agent",
                                       "summary": f"merge {args.id} despite review: {args.accept_review}",
                                       "job": args.id, "reason": args.accept_review,

@@ -85,6 +85,13 @@ def last_round(task: Task, target: str) -> str | None:
     return rounds[-1] if rounds else None
 
 
+def last_changes_round(task: Task, target: str) -> str | None:
+    """The last completed changes-required round of a target, skipping a newer round that is
+    still pending: the verdict that `sae merge --accept-review` bypasses, or that parked the
+    target at the round limit."""
+    return next((r for r in reversed(review_rounds(task, target)) if requires_changes(task.jobs[r])), None)
+
+
 def requires_changes(job: dict) -> bool:
     """The round said changes-required; it still counts toward `max-review-rounds` after an
     acceptance. For what blocks the task, use `unaccepted_changes`."""

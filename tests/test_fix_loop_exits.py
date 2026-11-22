@@ -162,7 +162,7 @@ class ChangesRequiredLinesTests(FixLoopCase):
             "Fix job for the findings you keep:",
             f'  sae job add {task} A-FIX-1 --kind implementation --fix-of A --reason "REVIEW-A: changes required"',
             "Each finding you set aside, logged with its reason:",
-            f'  sae log {task} decision "<finding>: <reason>" --job REVIEW-A --let-go',
+            f'  sae log {task} decision "<number>: <reason>" --job REVIEW-A --let-go',
             "Or accept when the mode lets you decide:",
             f'  sae merge {task} A --accept-review "<why>"']), out)
         sb.sae("job", "add", "lines", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--reason", "round 1")
@@ -184,7 +184,7 @@ class ChangesRequiredLinesTests(FixLoopCase):
             f'  sae job add {task} INTEGRATION-FIX-1 --kind implementation --fix-of REVIEW-INTEGRATION '
             f'--reason "REVIEW-INTEGRATION: changes required"',
             "Each finding you set aside, logged with its reason:",
-            f'  sae log {task} decision "<finding>: <reason>" --job REVIEW-INTEGRATION --let-go',
+            f'  sae log {task} decision "<number>: <reason>" --job REVIEW-INTEGRATION --let-go',
             "Or accept when the mode lets you decide:",
             f'  sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"']), out)
         self.assertIn(f'sae finish {task} --override "<reason>"', out)  # still there, on the owner's word
@@ -214,7 +214,7 @@ class AcceptIntegrationTests(FixLoopCase):
         self.assertNotIn("## Overridden gates", report)
         self.assertEqual(self.section(report, "## Accepted integration rounds"), ["- REVIEW-INTEGRATION: cosmetic"])
         self.assertEqual(self.section(report, "## Findings let go"), [
-            "- REVIEW-INTEGRATION: 2: beyond the Project Stakes",
+            "- REVIEW-INTEGRATION: Missing retry on a rare race — let go: beyond the Project Stakes",
             "- REVIEW-INTEGRATION: Log line too chatty — accepted: cosmetic",
             "- REVIEW-INTEGRATION: Old name in a comment — accepted: cosmetic"])
         decision = [e for e in sb.events(task) if e["type"] == "decision" and e.get("accepted_review")]
@@ -259,8 +259,7 @@ class LetGoReportTests(FixLoopCase):
         task = self.integration_task(sb, "triage")
         self.review_with(sb, task, "triage", "REVIEW-INTEGRATION", "integration", "changes-required",
                          ["Startup crashes without a config", "Lock for a nearly impossible race"])
-        sb.sae("log", "triage", "decision", "Lock for a nearly impossible race: beyond the Project Stakes",
-               "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("log", "triage", "decision", "2: beyond the Project Stakes", "--job", "REVIEW-INTEGRATION", "--let-go")
         sb.sae("log", "triage", "decision", "x: y", "--job", "LEFT", "--let-go", code=1)  # not a review
         sb.sae("log", "triage", "note", "x", "--job", "REVIEW-INTEGRATION", "--let-go", code=1)
         sb.sae("job", "add", "triage", "INTEGRATION-FIX-1", "--kind", "implementation",
@@ -272,7 +271,7 @@ class LetGoReportTests(FixLoopCase):
         self.final(sb, task, "triage")
         report = self.report(sb.sae("finish", "triage").stdout)
         self.assertEqual(self.section(report, "## Findings let go"),
-                         ["- REVIEW-INTEGRATION: Lock for a nearly impossible race: beyond the Project Stakes"])
+                         ["- REVIEW-INTEGRATION: Lock for a nearly impossible race — let go: beyond the Project Stakes"])
         self.assertNotIn("Startup crashes", report)
         check = self.section(report, "## To check before you merge")
         self.assertFalse([line for line in check if "nearly impossible race" in line])  # listed once
@@ -284,12 +283,11 @@ class LetGoReportTests(FixLoopCase):
         self.run_writer(sb, task, "jaccept", "A")
         self.review_with(sb, task, "jaccept", "REVIEW-A", "A", "changes-required",
                          ["Name is unclear", "Speculative lock", "Missing docstring"])
-        sb.sae("log", "jaccept", "decision", "Speculative lock: no concurrent caller exists", "--job", "REVIEW-A",
-               "--let-go")
+        sb.sae("log", "jaccept", "decision", "2: no concurrent caller exists", "--job", "REVIEW-A", "--let-go")
         sb.sae("merge", "jaccept", "A", "--accept-review", "style only")
         report = self.report(sb.sae("finish", "jaccept").stdout)
         self.assertEqual(self.section(report, "## Findings let go"), [
-            "- REVIEW-A: Speculative lock: no concurrent caller exists",
+            "- REVIEW-A: Speculative lock — let go: no concurrent caller exists",
             "- REVIEW-A: Name is unclear — accepted: style only",
             "- REVIEW-A: Missing docstring — accepted: style only"])
         self.assertEqual(report.count("Speculative lock"), 1)
@@ -393,6 +391,90 @@ class JobDropTests(FixLoopCase):
         self.assertIn("merged already", sb.sae("job", "drop", "dother", "A", "--reason", "x", code=1).stderr)
         sb.json("decision", "new", "dother", "--question", "q?")
         sb.sae("job", "drop", "dother", "DECISION-1", "--reason", "x", code=1)
+
+
+class ReviewFixLoopExitsTests(FixLoopCase):
+    """REVIEW-FIX-LOOP-EXITS findings 1-4."""
+
+    def test_integrate_job_is_not_dropped_alone(self):
+        """Finding 1: INTEGRATE-<ID> dropped alone would leave its target unmergeable."""
+        sb = self.sandbox()
+        task = self.planned(sb, "dint", [("LEFT", "implementation", "", []), ("RIGHT", "implementation", "", [])])
+        ws_l = dispatch_workspace(sb, task, "LEFT")
+        ws_r = dispatch_workspace(sb, task, "RIGHT")
+        sb.work(ws_l, "app.txt", "left\n", "LEFT: edit")
+        sb.work(ws_r, "app.txt", "right\n", "RIGHT: edit")
+        for job in ("LEFT", "RIGHT"):
+            sb.result(task, f"jobs/{job}.result.md", status="done", summary=job, validation="pass", changes="made")
+        sb.sae("collect", "dint", "LEFT")
+        self.assertIn("INTEGRATE-RIGHT", sb.sae("collect", "dint", "RIGHT", code=4).stdout)
+        sb.sae("dispatch", "dint", "INTEGRATE-RIGHT")
+        (sb.task_dir(task) / "jobs" / "INTEGRATE-RIGHT.result.md").write_text(
+            "---\nstatus: parked\nsummary: unclear\nvalidation: not-run\nchanges: none\n---\n\n"
+            "## Decision request\n**Decision required:** which side wins?\n")
+        sb.sae("collect", "dint", "INTEGRATE-RIGHT")
+        before = self.snapshot(sb, task)
+        refused = sb.sae("job", "drop", "dint", "INTEGRATE-RIGHT", "--reason", "x", code=1).stderr
+        self.assertIn(f'sae job drop {task} RIGHT --reason "<why>"', refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+        out = sb.sae("job", "drop", "dint", "RIGHT", "--reason", "owner: not needed").stdout
+        self.assertIn("Dropped RIGHT, INTEGRATE-RIGHT", out)
+
+    def test_accept_review_records_the_completed_round_not_a_pending_one(self):
+        """Finding 2: a newer round still pending is not the round the merge bypasses."""
+        sb = self.sandbox()
+        task = self.planned(sb, "apend", [("A", "implementation", "", ["--review"])],
+                            settings=["review=selected-jobs"])
+        self.run_writer(sb, task, "apend", "A")
+        self.review_with(sb, task, "apend", "REVIEW-A", "A", "changes-required", ["Name is unclear", "Odd log"])
+        sb.sae("job", "add", "apend", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--reason", "round 1")
+        sb.job_file(task, "A-FIX-1")
+        self.assertIn("Added REVIEW-A-2", self.run_writer(sb, task, "apend", "A-FIX-1"))
+        sb.sae("merge", "apend", "A", "--accept-review", "style only")
+        decision = [e for e in sb.events(task) if e["type"] == "decision" and e.get("accepted_review")]
+        self.assertEqual(decision[0]["accepted_review"], "REVIEW-A")
+        report = self.report(sb.sae("finish", "apend", "--with-open").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-A: Name is unclear — accepted: style only",
+            "- REVIEW-A: Odd log — accepted: style only"])
+
+    def test_let_go_names_one_finding_by_number(self):
+        """Finding 3: a title that starts another finding's title hides nothing."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letnum")
+        out = self.review_with(sb, task, "letnum", "REVIEW-INTEGRATION", "integration", "changes-required",
+                               ["Retry", "Retry on timeout"])
+        self.assertIn(f'sae log {task} decision "<number>: <reason>" --job REVIEW-INTEGRATION --let-go', out)
+        refused = sb.sae("log", "letnum", "decision", "Retry on timeout: rare", "--job", "REVIEW-INTEGRATION",
+                         "--let-go", code=1).stderr
+        self.assertIn("by its number", refused)
+        refused = sb.sae("log", "letnum", "decision", "3: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn("REVIEW-INTEGRATION has no finding 3", refused)
+        sb.sae("log", "letnum", "decision", "2: too rare", "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("log", "letnum", "decision", "#2: rare in production", "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("accept-review", "letnum", "REVIEW-INTEGRATION", "--reason", "cosmetic")
+        self.final(sb, task, "letnum")
+        report = self.report(sb.sae("finish", "letnum").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-INTEGRATION: Retry on timeout — let go: rare in production",
+            "- REVIEW-INTEGRATION: Retry — accepted: cosmetic"])
+
+    def test_decision_job_for_a_review_limit_park_points_to_the_review(self):
+        """Finding 4: sae parked the job at the round limit; its result holds no Decision request."""
+        sb = self.sandbox()
+        task = self.planned(sb, "dlim", [("A", "implementation", "", ["--review"])],
+                            settings=["review=selected-jobs", "max-review-rounds=1"])
+        self.run_writer(sb, task, "dlim", "A")
+        self.review_with(sb, task, "dlim", "REVIEW-A", "A", "changes-required", ["Wrong cache key"])
+        self.assertEqual(sb.state(task)["jobs"]["A"]["status"], "parked")
+        sb.json("decision", "new", "dlim", "--from", "A")
+        text = (sb.task_dir(task) / "jobs" / "DECISION-A-1.md").read_text()
+        self.assertNotIn("Decision request", text)
+        self.assertIn("- The review round that parked it: reviews/REVIEW-A.md.", text)
+        prompt = sb.json("dispatch", "dlim", "DECISION-A-1")["prompt"]
+        self.assertNotIn("Decision request", prompt)
+        self.assertIn(f"Review round that parked A: {sb.task_dir(task) / 'reviews' / 'REVIEW-A.md'}", prompt)
 
 
 if __name__ == "__main__":
