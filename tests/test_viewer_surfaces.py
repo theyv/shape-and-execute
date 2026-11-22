@@ -306,7 +306,7 @@ class OverlappingStakesSaveTests(SaeTestCase):
         """Another tab saves right after the load's k-th read of the profile, for every k. The loading
         tab then saves from what it got: a 200 is allowed only when its draft already held the other
         tab's edit; otherwise it is a conflict and the other tab's edit stays."""
-        read = stakes.read_text
+        read = stakes.read_stored
         sb = self.sandbox()
         profile = sb.repo / ".tasks" / "repo" / "profile.md"
         profile.parent.mkdir(parents=True)
@@ -328,7 +328,7 @@ class OverlappingStakesSaveTests(SaeTestCase):
                 return text
 
             with mock.patch.object(server, "repo_by_key", return_value=sb.repo), \
-                    mock.patch.object(stakes, "read_text", read_then_save):
+                    mock.patch.object(stakes, "read_stored", read_then_save):
                 data = server.stakes_data(sb.repo)
             if state["saved"] is None:  # k is past the load's last read
                 break
@@ -341,6 +341,46 @@ class OverlappingStakesSaveTests(SaeTestCase):
                 self.assertEqual(code, 409, (k, data, answer))
                 self.assertIn("The other tab's edit", stakes.section_text(profile))
         self.assertGreater(k, 1)  # the load read the profile at least once
+
+    def test_a_change_of_line_endings_only_moves_the_base(self):
+        """The revision hashes the section with its stored line endings: a section that turned from
+        LF to CRLF since the page read it gives a conflict."""
+        sb = self.sandbox()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        profile.parent.mkdir(parents=True)
+        profile.write_text(PROFILE)
+        with mock.patch.object(server, "repo_by_key", return_value=sb.repo):
+            base = server.stakes_data(sb.repo)["base"]
+            head, rest = PROFILE.split("## Project Stakes", 1)
+            section, tail = rest.split("## Validation commands", 1)
+            changed = (head + "## Project Stakes" + section.replace("\n", "\r\n") + "## Validation commands" + tail)
+            profile.write_bytes(changed.encode())
+            code, answer = server.save_stakes({"repo": "R", "text": "- So build it like: A toy.", "base": base})
+        self.assertEqual(code, 409, answer)
+        self.assertEqual(profile.read_bytes(), changed.encode())
+
+    def test_a_save_keeps_the_crlf_bytes_outside_the_section(self):
+        """A save to a CRLF profile changes only the Project Stakes section: every other byte stays,
+        and the new section uses the profile's CRLF too."""
+        sb = self.sandbox()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        profile.parent.mkdir(parents=True)
+        stored = PROFILE.replace("\n", "\r\n").encode()
+        profile.write_bytes(stored)
+        with mock.patch.object(server, "repo_by_key", return_value=sb.repo):
+            data = server.stakes_data(sb.repo)
+            self.assertNotIn("\r", data["draft"])
+            code, answer = server.save_stakes({"repo": "R", "text": "- So build it like: A toy.\n- x",
+                                               "base": data["base"]})
+        self.assertEqual(code, 200, answer)
+        saved = profile.read_bytes()
+        start, end = stored.index(b"## Project Stakes"), stored.index(b"## Validation commands")
+        self.assertTrue(saved.startswith(stored[:start]), saved)
+        self.assertTrue(saved.endswith(stored[end:]), saved)
+        self.assertEqual(saved[start:len(saved) - len(stored) + end],
+                         b"## Project Stakes\r\n<!-- Why the project exists and how much care it needs. Every agent "
+                         b"reads it. -->\r\n- So build it like: A toy.\r\n- x\r\n\r\n")
+        self.assertEqual(stakes.section_text(profile), "- So build it like: A toy.\n- x")
 
     def test_a_save_of_trailing_spaces_only_moves_the_base(self):
         self.assert_second_save_conflicts(lambda t: t.replace("- What matters now:", "- What matters now:   "))

@@ -8,12 +8,14 @@ Reading happens at dispatch and status time, so a viewer edit reaches the next d
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import read_text, write_atomic
 from .gitutil import main_worktree
 from .markdown import strip_html_comments
 
@@ -35,6 +37,16 @@ class Stakes:
     @property
     def in_profile(self) -> bool:
         return self.path.name == "profile.md"
+
+
+def read_stored(path: Path, default: str | None = None) -> str | None:
+    """`path` as stored, line endings included (`common.read_text` turns CRLF into LF): every
+    reader here splits on "\\n", so a CRLF line keeps its "\\r", which `section_revision` hashes
+    and `save_profile_stakes` writes back."""
+    try:
+        return path.read_bytes().decode("utf-8")
+    except FileNotFoundError:
+        return default
 
 
 def profile_path(root: Path) -> Path:
@@ -78,7 +90,7 @@ def _find_section(lines: list[str]) -> tuple[int, int] | None:
 def section_text(path: Path) -> str | None:
     """The Project Stakes section of a Markdown file with HTML comments stripped and blank edges
     trimmed; None when the file or the section is missing."""
-    text = read_text(path, None)
+    text = read_stored(path, None)
     return None if text is None else _section_text(text)
 
 
@@ -99,7 +111,7 @@ def section_revision(path: Path) -> str:
     """A revision of the Project Stakes section exactly as stored (heading to end, comments and
     spaces included): a SHA-256 of its raw text, "" when the file or the section is missing. Any
     change to the stored section changes it, also one that `section_text` strips."""
-    return _section_revision(read_text(path, None) or "")
+    return _section_revision(read_stored(path, None) or "")
 
 
 def _section_revision(text: str) -> str:
@@ -113,7 +125,7 @@ def _section_revision(text: str) -> str:
 def section_and_revision(path: Path) -> tuple[str | None, str]:
     """`section_text` and `section_revision` of one read of `path`: a save between two reads can
     never pair an old section with the revision of a newer one."""
-    text = read_text(path, None)
+    text = read_stored(path, None)
     return (None, "") if text is None else (_section_text(text), _section_revision(text))
 
 
@@ -159,19 +171,22 @@ def prompt_block(root: Path) -> str:
 def save_profile_stakes(root: Path, text: str) -> Path:
     """Replace the Project Stakes section of the profile with `text` and return the profile path.
 
-    Only that section changes: the bytes of every other line stay. A comment right under the
+    Only that section changes: the bytes of every other line stay, line endings included, and the
+    new lines take the CRLF or LF of the section heading (or the first line). A comment right under the
     heading (the template's help) is kept. A missing section is added where the template puts
     it, before the first other `##` section; a missing profile is created. Raises ValueError
     when `text` holds a heading of level 1 or 2, which would split the section."""
-    body = text.strip("\n")
+    body = text.replace("\r\n", "\n").strip("\n")
     if any(d <= 2 for _, d, _ in _headings(body.split("\n"))):
         raise ValueError(f"The {SECTION_TITLE} text cannot hold a heading of level 1 or 2.")
     path = profile_path(root)
-    lines = (read_text(path, "") or "").split("\n")
+    lines = (read_stored(path, "") or "").split("\n")
     if lines == [""]:
         lines = ["# Repo profile", ""]
-    new = ([f"## {SECTION_TITLE}", *body.split("\n")] if body else [f"## {SECTION_TITLE}"]) + [""]
     found = _find_section(lines)
+    # The lines this save adds take the line ending of the section heading, or of the first line.
+    cr = "\r" if (lines[found[0]] if found else lines[0]).endswith("\r") else ""
+    new = [f"## {SECTION_TITLE}{cr}", *(f"{line}{cr}" for line in (body.split("\n") if body else [])), cr]
     if found:
         start, end = found
         keep = _leading_comment(lines, start + 1, end)
@@ -180,11 +195,28 @@ def save_profile_stakes(root: Path, text: str) -> Path:
         before = next((i for i, d, _ in _headings(lines) if d == 2), None)
         if before is None:
             tail = lines[:-1] if lines[-1] == "" else lines
-            lines = tail + ([""] if tail and tail[-1] else []) + new
+            lines = tail + ([cr] if tail and tail[-1].rstrip("\r") else []) + new
         else:
-            lines[before:before] = ([""] if before and lines[before - 1].strip() else []) + new
-    write_atomic(path, "\n".join(lines))
+            lines[before:before] = ([cr] if before and lines[before - 1].strip() else []) + new
+    if lines[-1] == "\r":  # the last empty line ends the file
+        lines[-1] = ""
+    _write_stored(path, "\n".join(lines))
     return path
+
+
+def _write_stored(path: Path, text: str) -> None:
+    """Write `text` atomically with its line endings as they are (`common.write_atomic` writes in
+    text mode, which on Windows turns every "\\n" into CRLF, also one that already has its "\\r")."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(text.encode("utf-8"))
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp)
+        raise
 
 
 def _leading_comment(lines: list[str], start: int, end: int) -> list[str]:
