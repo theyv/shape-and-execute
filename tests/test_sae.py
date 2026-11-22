@@ -242,6 +242,7 @@ class ExecutionTests(SaeTestCase):
         resumed = sb.json("dispatch", "wt-flow", "B", "--resume", "--reason", "verify-failed")
         self.assertIn("B.verify.log", resumed["prompt"])
         sb.work(ws_b, "b.txt", "good\n", "B: fix")
+        sb.result(task, "jobs/B.result.md", status="done", summary="did B", validation="pass", changes="made")
         sb.sae("collect", "wt-flow", "B")
         self.assertTrue(sb.state(task)["jobs"]["B"]["merged"])
         # C and the final validation; the integration review comes before the final job
@@ -325,6 +326,7 @@ class ExecutionTests(SaeTestCase):
         sb.result(task, "jobs/ONLY.result.md", status="done", summary="o", validation="pass", changes="made")
         sb.sae("collect", "limits", "ONLY", code=5)
         sb.sae("dispatch", "limits", "ONLY", "--resume", "--reason", "verify-failed")
+        sb.result(task, "jobs/ONLY.result.md", status="done", summary="o", validation="pass", changes="made")
         out = sb.sae("collect", "limits", "ONLY").stdout
         self.assertIn("verify failed 2 times", out)
         self.assertEqual(sb.state(task)["jobs"]["ONLY"]["status"], "failed")

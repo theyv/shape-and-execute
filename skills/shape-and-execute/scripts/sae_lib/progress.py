@@ -61,17 +61,16 @@ from .launch import (
     is_command_job,
     launch_command,
     launch_record,
-    needs_fresh_result,
     refuse_missing_cli,
-    result_fingerprint,
     routing_exception,
 )
-from .prompts import build_prompt
+from .prompts import EARLIER_RESULT_POINTER, build_prompt
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
 from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
+    empty_result_slot,
     job_file,
     job_summary,
     last_model,
@@ -444,8 +443,7 @@ def cmd_dispatch(args) -> int:
         command_job = is_command_job(task, model["harness"])  # [WRITER-COMMAND]
         if command_job:
             attempt["launch"] = launch_record(task, job_id, model)  # [LAUNCH-RECORD]
-        if needs_fresh_result(previous, command_job):
-            attempt["result_before"] = result_fingerprint(result_file(task, job_id))  # collect needs a new one
+        earlier = empty_result_slot(task, job_id)  # the one place: collect accepts only a result this attempt writes
         job["attempts"].append(attempt)
         if card is not None and job_id in [b["id"] for b in card["jobs"]]:
             record_card(task, card)
@@ -461,8 +459,8 @@ def cmd_dispatch(args) -> int:
             record_session_snapshot(task, "dispatch", "executing")  # [MAIN-TOKENS], [AMEND-1]
         external = command_job and job["kind"] == "review"  # a review in the other harness replies with its text
         prompt = build_prompt(task, job_id, workdir, branch, model, config, external=external)
+        extra = [EARLIER_RESULT_POINTER.format(path=earlier)] if earlier else []
         if args.resume:
-            extra = []
             log = task.dir / "jobs" / f"{job_id}.verify.log"
             if args.reason.startswith("verify") and log.exists():
                 extra.append(f"Read first: {log}")
@@ -475,6 +473,8 @@ def cmd_dispatch(args) -> int:
             prompt = "\n".join([f"RESUME {job_id} — reason: {args.reason}", *extra,
                                 "Continue from your earlier work and commits; the pointers are unchanged.", "",
                                 prompt])
+        elif extra:
+            prompt = "\n".join([*extra, "", prompt])
         header = (f"HARNESS: {model['harness']} · MODEL: {model_text(model)} · EFFORT: {model['effort']}\n"
                   f"ROUTING: {routing_text(model)}" + (f" · {exception_text(exception)}" if exception else ""))
         data = {"job": job_id, "attempt": attempt["n"], "workspace": str(workdir), "branch": branch, **model,

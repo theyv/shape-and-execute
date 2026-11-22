@@ -29,6 +29,8 @@ STAKES_NOT_SET_LINE = ("Stakes: not set. Estimate them from the repository instr
                        "that level: neither over- nor under-engineer.")
 # [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
 APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
+# [WRITER-COMMAND] a dispatch that moved the job's earlier result aside (`empty_result_slot`).
+EARLIER_RESULT_POINTER = "Read first: your earlier result, moved aside: {path}. Build on it and write the full result again."
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
 APPROACH_PARAGRAPH = """FIX {fix} of {target}. {target} parks for the owner after review round {max_rounds}.
 Before you patch, read the earlier review rounds of {target} and answer under "Decisions taken"

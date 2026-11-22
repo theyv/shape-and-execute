@@ -37,7 +37,7 @@ from .graph import (
     review_rounds,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .launch import command_tokens, result_unchanged
+from .launch import command_tokens
 from .prompts import harness_output_files
 from .routing import override_key, resolve_model
 from .session_tokens import record_session_snapshot
@@ -551,12 +551,6 @@ def cmd_collect(args) -> int:
         if not text.strip():
             fail(EXIT_USAGE, f"The result file {path} is empty. If an external reviewer wrote it, the provider "
                              "failed: run the IF IT FAILS line that dispatch printed.")
-        if job["attempts"] and result_unchanged(path, job["attempts"][-1]):
-            attempt = job["attempts"][-1]
-            fail(EXIT_USAGE, f"The result file {path} is unchanged since attempt {attempt.get('n')} started "
-                             f"({attempt['started']}): attempt {attempt.get('n')} has not written or replaced it. "
-                             "The earlier result stays in place. If the COMMAND exited, it failed: follow the IF IT "
-                             "FAILS rule that dispatch printed.")
         meta, body = split_frontmatter(text)
         status, summary, fields = interpret_result(job["kind"], meta, path)
         disputed = disputed_findings(body)

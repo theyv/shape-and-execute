@@ -190,69 +190,99 @@ class WriterCommandTests(LaunchTestCase):
         self.to_other(git_sb, "withgit", "ONE", "claude")
         self.assertNotIn("--skip-git-repo-check", git_sb.json("dispatch", "withgit", "ONE")["command"])
 
-    def test_collect_refuses_a_result_the_current_attempt_did_not_write(self):
-        # Review WRITER-LAUNCH finding 2: a reopened research job whose COMMAND wrote nothing.
-        sb = self.sandbox_for("claude")
-        task = self.executing(sb, "stale")
-        sb.sae("job", "add", "stale", "R", "--kind", "research", "--reason", "a question")
-        self.to_other(sb, "stale", "R", "claude")
-        sb.sae("dispatch", "stale", "R")
-        sb.result(task, "research/R.md", status="done", confidence="high")
-        sb.sae("collect", "stale", "R")
-        report = sb.task_dir(task) / "research" / "R.md"
-        old = report.stat().st_mtime - 60
-        os.utime(report, (old, old))  # the first attempt wrote it a minute ago
-        data = sb.json("dispatch", "stale", "R", "--resume", "--reason", "follow-up questions")
-        self.run_command(sb, data["command"])  # exits 0 and writes no report
-        before = self.frozen(sb, task)
-        err = sb.sae("collect", "stale", "R", code=1).stderr
-        self.assertIn("attempt 2 has not written or replaced it", err)
-        self.assertEqual(self.frozen(sb, task), before)
-        self.assertTrue(report.exists())  # the earlier report stays for the retry
-        self.assertEqual(sb.state(task)["jobs"]["R"]["status"], "running")
-        sb.result(task, "research/R.md", status="done", confidence="high")
-        self.assertIn("R: done", sb.sae("collect", "stale", "R").stdout)
-
-    def reopened_research(self, sb: Sandbox, slug: str) -> tuple[str, Path]:
-        """A research job on the other harness, collected once, whose report the first attempt wrote."""
+    def reopened_research(self, sb: Sandbox, slug: str, other: bool = True) -> tuple[str, Path]:
+        """A research job, collected once, whose report the first attempt wrote; on the other harness
+        unless `other` is False."""
         task = self.executing(sb, slug, settings=("interaction=full-auto",))
         sb.sae("job", "add", slug, "R", "--kind", "research", "--reason", "a question")
-        self.to_other(sb, slug, "R", "claude")
+        if other:
+            self.to_other(sb, slug, "R", "claude")
         sb.sae("dispatch", slug, "R")
         sb.result(task, "research/R.md", status="done", confidence="high")
         sb.sae("collect", slug, "R")
         return task, sb.task_dir(task) / "research" / "R.md"
 
-    def test_collect_refuses_an_unchanged_result_written_in_the_retrys_start_second(self):
-        # Review REVIEW-WRITER-LAUNCH-2 finding 1: the start time has one-second precision. A later mtime
-        # stands for a report written earlier in the second the retry started (or a clock step).
+    def refuses_until_rewritten(self, sb: Sandbox, task: str, slug: str, report: Path) -> None:
+        """Collect rejects the attempt while it has written nothing, then accepts a rewritten report."""
+        before = self.frozen(sb, task)
+        self.assertIn(f"No result file at {report}.", sb.sae("collect", slug, "R", code=1).stderr)
+        self.assertEqual(self.frozen(sb, task), before)  # no tokens booked to the old report
+        self.assertEqual(sb.state(task)["jobs"]["R"]["status"], "running")
+        sb.result(task, "research/R.md", status="done", confidence="high")
+        self.assertIn("R: done", sb.sae("collect", slug, "R").stdout)
+
+    @staticmethod
+    def earlier_pointer(moved: Path) -> str:
+        return f"Read first: your earlier result, moved aside: {moved}. Build on it and write the full result again."
+
+    def test_collect_refuses_a_result_the_current_attempt_did_not_write(self):
+        # Review WRITER-LAUNCH finding 2: a reopened research job whose COMMAND wrote nothing.
+        sb = self.sandbox_for("claude")
+        task, report = self.reopened_research(sb, "stale")
+        old = report.read_text()
+        data = sb.json("dispatch", "stale", "R", "--resume", "--reason", "follow-up questions")
+        moved = report.with_name("R.result.attempt-1.md")
+        self.assertFalse(report.exists())  # the attempt starts with an empty result slot
+        self.assertEqual(moved.read_text(), old)
+        self.assertIn(str(moved), data["command"])  # the retry's prompt points to the earlier report
+        self.run_command(sb, data["command"])  # exits 0 and writes no report
+        self.refuses_until_rewritten(sb, task, "stale", report)
+
+    def test_same_second_retry_starts_with_an_empty_result_slot(self):
+        # Review REVIEW-WRITER-LAUNCH-2 finding 1: a report whose mtime is not earlier than the retry's start.
         sb = self.sandbox_for("claude")
         task, report = self.reopened_research(sb, "same")
         later = report.stat().st_mtime + 30
         os.utime(report, (later, later))
         data = sb.json("dispatch", "same", "R", "--resume", "--reason", "follow-up questions")
         self.run_command(sb, data["command"])  # exits 0 and writes no report
-        before = self.frozen(sb, task)
-        err = sb.sae("collect", "same", "R", code=1).stderr
-        self.assertIn("attempt 2 has not written or replaced it", err)
-        self.assertEqual(self.frozen(sb, task), before)  # no tokens booked to the old report
-        self.assertTrue(report.exists())
+        self.refuses_until_rewritten(sb, task, "same", report)
 
     def test_fallback_collect_refuses_a_result_left_unchanged(self):
-        # Review REVIEW-WRITER-LAUNCH-2 finding 1: the fallback attempt has no `launch` record.
+        # Review REVIEW-WRITER-LAUNCH-2 finding 1: the fallback after a failed COMMAND.
         sb = self.sandbox_for("claude")
         task, report = self.reopened_research(sb, "fb")
         out = sb.sae("dispatch", "fb", "R", "--resume", "--reason", "follow-up questions").stdout
         fallback = out.splitlines()[out.splitlines().index("IF IT FAILS:") + 1]
         data = sb.json(*self.args_of(fallback.replace("<exit code or missing result>", "exit 1")))
-        self.assertEqual(data["harness"], "claude")
+        self.assertEqual((data["harness"], data["attempt"]), ("claude", 3))
         self.assertNotIn("launch", sb.state(task)["jobs"]["R"]["attempts"][-1])
+        self.assertIn(self.earlier_pointer(report.with_name("R.result.attempt-1.md")), data["prompt"])
+        self.assertFalse(report.with_name("R.result.attempt-2.md").exists())  # attempt 2 wrote nothing to move
+        # the pointer names the latest earlier result, moved by attempt 2's dispatch
+        self.refuses_until_rewritten(sb, task, "fb", report)
+
+    def test_missing_cli_fallback_after_a_local_attempt_needs_a_new_result(self):
+        # Review REVIEW-WRITER-LAUNCH-3 finding 1: a local attempt, a follow-up routed to a missing CLI,
+        # then the printed fallback.
+        sb = self.sandbox_for("claude")
+        task, report = self.reopened_research(sb, "local", other=False)
+        old = report.read_text()
+        sb.without_cli("codex")
         before = self.frozen(sb, task)
-        err = sb.sae("collect", "fb", "R", code=1).stderr  # the fallback subagent left the report as it was
-        self.assertIn("attempt 3 has not written or replaced it", err)
+        lines = sb.sae("dispatch", "local", "R", "--harness", "codex", "--resume", "--reason", "follow-up questions",
+                       code=1).stderr.splitlines()
         self.assertEqual(self.frozen(sb, task), before)
-        sb.result(task, "research/R.md", status="done", confidence="high")
-        self.assertIn("R: done", sb.sae("collect", "fb", "R").stdout)
+        self.assertEqual(report.read_text(), old)  # the refusal moves nothing
+        data = sb.json(*self.args_of(lines[lines.index("Fallback command:") + 1]))
+        self.assertEqual((data["harness"], data["attempt"]), ("claude", 2))
+        moved = report.with_name("R.result.attempt-1.md")
+        self.assertEqual(moved.read_text(), old)
+        self.assertIn(self.earlier_pointer(moved), data["prompt"])
+        self.refuses_until_rewritten(sb, task, "local", report)
+
+    def test_a_moved_result_never_overwrites_an_existing_file(self):
+        sb = self.sandbox_for("claude")
+        task, report = self.reopened_research(sb, "keep", other=False)
+        taken = report.with_name("R.result.attempt-1.md")
+        taken.write_text("kept\n")
+        old = report.read_text()
+        data = sb.json("dispatch", "keep", "R", "--resume", "--reason", "follow-up questions")
+        self.assertEqual(taken.read_text(), "kept\n")
+        moved = report.with_name("R.result.attempt-1-2.md")
+        self.assertEqual(moved.read_text(), old)
+        self.assertIn(self.earlier_pointer(moved), data["prompt"])
+
 
 class LaunchRecordTests(LaunchTestCase):
     def test_attempt_records_the_placeholder_command_and_the_request(self):
