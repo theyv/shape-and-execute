@@ -599,6 +599,47 @@ class HarnessFallbackTests(LaunchTestCase):
         sb.sae("hold", "hold", "B", "--release")
         self.assertEqual(sb.json(*self.args_of(resumed))["harness"], "claude")
 
+    def test_parked_job_with_a_failed_attempt_meets_an_active_hold_through_the_fallback(self):
+        # Review INTEGRATION finding 3: a failed COMMAND parks A, B finishes and activates a hold.
+        sb = self.sandbox_for("claude")
+        task = self.executing(sb, "hold2", jobs=("A", "B"), settings=("interaction=collaborative",))
+        self.to_other(sb, "hold2", "A", "claude")
+        out = sb.sae("dispatch", "hold2", "A").stdout
+        resumed = out.splitlines()[out.splitlines().index("IF IT FAILS:") + 1]
+        resumed = resumed.replace("<exit code or missing result>", "exit 1")
+        sb.sae("job", "park", "hold2", "A", "--reason", "harness fallback: COMMAND failed: exit 1")
+        sb.sae("hold", "hold2", "B")
+        self.finish_writer(sb, task, "hold2", "B", Path(sb.json("dispatch", "hold2", "B")["workspace"]))
+        sb.sae("log", "hold2", "decision", "harness fallback: A: yes", "--by", "human", "--job", "A")
+        before = self.frozen(sb, task)
+        err = sb.sae(*self.args_of(resumed), code=3).stderr
+        self.assertIn("Hold after B: nothing new is dispatched.", err)
+        self.assertEqual(self.frozen(sb, task), before)
+        sb.sae("hold", "hold2", "B", "--release")
+        data = sb.json(*self.args_of(resumed))
+        self.assertEqual((data["harness"], data["attempt"]), ("claude", 2))
+
+    def test_fallback_continues_a_chain_writer_that_left_a_tracked_edit(self):
+        # Review INTEGRATION finding 2: the failed COMMAND leaves an uncommitted edit in the task worktree.
+        sb = self.sandbox_for("claude")
+        task = self.executing(sb, "left", jobs=("A",), settings=("interaction=collaborative",))
+        self.to_other(sb, "left", "A", "claude")
+        workdir = sb.task_worktree(task)
+        sb.work(workdir, "a.txt", "first\n", "owner: a tracked file")
+        # a first dispatch keeps the clean-checkout guard
+        (workdir / "a.txt").write_text("someone else's edit\n")
+        self.assertIn("uncommitted changes", sb.sae("dispatch", "left", "A", code=4).stderr)
+        sb.git("checkout", "--", "a.txt", cwd=workdir)
+        dispatched = sb.json("dispatch", "left", "A")
+        self.assertEqual(Path(dispatched["workspace"]), workdir)  # chain layout: the task worktree
+        (workdir / "a.txt").write_text("first\nsecond, not committed\n")  # the failed COMMAND's edit
+        resumed = dispatched["if_it_fails"].replace("<exit code or missing result>", "exit 1")
+        sb.sae("job", "park", "left", "A", "--reason", "harness fallback: COMMAND failed: exit 1")
+        sb.sae("log", "left", "decision", "harness fallback: A: yes", "--by", "human", "--job", "A")
+        data = sb.json(*self.args_of(resumed))
+        self.assertEqual((data["harness"], data["attempt"], Path(data["workspace"])), ("claude", 2, workdir))
+        self.assertEqual((workdir / "a.txt").read_text(), "first\nsecond, not committed\n")
+
     def test_fallback_closes_the_failed_command_attempt(self):
         # Review WRITER-LAUNCH finding 4.
         sb = self.sandbox_for("claude")

@@ -424,9 +424,11 @@ def cmd_dispatch(args) -> int:
             fail(EXIT_USAGE, f"{job_id} is {job['status']}. To run it again: --resume --reason \"<why>\".")
         # Gate order, all before any change: the parked task and a hold (a decision job only advises,
         # so it passes both [DECISION-ANYTIME]), what the job waits for, a busy writer slot, then the
-        # missing CLI [HARNESS-FALLBACK]. A parked job that never started (a missing CLI) is a first
-        # dispatch, also with --resume.
-        if not args.resume or (job["status"] == "parked" and not job["attempts"]):
+        # missing CLI [HARNESS-FALLBACK]. A parked job starts a new attempt, so it meets the parked
+        # task and a hold, also after a failed attempt; one that never started (a missing CLI) is a
+        # first dispatch, also with --resume.
+        first = not args.resume or (job["status"] == "parked" and not job["attempts"])
+        if first or job["status"] == "parked":
             if job["kind"] != "decision":
                 parked = integration_parked(task)
                 if parked:
@@ -436,6 +438,7 @@ def cmd_dispatch(args) -> int:
                 if held:
                     fail(EXIT_GATE, f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.\n"
                                     f"  Release: {release_command(task, held[0])}")
+        if first:
             reasons = waits_for(task, job_id)
             if reasons:
                 fail(EXIT_USAGE, f"{job_id} is not ready: waits for {', '.join(reasons)}.")
@@ -446,7 +449,7 @@ def cmd_dispatch(args) -> int:
         if not cli_checked:  # [HARNESS-FALLBACK]: before the workspace, the attempt and any event
             refuse_missing_cli(task, job_id, cfg_or_fail(config), args.harness, args.provider, args.resume)
         model = resolve_model(task, job_id, config, harness=args.harness, provider=args.provider)
-        workdir, branch = prepare_workspace(task, job_id, config)
+        workdir, branch = prepare_workspace(task, job_id, config, resume=args.resume)
         head = None
         if task.info.get("git") and job["kind"] in WRITER_KINDS:
             head = git(workdir, "rev-parse", "HEAD")
