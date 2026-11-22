@@ -61,7 +61,7 @@ button,input,select{font:inherit;color:inherit}button{cursor:pointer}
 @keyframes sae-pulse{50%{opacity:.3}}.ti.pulse .tt .pd{animation:sae-pulse 2.4s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){.ti.pulse .tt .pd{animation:none}}
 .sbw{display:flex!important;align-items:center;gap:8px;margin-top:5px}.sbw>b{font-size:12px;font-weight:400;color:var(--ink3);font-variant-numeric:tabular-nums}
-.sbar{flex:1;display:flex;gap:1px;height:3px;border-radius:2px;overflow:hidden}.sbar i{background:var(--c)}.sbar i.k-pending{background:var(--line2)}
+.sbar{flex:1;display:flex;gap:1px;height:3px;border-radius:2px;overflow:hidden}.sbar i{background:var(--c)}.sbar i.k-pending{background:var(--line2)}.sbar i.k-dropped{background:var(--line)}
 .pd{display:inline-flex;justify-content:center;align-items:center;width:10px;flex-shrink:0;color:var(--pc);font-size:11px;font-style:normal;line-height:1}.pd:empty:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--pc)}
 .p-shaping{--pc:var(--ph-s)}.p-planning{--pc:var(--ph-p)}.p-executing{--pc:var(--ph-e)}.p-done{--pc:var(--done)}.p-abandoned{--pc:var(--ink3)}
 .menu{border:0;background:none;padding:4px;margin-left:-4px;color:var(--ink2);border-radius:4px}.menu:hover{color:var(--ink);background:var(--hl)}.scrim{display:none}
@@ -82,6 +82,8 @@ h1{font-size:20px;line-height:1.3;font-weight:600;margin:0}
 .lnk{border:0;background:none;padding:0;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}.lnk:hover{text-decoration-color:var(--ink2)}
 .k-pending{--c:var(--pend);--b:var(--pend-b)}.k-ready{--c:var(--ready);--b:var(--ready-b);--l:var(--ready-l)}.k-running{--c:var(--run);--b:var(--run-b)}
 .k-done{--c:var(--done);--b:var(--done-b)}.k-parked{--c:var(--park);--b:var(--park-b)}.k-failed{--c:var(--fail);--b:var(--fail-b)}.k-removed{--c:var(--ink3);--b:none;--l:var(--line2)}
+/* [JOB-DROP]: dropped is final and quiet: grey, outlined, never a color of its own */
+.k-dropped{--c:var(--ink3);--b:var(--pend-b);--l:var(--line2)}
 .pill{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 6px;border-radius:4px;font-size:12px;font-weight:500;line-height:1;white-space:nowrap;vertical-align:middle;color:var(--c);background:var(--b);box-shadow:inset 0 0 0 1px var(--l,transparent)}
 .pill i{font-style:normal;font-size:11px}
 .tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border:1px solid var(--line2);border-radius:4px;font-size:12px;color:var(--ink2);white-space:nowrap;vertical-align:middle}

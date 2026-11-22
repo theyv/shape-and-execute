@@ -53,6 +53,12 @@ table.rt{table-layout:fixed;min-width:560px}.rt th{padding:6px 8px;border-bottom
 .sw{width:10px;height:10px;border-radius:3px;background:var(--mc);flex-shrink:0}
 .btn.ar{width:22px;height:22px;padding:0;justify-content:center;font-size:11px}
 .add{display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap}
+/* Project settings: the Project Stakes ([STAKES-VIEWER]) */
+textarea.stk,pre.stk{width:100%;max-width:720px;margin:0;padding:8px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--s2);color:var(--ink);font:12px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+textarea.stk{resize:vertical}pre.stk.ro{background:var(--bg);color:var(--ink2)}
+.stkb{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+/* [NO-SANDBOX-VISIBLE]: the bypass line in the settings card */
+.card .byp{flex-basis:100%;color:var(--park);white-space:normal}
 /* [?] popover */
 .pop{position:fixed;z-index:30;width:min(400px,calc(100% - 24px));max-height:calc(100vh - 24px);overflow-y:auto;background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.5;color:var(--ink2);box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .pop b{color:var(--ink);font-weight:600}.pop p{margin:0 0 6px}.pop p:last-child{margin:0}.pop table{margin:4px 0 6px}

@@ -34,6 +34,16 @@ var dead=t=>/^(done|abandoned)$/.test(t.state.task.phase),
  markTip=(t,id,m)=>{var r=m.reviewed&&reviewOf(t,id);
   return"<b>"+esc(cap1(m.reason))+".</b>"+(r?r.m?"<br>Review "+(r.m.ran?"ran":"planned")+" on "+esc(r.m.h)+" · "+mwords(t,r.m)+(r.m.ovr?' <span class="mut">(override)</span>':""):"<br>Review model: routing is incomplete.":"<br>Check <b>jobs</b> in the review points to review it.")},
  holdsOf=t=>t.state.task.holds||{},
+ // [HARNESS-FALLBACK]: a job's routing exceptions, as the server reads them (launch.routing_exceptions, with its text)
+ exOf=(t,id)=>(t.routing_exceptions||[]).filter(e=>e.job===id),
+ exLines=L=>L.map(e=>"Attempt "+e.attempt+": "+String(e.text||"").replace(/^routing exception: /,"")),
+ // [JOB-DROP]: the drop record of a dropped job ({group, reason, was, at}) and the jobs dropped with it
+ dropOf=(t,id)=>{var j=JO(t,id);return j&&j.status==="dropped"&&j.drop||null},
+ dropGroup=(t,g)=>jf(t,j=>j.status==="dropped"&&j.drop&&j.drop.group===g),
+ // [PARK-STORY]: the story of a job parked at the round limit, or of the parked task on the round that parked it
+ // (park_story.park_stories, served with `sae status --json`)
+ stories=t=>(t.status&&t.status.park_stories)||[],
+ storyOf=(t,id)=>stories(t).find(s=>s.target===id||s.target==="integration"&&s.parked_by===id)||null,
  holdOn=(t,id)=>(t.holds_active||[]).includes(id), // graph.active_holds, served with the task
  holdCmd=(t,id)=>IDX.sae+" hold "+t.state.task.id+" "+id+" --release",
  holdBtn=(t,id)=>dead(t)||!JO(t,id)?"":own(holdsOf(t),id)?'<button class="btn sm" data-act="hold" data-id="'+esc(id)+'" data-v="release" title="Remove the hold: dispatching continues.">Release hold</button>':
@@ -124,6 +134,7 @@ function rowsOf(t,ids,at,settled){var js=JS(t),acc=null,
 function rowTip(t,r,x,card){var p=PLo(t,r.id),m=card&&markOf(t,card),
    st=r.planned?"planned":r.v?(/^pass/.test(r.v)?r.v.replace(/-/g," "):"changes required"+(r.fixed?", fixed":r.acc?", accepted":"")+(r.approved!=null?", approved"+(r.approved?" "+fmt(r.approved):""):"")):r.s;
   return r.id+" · "+st+(r.planned?"":"\n"+(r.run?runFor(t,r.id):spent(t,[r.id])||"no tokens or time recorded"))+(x?"\n"+[x.h,x.m,x.e].filter(Boolean).join(" · ")+(x.ovr?" (override)":""):"")+
+   (exOf(t,r.id).length?"\nRouting exception — "+exLines(exOf(t,r.id)).join("\n"):"")+(dropOf(t,r.id)?"\nDropped with "+dropOf(t,r.id).group+": "+dropOf(t,r.id).reason:"")+
    (r.planned?"\nPlanned: sae adds "+(p&&p.round>1?"this round when "+(p.target==="integration"?"its fix jobs are merged":"the fix is done"):p&&p.target==="integration"?"this review when every writer job is merged":p&&/^(spec|plan)$/.test(p.target)?"this review when the "+p.target+" is ready for it":"this review when "+((p||{}).target||"its job")+" is done")+"."+
     (m&&m.forced&&m.reviewed?"\nForced by settings: "+m.reason+".":"")+(canOvr(t,r.id)?"\nClick the model to change it.":""):"")+(r.accReason?"\nMerged despite changes required: "+r.accReason:"")}
 
@@ -170,8 +181,8 @@ function phaseCard(t,which,rows){var info=t.state.task,ph=info.phase,js=JS(t),sh
   return c}
 function jobCard(t,id,rows,ch){var js=JS(t),j=js[id],s=stOf(t,id),live=rows.filter(r=>!r.planned).map(r=>js[r.id]),
    fixing=rows.some(r=>r.k==="fix"&&!r.planned&&js[r.id].status==="running"),
-   k=live.some(r=>r.status==="parked")?"parked":live.some(r=>r.status==="failed")?"failed":fixing?"fixing":s,
-   ar=j.merged&&accepted(t,id),v=rows.length?verdictOf(rows,fixing,ar!=null&&ar!==false):null,mk=ch.added[id]!=null?"added":ch.changed[id]!=null?"changed":"",
+   k=s==="dropped"?s:live.some(r=>r.status==="parked")?"parked":live.some(r=>r.status==="failed")?"failed":fixing?"fixing":s,
+   ar=j.merged&&accepted(t,id),v=rows.length&&s!=="dropped"?verdictOf(rows,fixing,ar!=null&&ar!==false):null,dr=dropOf(t,id),rx=exOf(t,id),mk=ch.added[id]!=null?"added":ch.changed[id]!=null?"changed":"",
    sm=staleM(t,id),rm=markOf(t,id),hasRev=rows.some(r=>r.k==="review"),doc=jobDoc(t,id),
    sub=j.kind+(/^(review|decision)$/.test(j.kind)?" → "+(j.target||""):j.difficulty?" · "+j.difficulty:""),
    c={id:id,job:id,title:id,kind:"job",cls:[],kc:"var(--kd-"+j.kind+")",st:stp1(k),rows:rows,sub:sub,tk:s==="running"?"":spent(t,[id]),
@@ -181,7 +192,9 @@ function jobCard(t,id,rows,ch){var js=JS(t),j=js[id],s=stOf(t,id),live=rows.filt
   // review marks ([JOB-REVIEW-FLAG-HONESTY]): a review that will run is a row; a flagged job whose review will not run keeps its mark
   if(rm&&(!rm.reviewed||!hasRev))c.mark=rm;
   if(own(holdsOf(t),id))c.hold=own(holdsOf(t),id);
-  c.tip=id+" — "+c.st.text.replace(/^\S+ /,"")+(s==="pending"&&waits(t,id).length?"\nWaits for: "+waits(t,id).join("; "):"")+(mk?"\n"+(mk==="added"?"Added after plan approval (the hatched fill)":"Changed after plan approval (the bar on the left)")+": "+(ch.added[id]||ch.changed[id]):"")+
+  if(rx.length)c.rx=rx;
+  if(dr)c.cls.push("dropped");
+  c.tip=id+" — "+c.st.text.replace(/^\S+ /,"")+(dr?"\nDropped on the owner's word: "+dr.reason+". It never merges.":"")+(rx.length?"\nRouting exception — "+exLines(rx).join("\n"):"")+(s==="pending"&&waits(t,id).length?"\nWaits for: "+waits(t,id).join("; "):"")+(mk?"\n"+(mk==="added"?"Added after plan approval (the hatched fill)":"Changed after plan approval (the bar on the left)")+": "+(ch.added[id]||ch.changed[id]):"")+
    (sm?"\nNo activity for "+span(sm)+". "+staleTip(t,id):"")+(doc.title?"\n"+doc.title:"")+(doc.obj?"\nObjective: "+doc.obj:"")+(j.summary?"\nResult: "+j.summary:"")+(c.tk?"\n"+c.tk:"")+
    (rows.length?"\nIts reviews and fixes are the rows below; click a row to open that job.":"");
   return c}
@@ -220,7 +233,7 @@ function graph(t){var js=JS(t),info=t.state.task,ph=info.phase,ch=changes(t).r,H
    tip:id+" — removed\nRemoved after plan approval: "+ch.removed[id].reason}));
   if((mem[PC.integration]||[]).length)cards.push(intCard(t,rowsOf(t,mem[PC.integration],at)));
   cards.push(finishCard(t));
-  cards.forEach(c=>{C[c.id]=c;has[c.id]=1;var r4=c.mark||c.hold;c.hh=GC.HH+(r4?GC.L4:0);c.h=c.hh+(c.rows.length?GC.RS+c.rows.length*GC.RH:0);if(waitFrame(t,c,asked)){c.cls.push("wait");(own(asked,c.id)||[]).forEach(q=>{c.tip+="\nAsks the owner: "+q})}});
+  cards.forEach(c=>{C[c.id]=c;has[c.id]=1;var r4=c.mark||c.hold||c.rx;c.hh=GC.HH+(r4?GC.L4:0);c.h=c.hh+(c.rows.length?GC.RS+c.rows.length*GC.RH:0);if(waitFrame(t,c,asked)){c.cls.push("wait");(own(asked,c.id)||[]).forEach(q=>{c.tip+="\nAsks the owner: "+q})}});
   // edges at job level: planner needs, edges sae generates ([GENERATED-JOB-EDGES]), targets, fixes; each end then moves to its card
   var JP=[],jp=(id,p,c)=>{if(p!==id)JP.push([p,id,c])},ints=Object.keys(js).filter(id=>js[id].kind==="review"&&js[id].target==="integration"),lastInt=ints[ints.length-1],
    rank={"":0,gen:1,tgt:2,pl:3},
@@ -318,7 +331,7 @@ function cardSvg(t,c,at){var NW=GC.NW,HH=c.hh,o=[],sel=c.job&&S.job===c.job,
   o.push('<text class="nid" x="10" y="21">'+esc(trunc(c.title,idRoom))+"</text>"+(c.merged?'<text x="'+(NW-sp[1]-24)+'" y="21">✓</text>':"")+sp[0]);
   o.push('<text class="nk" x="10" y="40">'+esc(sub)+"</text>"+(c.tk?'<text class="tk" x="'+(NW-10)+'" y="40" text-anchor="end">'+esc(c.tk)+"</text>":""));
   o.push(v[0]+(l3?'<text class="n3" x="10" y="58">'+esc(l3)+"</text>":"")+(c.x?mlab(t,c.xid,c.x,NW-12,58,xRoom):c.r3?'<text class="n3" x="'+(NW-12)+'" y="58" text-anchor="end">'+esc(c.r3)+"</text>":""));
-  if(c.mark||c.hold)o.push(marks(t,c));
+  if(c.mark||c.hold||c.rx)o.push(marks(t,c));
   if(c.rows.length){o.push('<line class="sep" x1="8" x2="'+(NW-8)+'" y1="'+(HH+2)+'" y2="'+(HH+2)+'"/>');
     c.rows.forEach((r,i)=>o.push(rowSvg(t,r,HH+GC.RS-2+i*GC.RH,c)))}
   return o.join("")+"</g>"}
@@ -327,7 +340,12 @@ function marks(t,c){var id=c.id,j=JS(t)[id],y4=GC.HH-2,m4="",cx=10,NW=GC.NW,rm=c
   if(rm){var w=Math.round(rm.mark.length*6.4+16);m4+='<g class="mk '+(MKC[rm.mark]||"on")+'" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc(rm.mark+": "+rm.reason)+'" data-tiph="'+esc(markTip(t,id,rm))+'"><rect width="'+w+'" height="18" rx="4"/><text x="8" y="13">'+esc(rm.mark)+"</text></g>";cx+=w+6}
   if(hd){var on=holdOn(t,id),ht=on?"⏸ hold active":"⏸ hold after",hw=Math.round(ht.length*6.4+16);
     [on?"⏸ active":"⏸ hold","⏸"].forEach(v=>{if(cx+hw>NW-8){ht=v;hw=Math.round(v.length*6.4+16)}}); // beside a long review mark; the tooltip says it all
-    m4+='<g class="mk hold'+(on?" on":"")+'" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc(on?"hold active":"hold after this job")+'" data-tiph="'+esc("<b>"+(on?"Hold active: nothing new is dispatched.":"Hold after "+id+": once it is done"+(WR[j.kind]?" and merged":"")+", nothing new is dispatched.")+"</b>"+(hd.reason?"<br>"+esc(hd.reason):"")+"<br>Release: "+esc(holdCmd(t,id)))+'"><rect width="'+hw+'" height="18" rx="4"/><text x="8" y="13">'+esc(ht)+"</text></g>"}
+    m4+='<g class="mk hold'+(on?" on":"")+'" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc(on?"hold active":"hold after this job")+'" data-tiph="'+esc("<b>"+(on?"Hold active: nothing new is dispatched.":"Hold after "+id+": once it is done"+(WR[j.kind]?" and merged":"")+", nothing new is dispatched.")+"</b>"+(hd.reason?"<br>"+esc(hd.reason):"")+"<br>Release: "+esc(holdCmd(t,id)))+'"><rect width="'+hw+'" height="18" rx="4"/><text x="8" y="13">'+esc(ht)+"</text></g>";cx+=hw+6}
+  // [HARNESS-FALLBACK]: the job ran on another route than routing chose; the tooltip names requested, actual and why
+  if(c.rx){var xt="⇄ routing exception",xw=Math.round(xt.length*6.4+16);
+    ["⇄ exception","⇄"].forEach(v=>{if(cx+xw>NW-8){xt=v;xw=Math.round(v.length*6.4+16)}});
+    m4+='<g class="mk rx" transform="translate('+cx+","+y4+')" tabindex="0" role="note" aria-label="'+esc("Routing exception. "+exLines(c.rx).join(". "))+'" data-tiph="'+
+     esc("<b>Routing exception: it ran on another route than routing chose.</b><br>"+exLines(c.rx).map(esc).join("<br>"))+'"><rect width="'+xw+'" height="18" rx="4"/><text x="8" y="13">'+esc(xt)+"</text></g>"}
   return m4}
 // one row: glyph, short label, model · effort on the right; a click opens that job's panel ([EDGE-LONG-IDS]: the full ID is in the tooltip)
 function rowSvg(t,r,y,c){var NW=GC.NW,RH=GC.RH,x=modelOf(t,r.id),p=r.planned&&PLo(t,r.id),
@@ -403,8 +421,8 @@ function stepBar(t){var ph=t.state.task.phase,L=t.steps||[],js=L.find(s=>s.key==
   return'<ol class="stepbar" aria-label="Steps">'+names.map((n,i)=>{var st=i<at?"done":ph==="abandoned"?"stop":i===at?"cur":"next";
     return(i?'<li class="sa" aria-hidden="true">→</li>':"")+'<li class="sb '+st+'"'+(st==="cur"?' aria-current="step"':"")+">"+({done:"✓ ",cur:"◐ ",stop:"– "}[st]||"")+esc(n)+"</li>"}).join("")+"</ol>"}
 function slimHead(t){var c={},ids=Object.keys(JS(t)),tk=taskTokens(t),ln=linesOf(t);ids.forEach(id=>{var s=stOf(t,id);c[s]=(c[s]||0)+1});
-  var st=[["jobs done",(c.done||0)+" / "+ids.length],["running",c.running||0],["parked",c.parked||0],
-   [tk.sub?"tokens · subagents only":"tokens",num(tk.n)]].map(x=>'<span class="hs"><b>'+x[1]+"</b> "+x[0]+"</span>");
+  var st=[["jobs done",doneOf(c)],["running",c.running||0],["parked",c.parked||0]].concat(c.dropped?[["dropped",c.dropped]]:[],
+   [[tk.sub?"tokens · subagents only":"tokens",num(tk.n)]]).map(x=>'<span class="hs"><b>'+x[1]+"</b> "+x[0]+"</span>");
   if(ln)st.push('<span class="hs" title="'+esc(linesTip(t))+'"><b>'+ln+"</b> lines</span>");
   return'<div class="slim">'+stepBar(t)+'<div class="hstats">'+st.join("")+"</div></div>"}
 // the table of stats per phase; "–" and a note where main-session tokens are unknown
@@ -427,17 +445,17 @@ function whereLine(t){var info=t.state.task,it=IT(info.id)||{},wt=info.worktree|
     loc&&loc!=="done"?'<span title="'+esc(it.location_path||"")+'"><span class="mut">in</span> '+esc(loc==="checkout"?"…/"+String(it.location_path||"").split(/[\\\/]/).pop():loc)+"</span>":"")+"</div>"}
 TAB.overview=t=>{var js=JS(t),ids=Object.keys(js),info=t.state.task,c={},L=[],need=[],plan=t.files["plan.md"],tk=taskTokens(t),ln=linesOf(t);
   ids.forEach(id=>{var s=stOf(t,id);c[s]=(c[s]||0)+1});
-  var out=whereLine(t)+'<div class="kpis">'+[["Done",(c.done||0)+"<span> / "+ids.length+"</span>"],["Running",c.running||0],["Parked",c.parked||0],["Ready",c.ready||0],
+  var out=whereLine(t)+'<div class="kpis">'+[["Done",doneOf(c).replace(" / ","<span> / ")+(c.dropped?" · "+c.dropped+" dropped":"")+"</span>"],["Running",c.running||0],["Parked",c.parked||0],["Ready",c.ready||0],
    ["Tokens",num(tk.n)+(tk.sub?"<span> subagents only</span>":"")],["Lines",ln||'<span title="No task branch: nothing to count yet, or it was deleted after the merge.">–</span>',ln?linesTip(t):""]].map(k=>'<div class="kpi"'+(k[2]?' title="'+esc(k[2])+'"':"")+"><div>"+k[0]+"</div><b>"+k[1]+"</b></div>").join("")+"</div>";
   // [OVERVIEW-STATS-FIRST]: Needs you first (while not done), the stats per phase, the merge checks and the risks side by side,
   // then the report, Running and Ready ([OVERVIEW-LAYOUT])
   // the server's waiting reasons (open asks, the parked task, active holds); parked jobs get their own rows below
   if(!/^(done|abandoned)$/.test(info.phase)){var nx=next(t);if(nx)need.push(line(nx[0],nx[1]&&code(nx[1])));
     (t.waiting||[]).filter(r=>r.kind!=="parked").forEach(r=>need.push(line((r.kind==="hold"?"⏸ ":"● ")+esc(r.text),r.kind==="hold"&&holdBtn(t,r.job))));
-    jf(t,j=>j.status==="parked").forEach(id=>{var dj=jf(t,j=>j.kind==="decision"&&j.target===id);
-      need.push(jrow(t,id,[ask(t,id),dj.length&&"Decision job: "+dj.map(k=>esc(k)+" ("+stOf(t,k)+")").join(", ")].filter(Boolean).join("<br>"),agoH(js[id].last_change)))});
+    jf(t,j=>j.status==="parked").forEach(id=>{var dj=jf(t,j=>j.kind==="decision"&&j.target===id),sy=storyOf(t,id);
+      need.push(jrow(t,id,[ask(t,id),sy&&"Parked at the review-round limit: its story is below.",dj.length&&"Decision job: "+dj.map(k=>esc(k)+" ("+stOf(t,k)+")").join(", ")].filter(Boolean).join("<br>"),agoH(js[id].last_change)))});
     jf(t,j=>j.status==="failed").forEach(id=>need.push(jrow(t,id,"",agoH(js[id].last_change))));
-    out+=sec("Needs you",box(need,"Nothing needs you."))}
+    out+=sec("Needs you",box(need,"Nothing needs you."))+stories(t).map(s=>sec("Parked at the round limit · "+(s.target==="integration"?"the task":esc(s.target)),storyBox(t,s))).join("")}
   out+=phaseTable(t);
   var ra=section(stripC(plan),"Riskiest assumptions"),
    chk=sec("To check before you merge",box(evs(t,FT.decisions).filter(e=>e.by==="agent").map(e=>row("",'<span class="tag">'+esc(e.type)+"</span>",(e.id?code(e.id)+" ":"")+esc(e.summary),agoH(e.at),[e["class"],J(e.job)].filter(Boolean).join(" · "))),"No agent decisions or amendments.")),
@@ -453,12 +471,14 @@ function next(t){var i=t.state.task,p=i.phase,rd=jf(t,(j,k)=>stOf(t,k)==="ready"
   if(/^(shaping|planning)$/.test(p)){if(rd.length)return["Next: dispatch "+rd[0],"sae dispatch "+i.id+" "+rd[0]];if(run)return null;
     if(p==="shaping")return["Spec gate: check, then approve the spec.","sae approve "+i.id+" spec"];
     return i.approvals&&i.approvals.plan?["Plan approved — waiting for start.","sae start "+i.id]:["Plan gate: review the Plan tab, then approve.","sae approve "+i.id+" plan"]}
-  if(!jf(t,j=>j.status!=="done").length)return["All jobs done.","sae finish "+i.id];
+  if(!jf(t,j=>!isFinal(j.status)).length)return["All jobs done.","sae finish "+i.id];
   return!run&&!rd.length&&!park?["Nothing can run. Adapt the graph, resume a failed job, or finish with --with-open."]:null}
 function report(t){var js=JS(t),i=t.state.task,fin=evs(t,/^task\.finished$/)[0]||{},rows=[],fj=jf(t,j=>j.final)[0],b=i.base||{};
   if(fj)rows.push(row("",pill(js[fj].status),"Final validation "+J(fj)+" — "+esc(js[fj].summary)));
   evs(t,FT.reviews).forEach(e=>rows.push(row("",vpill(e.verdict),J(e.job)+" → "+tgt(t,e.target),esc(e.provider||"")+" "+code(e.model))));
   jf(t,j=>/pending|parked|failed/.test(j.status)).forEach(k=>rows.push(jrow(t,k)));
+  jf(t,(j,k)=>j.status==="dropped"&&(!j.drop||j.drop.group===k)).forEach(k=>{var o=dropGroup(t,k).filter(x=>x!==k),d=js[k].drop||{};
+    rows.push(row("fx",pill("dropped"),code(k)+(o.length?' <span class="ink2">with '+o.map(code).join(", ")+"</span>":"")+' <span class="ink2">— '+esc(d.reason||"")+"</span>","","Its branch stays; nothing of it was merged.",k))});
   var made=evs(t,/^(finding|backlog)\.created$/).map(e=>code(e.finding||e.file));if(made.length)rows.push(line("Findings and backlog items: "+made.join(", ")));
   rows.push(line(i.git?code(i.branch)+" (base "+esc(b.branch||"–")+" @ "+code(b.commit)+")"+(fin.commit?", head "+code(fin.commit):"")+". Nothing was pushed. Merge or open a merge request yourself.":"No git: the changes are in the working folder."));
   return sec("Final report",box(rows),agoH(fin.at))}
@@ -598,7 +618,7 @@ function gantt(t){var js=JS(t),ev=t.events||[],info=t.state.task,M=v=>Date.parse
       o.push('<g data-tip="'+esc(m.tip+"\n"+fmt(new Date(m.t).toISOString()))+'"><rect x="'+R(x0-6)+'" y="'+(y+4)+'" width="12" height="17" fill="transparent"/>'+txt(x0,y+16.5,"mk "+m.c,m.g,"middle")+"</g>")});
     o.push("</g>")});
   var L='<div class="gtl"><div class="gth" style="height:'+TOP+'px">Job</div>'+rows.map(r=>r.id?'<button class="gtr'+(r.d?" sub":"")+(S.job===r.id?" sel":"")+'" data-row="'+esc(r.id)+'"'+dataJ("job",r.id)+' title="'+esc(r.id)+'">'+esc(r.id)+"</button>":'<div class="gtr tk" data-row="">task</div>').join("")+"</div>";
-  var lg=["done","running","parked","failed"].map(v=>'<span class="k-'+v+'"><i class="lsw"></i> '+v+"</span>").join("")+'<span><b class="lg k-failed">✕</b> verify failed</span><span><b class="lg k-done">✓</b> review</span><span><b class="lg k-parked">◆</b> decision</span><span><b class="lg k-gate">◆</b> approval</span>';
+  var lg=["done","running","parked","failed"].concat(jf(t,j=>j.status==="dropped").length?["dropped"]:[]).map(v=>'<span class="k-'+v+'"><i class="lsw"></i> '+v+"</span>").join("")+'<span><b class="lg k-failed">✕</b> verify failed</span><span><b class="lg k-done">✓</b> review</span><span><b class="lg k-parked">◆</b> decision</span><span><b class="lg k-gate">◆</b> approval</span>';
   return'<div class="gh"><h2 class="lbl">Jobs over time</h2><div class="legend">'+lg+'</div></div><div class="gt">'+L+'<div class="gts"><svg class="gx" width="'+Wd+'" height="'+H+'" viewBox="0 0 '+Wd+" "+H+'" role="img" aria-label="Jobs over time">'+o.join("")+"</svg></div></div>"}
 TAB.timeline=t=>{var ap=changes(t).ap,ph="shaping",G={},order=[],P={"spec.approved":"planning","execution.started":"executing","task.finished":"done","task.abandoned":"abandoned"};
   var ev=(t.events||[]).map((e,i)=>({e:e,p:ph=P[e.type]||ph,i:i})),cnt=f=>f==="all"?ev.length:ev.filter(x=>FT[f].test(x.e.type)).length;
@@ -619,8 +639,13 @@ var rsn=e=>e.reason?' <span class="ink2">— '+esc(e.reason)+"</span>":"",
   "job.added":(e,t)=>"Added "+J(e.job)+" ("+esc(e.kind)+(e.difficulty?", "+esc(e.difficulty):"")+")"+(e.needs&&e.needs.length?", needs "+e.needs.map(J).join(", "):"")+(e.target?", target "+tgt(t,e.target):"")+rsn(e),
   "job.changed":e=>"Changed "+J(e.job)+(e.by==="viewer"?" in the viewer":"")+": "+chg(e.changes||{},"; ")+rsn(e),
   "job.removed":e=>"Removed "+J(e.job)+rsn(e),
+  // [JOB-DROP], [HARNESS-FALLBACK]
+  "job.dropped":e=>"Dropped "+J(e.job)+(n=>n.length?" with "+n.map(J).join(", "):"")(Object.keys(e.was||{}).filter(k=>k!==e.job))+(e.by==="viewer"?" in the viewer":"")+rsn(e),
+  "job.parked":e=>"Parked "+J(e.job)+(e.attempt?" #"+esc(e.attempt):"")+rsn(e),
+  "routing.exception":e=>"Routing exception for "+J(e.job)+(e.attempt?" #"+esc(e.attempt):"")+": requested "+esc([(e.requested||{}).harness,(e.requested||{}).model,(e.requested||{}).effort].join(" · "))+
+   ", ran "+esc([(e.actual||{}).harness,(e.actual||{}).model,(e.actual||{}).effort].join(" · "))+rsn(e),
   "execution.started":e=>"Execution "+(e.resumed?"resumed":"started")+(e.branch?" on "+code(e.branch):"")+", layout "+esc(e.layout),
-  "job.dispatched":e=>"Dispatched "+J(e.job)+" #"+esc(e.attempt)+" → "+code(model(e))+' <span class="mut">'+esc(e.harness+" "+tierOf(e))+"</span>"+rsn(e),
+  "job.dispatched":e=>"Dispatched "+J(e.job)+" #"+esc(e.attempt)+" → "+code(model(e))+' <span class="mut">'+esc(e.harness+" "+tierOf(e))+"</span>"+(e.launch?' <span class="tag">'+esc(e.launch.request)+"</span>":"")+rsn(e),
   "job.collected":e=>"Collected "+J(e.job)+" #"+esc(e.attempt)+": "+esc(e.status)+(e.summary?" — "+esc(e.summary):"")+(e.tokens?' <span class="mut">· '+num(e.tokens)+" tokens</span>":""),
   "job.verify_failed":e=>"Verify failed for "+J(e.job)+(e.count?" ("+e.count+")":"")+": "+code(e.command)+", exit "+esc(e.exit_code),
   "job.scope_warning":e=>J(e.job)+" changed files outside its scope: "+(e.files||[]).map(code).join(", "),
@@ -676,10 +701,38 @@ TAB.findings=t=>{var sf=scopedFindings(t),fs=sf.open,cr=sf.closed,mine=S.sc!=="a
     return tr(['<span class="tag">'+esc(f.type||"–")+"</span>",["long",esc(f.title)],["mono ink2 nw",esc(f.source?slug(f.source):"–")],["ink2",esc(f.confidence||"–")],["ink2 nw",agoH(f.created)]],' class="r1'+(op?" open":"")+'"'+dataJ("row","f:"+f.file)+' tabindex="0" aria-expanded="'+op+'"')+
       (op?'<tr><td colspan="5" class="xd"><p class="mono mut">'+esc(f.file)+"</p>"+md(f.text)+"</td></tr>":"")})):box([],mine?"No open findings from this task.":"No open findings."))+
    sec("Closed",cr.length?tbl("","Title,Outcome,Closed",cr.map(c=>tr([["ink2 long",esc(c.title)],["ink2",esc(c.outcome)],["mut nw",esc(c.date)]]))):box([],mine?"No closed findings from or by this task.":"No closed findings."))};
+// [LAUNCH-RECORD]: what each COMMAND attempt asked for, with placeholders for the prompt and paths. It records the
+// request, not the permissions the job really had: the launch environment can still restrict it.
+function launches(t,j){var L=j.attempts.filter(a=>a.launch);if(!L.length)return"";
+  return sec("Launch commands",'<div class="box launch">'+L.map(a=>{var l=a.launch;return'<div class="lrow"><div class="lh"><span class="mut">#'+esc(a.n)+"</span> "+esc(l.harness)+" · "+mwords(t,{h:l.harness,m:l.model,e:l.effort})+
+    ' <span class="tag req">'+esc(l.request)+'</span></div><pre class="cmd">'+esc(l.command)+"</pre></div>"}).join("")+"</div>","what the command requested; the launch environment can still restrict the job")}
+// [PARK-STORY]: the story `sae next` and `sae status` print, from the same data (park_story.park_story): the target,
+// the rounds against the limit, the objective and first result, each round's findings with their suggested fixes,
+// the fix jobs' summaries and "do not" limits, and the options with their commands
+function storyBox(t,s){var task=s.target==="integration",
+   li=(h,b)=>"<li>"+h+(b?'<div class="sbd">'+b+"</div>":"")+"</li>",
+   cmdL=c=>'<div class="scmd"><span class="mono">'+esc(c)+"</span>"+(/^sae /.test(c)?cpi(c,c):"")+"</div>",
+   head=dl([["Parked",task?"the task: "+J(s.parked_by)+" still requires changes after a fix round. Nothing is dispatched until you choose; decision jobs still run.":J(s.target)+" by "+J(s.parked_by)],
+    ["Rounds",esc(s.changes_rounds)+" required changes · max-review-rounds "+esc(s.max_rounds)],
+    [task?"Task":"Objective",esc(s.objective||"")],["First result",esc(s.first_summary||"")]]),
+   rounds=(s.rounds||[]).map(r=>'<div class="srnd"><div class="srh">Round '+esc(r.round)+" · "+J(r.id)+" "+vpill(r.verdict)+(r.accepted?' <span class="tag">accepted</span>':"")+"</div><ul>"+
+    (r.findings||[]).map(f=>li("Finding"+(f.number?" "+esc(f.number):"")+": "+esc(f.title),f.suggested_fix&&'<span class="mut">Suggested fix:</span> '+esc(f.suggested_fix))).join("")+
+    (!(r.findings||[]).length&&r.verdict==="changes-required"?li('<span class="mut">No finding titles in its review file.</span>'):"")+
+    (r.fixes||[]).map(x=>li("Fix "+J(x.id)+" "+pill(x.status)+" "+esc(x.summary||"no summary"),(x.do_not||[]).map(d=>'<span class="mut">Limit:</span> '+esc(d)).join("<br>"))).join("")+"</ul></div>").join(""),
+   opts='<div class="srh">Options</div><ul>'+(s.options||[]).map(o=>li("<b>"+esc(o.choice)+"</b>",(o.commands||[]).map(cmdL).join(""))).join("")+"</ul>"+
+    (s.wait?'<p class="mut">While you decide, the wait shows as: </p>'+cmdL(s.wait):"");
+  return'<div class="box pad story"><p class="sop">'+esc(s.opening||"")+"</p>"+head+rounds+opts+"</div>"}
 function jobBody(t,id){var js=JS(t),j=own(js,id),f=t.files;
   if(!j){var g=own(changes(t).r.removed,id)||{},rf="jobs/"+id+".removed.md";return dl([["Status",pill("removed")],["Reason",esc(g.reason)]])+(f[rf]!=null?docs("j:",[rf],f):"")}
-  var rs=reviewsOf(t,id),dj=jf(t,o=>o.kind==="decision"&&o.target===id),out=dl([["Status",jpill(t,id)],["Summary",esc(j.summary)],["Decision request",j.status==="parked"&&ask(t,id)],["Waits for",j.status==="pending"&&esc(waits(t,id).join(", "))],
+  var rs=reviewsOf(t,id),dj=jf(t,o=>o.kind==="decision"&&o.target===id),dr=dropOf(t,id),rx=exOf(t,id),sy=storyOf(t,id),
+   dg=dr?dropGroup(t,dr.group).filter(x=>x!==id&&x!==dr.group):[],
+   out=dl([["Status",jpill(t,id)],["Dropped",dr&&esc(dr.reason)+' <span class="mut">· on the owner\'s word'+(dr.at?", "+esc(fmt(dr.at)):"")+(dr.was?" · was "+esc(dr.was):"")+"</span>"+
+     (dr.group!==id?"<br>Dropped with "+[dr.group].concat(dg).map(J).join(", "):dg.length?"<br>Dropped with it: "+dg.map(J).join(", "):"")+
+     '<br><span class="mut">It never merges; its branch and files stay.</span>'],
+    ["Routing exception",rx.length&&'<span class="tag rxt">⇄ ran on another route than routing chose</span><br>'+exLines(rx).map(esc).join("<br>")],["Summary",esc(j.summary)],["Decision request",j.status==="parked"&&ask(t,id)],["Waits for",j.status==="pending"&&esc(waits(t,id).join(", "))],
     ["Needs",j.needs.map(J).join(", ")],["Target",j.target&&tgt(t,j.target)],["Fix of",J(j.fix_of)],["Review flag",reviewFlagControl(t,id)],["Reviews",rs.map(k=>J(k)+" "+stp(t,k)).join(" ")],["Decision jobs",dj.map(J).join(", ")],["Hold",dead(t)?"":(own(holdsOf(t),id)?'<span class="tag">⏸ '+(holdOn(t,id)?"hold active":"hold after this job")+"</span> ":"")+holdBtn(t,id)],["Commits",(j.commits||[]).map(c=>code(c.slice(0,7))).join(" ")],["Last change",agoH(j.last_change)]].map(p=>[p[0],p[1]||""]));
+  if(sy)out+=sec("Parked at the round limit",storyBox(t,sy));
   if(j.attempts.length)out+=sec("Attempts",tbl("nw","~#,Model,Harness,Started,~Duration,~Tokens,Reason",j.attempts.map(a=>tr([["n",a.n],["mono",esc(model(a))],esc(a.harness+" "+tierOf(a)),["ink2",esc(fmt(a.started))],["n",esc(dur(a.duration_s)||(a.ended?"–":"running"))],["n",a.tokens?num(a.tokens):"–"],esc(a.reason||"")]))));
+  out+=launches(t,j);
   var dd=[...new Set(["jobs/"+id+".md",resultPath(id,j),"jobs/"+id+".verify.log"].concat(dj.map(k=>"decisions/"+k+".md")))].filter(d=>f[d]!=null);
   return out+sec("Files",dd.length?docs("j:",dd,f):box([],"No files yet."))}
