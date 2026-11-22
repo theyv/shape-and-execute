@@ -232,14 +232,18 @@ def round_findings(task: Task, review_id: str) -> list[tuple[str | None, str]]:
 
 
 def let_go_errors(task: Task, review_id: str, summary: str) -> str | None:
-    """Why a --let-go summary does not name exactly one finding of the round, or None."""
-    number, _ = let_go_finding(summary)
+    """Why a --let-go summary does not name exactly one finding of the round with a reason, or None."""
+    number, reason = let_go_finding(summary)
     line = let_go_line(task, review_id)
     if number is None:
         return f"--let-go names one finding of {review_id} by its number:\n  {line}"
     numbers = [n for n, _ in round_findings(task, review_id) if n]
-    if numbers and number not in numbers:
-        return f"{review_id} has no finding {number}; its findings are {', '.join(numbers)}:\n  {line}"
+    if numbers.count(number) != 1:
+        found = f"its findings are {', '.join(numbers)}" if numbers else "its review lists no numbered findings yet"
+        problem = f"has no finding {number}" if number not in numbers else f"numbers finding {number} more than once"
+        return f"{review_id} {problem}; {found}:\n  {line}"
+    if not reason:
+        return f"--let-go needs a reason after \"{number}:\":\n  {line}"
     return None
 
 

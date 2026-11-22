@@ -438,6 +438,59 @@ class ReviewFixLoopExitsTests(FixLoopCase):
             "- REVIEW-A: Name is unclear — accepted: style only",
             "- REVIEW-A: Odd log — accepted: style only"])
 
+    def test_accept_review_after_a_passing_round_records_no_accepted_round(self):
+        """REVIEW-FIX-LOOP-EXITS-2 finding 1: round 2 passed, the merge then conflicted; accepting
+        the review must not list the superseded round 1's findings as let go."""
+        sb = self.sandbox()
+        task = self.planned(sb, "apass", [("LEFT", "implementation", "", []),
+                                          ("A", "implementation", "", ["--review"])],
+                            settings=["review=selected-jobs"])
+        ws_l = dispatch_workspace(sb, task, "LEFT")
+        ws_a = dispatch_workspace(sb, task, "A")
+        sb.work(ws_l, "app.txt", "left\n", "LEFT: edit")
+        sb.work(ws_a, "app.txt", "a\n", "A: edit")
+        for job in ("LEFT", "A"):
+            sb.result(task, f"jobs/{job}.result.md", status="done", summary=job, validation="pass", changes="made")
+            sb.sae("collect", "apass", job)
+        self.review_with(sb, task, "apass", "REVIEW-A", "A", "changes-required", ["Name is unclear"])
+        sb.sae("job", "add", "apass", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--reason", "round 1")
+        sb.job_file(task, "A-FIX-1")
+        self.assertIn("Added REVIEW-A-2", self.run_writer(sb, task, "apass", "A-FIX-1"))
+        sb.json("dispatch", "apass", "REVIEW-A-2")
+        path = sb.task_dir(task) / "reviews" / "REVIEW-A-2.md"
+        path.write_text(review_text("A", "pass", []))
+        sb.sae("collect", "apass", "REVIEW-A-2", code=4)
+        self.assertFalse(sb.state(task)["jobs"]["A"]["merged"])
+        sb.sae("merge", "apass", "A", "--accept-review", "conflict resolved by hand", code=4)
+        decisions = [e for e in sb.events(task) if e["type"] == "decision" and e.get("job") == "A"]
+        self.assertTrue(decisions)
+        self.assertNotIn("accepted_review", decisions[-1])
+
+    def test_let_go_refuses_an_absent_finding(self):
+        """REVIEW-FIX-LOOP-EXITS-2 finding 2: the number must name exactly one finding of the
+        review; a review without numbered findings has none to let go."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letabs")
+        self.review_with(sb, task, "letabs", "REVIEW-INTEGRATION", "integration", "changes-required", [])
+        before = self.snapshot(sb, task)
+        refused = sb.sae("log", "letabs", "decision", "2: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
+                         code=1).stderr
+        self.assertIn("REVIEW-INTEGRATION has no finding 2", refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+
+    def test_let_go_refuses_a_blank_reason(self):
+        """REVIEW-FIX-LOOP-EXITS-2 finding 2: "2:" names a finding but gives no reason."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letblank")
+        self.review_with(sb, task, "letblank", "REVIEW-INTEGRATION", "integration", "changes-required",
+                         ["Retry", "Odd log"])
+        before = self.snapshot(sb, task)
+        for summary in ("2:", "2:   "):
+            refused = sb.sae("log", "letblank", "decision", summary, "--job", "REVIEW-INTEGRATION", "--let-go",
+                             code=1).stderr
+            self.assertIn("reason", refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+
     def test_let_go_names_one_finding_by_number(self):
         """Finding 3: a title that starts another finding's title hides nothing."""
         sb = self.sandbox()
