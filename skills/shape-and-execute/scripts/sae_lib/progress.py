@@ -38,6 +38,7 @@ from .control import (
     record_card,
 )
 from .findings import open_findings
+from .fix_loop import accept_line
 from .graph import (
     active_holds,
     add_due_review,
@@ -46,8 +47,9 @@ from .graph import (
     is_ready,
     kind_allowed_now,
     last_round,
-    requires_changes,
     release_command,
+    round_fixes,
+    unaccepted_changes,
     waits_for,
     writer_blocked,
     writer_slot_notice,
@@ -287,18 +289,21 @@ def integration_notice(task: Task) -> str | None:
     """The parked task, or a changes-required integration round that waits for fix jobs
     ([INTEGRATION-REVIEW-ROUNDS]), with the ways forward."""
     last = last_round(task, "integration")
-    if not last or not requires_changes(task.jobs[last]):
+    if not last or not unaccepted_changes(task.jobs[last]):
         return None
     forward = f"sae finish {task.id} --override \"<reason>\""
+    accept = accept_line(task, last, "integration")
     if integration_parked(task):
         return "\n".join([f"The task is parked for the owner: {last} still requires changes after a fix round. "
-                          "Nothing is dispatched until the owner chooses:",
+                          "Nothing is dispatched until the owner chooses (decision jobs still run):",
                            "  - more fix jobs:", f"    {fix_job_command(task, last)}",
+                           "  - or accept this round, on the owner's word:", f"    {accept}",
                            "  - or close anyway:", f"    {forward}"])
-    if any(j.get("fix_of") == last for j in task.jobs.values()):
+    if round_fixes(task, last):
         return None
     return "\n".join([f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):",
                       f"  {fix_job_command(task, last)}",
+                       "Or accept when the mode lets you decide:", f"  {accept}",
                        "Or, on the owner's word:", f"  {forward}"])
 
 
@@ -406,17 +411,23 @@ def cmd_dispatch(args) -> int:
                                  "and for done research or planning jobs.")
             if not kind_allowed_now(task, job):
                 fail(EXIT_USAGE, f"{job['kind']} jobs do not run in phase {task.phase}.")
+        elif job["status"] == "dropped":
+            fail(EXIT_USAGE, f"{job_id} is dropped: a dropped job never runs again.")
         elif job["status"] != "pending":
             fail(EXIT_USAGE, f"{job_id} is {job['status']}. To run it again: --resume --reason \"<why>\".")
-        # A parked job that never started (a missing CLI) is a first dispatch, also with --resume [HARNESS-FALLBACK]
+        # Gate order, all before any change: the parked task and a hold (a decision job only advises,
+        # so it passes both [DECISION-ANYTIME]), what the job waits for, a busy writer slot, then the
+        # missing CLI [HARNESS-FALLBACK]. A parked job that never started (a missing CLI) is a first
+        # dispatch, also with --resume.
         if not args.resume or (job["status"] == "parked" and not job["attempts"]):
-            parked = integration_parked(task)
-            if parked:
-                fail(EXIT_GATE, integration_notice(task))
-            held = active_holds(task)
-            if held:
-                fail(EXIT_GATE, f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.\n"
-                                f"  Release: {release_command(task, held[0])}")
+            if job["kind"] != "decision":
+                parked = integration_parked(task)
+                if parked:
+                    fail(EXIT_GATE, integration_notice(task))
+                held = active_holds(task)
+                if held:
+                    fail(EXIT_GATE, f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.\n"
+                                    f"  Release: {release_command(task, held[0])}")
             reasons = waits_for(task, job_id)
             if reasons:
                 fail(EXIT_USAGE, f"{job_id} is not ready: waits for {', '.join(reasons)}.")
@@ -535,7 +546,8 @@ def register_dispatch(sub, command):
                 "after a plan review); sae collect then reads the updated report or result. The message also\n"
                 "works for a fresh agent. A due spec or plan review is added first. Exit 3: an active hold (the\n"
                 "message names the release command), or the task is parked after max-review-rounds (default 3)\n"
-                "changes-required integration rounds.",
+                "changes-required integration rounds. A decision job only advises, so it passes both. A dropped\n"
+                "job never runs again.",
                 ["dispatch claims-status STATUS-API", "dispatch claims-status STATUS-API --resume --reason verify-failed",
                  'dispatch claims-status PLAN --resume --reason "REVIEW-PLAN: changes required"'],
                 [0, 1, 2, 3, 4], cmd_dispatch)

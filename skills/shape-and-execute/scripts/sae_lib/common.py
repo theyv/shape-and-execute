@@ -36,7 +36,9 @@ Exit codes:
 PHASES = ("shaping", "planning", "executing", "done", "abandoned")
 JOB_KINDS = ("research", "planning", "implementation", "integration", "validation", "review", "decision")
 WRITER_KINDS = ("implementation", "integration")
-JOB_STATUSES = ("pending", "running", "done", "failed", "parked")
+# `dropped` is final like `done`: the owner decided the job must never merge ([JOB-DROP]).
+JOB_STATUSES = ("pending", "running", "done", "failed", "parked", "dropped")
+FINAL_STATUSES = ("done", "dropped")
 DIFFICULTIES = ("mechanical", "easy", "normal", "hard")
 LEVELS = ("economy", "balanced", "premium")
 # Old level names, read as the new one; `sae` writes only LEVELS ([DECISION-LEVEL-PREMIUM]).

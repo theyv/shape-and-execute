@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .common import (
     DECISION_CLASSES,
+    FINAL_STATUSES,
     EXIT_GATE,
     EXIT_GIT,
     EXIT_OK,
@@ -26,15 +27,20 @@ from .common import (
 )
 from .config import cfg, load_config, max_review_rounds, max_verify_failures
 from .findings import close_resolved, resolution_notes
+from .fix_loop import accept_line, changes_required_lines
 from .gitutil import find_root, git, run
 from .graph import (
     add_generated_job,
     fix_target,
     integration_parked,
+    is_dropped,
     last_round,
+    live_writers,
     place_final_after,
     requires_changes,
     review_rounds,
+    round_fixes,
+    unaccepted_changes,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
 from .launch import command_tokens
@@ -137,11 +143,11 @@ def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
     if "plan" in points and task.phase in ("shaping", "planning") and not review_rounds(task, "plan"):
         plan("REVIEW-PLAN", "plan", [], [])
     for job_id, job in jobs.items():
-        if (review_due(task, job_id) and not job["merged"] and job["status"] not in ("failed",)
+        if (review_due(task, job_id) and not job["merged"] and job["status"] not in ("failed", "dropped")
                 and not review_rounds(task, job_id) and f"REVIEW-{job_id}" not in jobs):
             plan(f"REVIEW-{job_id}", job_id, [job_id], [])
     if "integration" in points and not review_rounds(task, "integration") and "REVIEW-INTEGRATION" not in jobs:
-        writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+        writers = live_writers(task)
         if writers:
             finals = [i for i, j in jobs.items() if j["final"]]
             plan("REVIEW-INTEGRATION", "integration", writers, finals)
@@ -175,19 +181,20 @@ def next_review_rounds(task: Task, config: dict | None = None) -> list[dict]:
 
     for job_id, job in jobs.items():
         rounds = review_rounds(task, job_id)
-        if job["kind"] not in WRITER_KINDS or job["merged"] or not rounds or not requires_changes(jobs[rounds[-1]]):
+        if (job["kind"] not in WRITER_KINDS or job["merged"] or is_dropped(job) or not rounds
+                or not requires_changes(jobs[rounds[-1]])):
             continue
         fixes = [i for i in jobs if fix_target(task, i) == job_id]
         if any(jobs[i]["status"] != "done" for i in fixes):
             number = (job.get("review_rounds") or 0) + 1
             plan(f"REVIEW-{job_id}-{number}", job_id, number, rounds[-1], [job_id] + fixes, [])
     rounds = review_rounds(task, "integration")
-    if "integration" in task.settings["review"]["points"] and rounds and requires_changes(jobs[rounds[-1]]):
-        fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+    if "integration" in task.settings["review"]["points"] and rounds and unaccepted_changes(jobs[rounds[-1]]):
+        fixes = round_fixes(task, rounds[-1])
         if any(not jobs[i]["merged"] for i in fixes):
             number = (jobs[rounds[-1]].get("round") or len(rounds)) + 1
             plan(f"REVIEW-INTEGRATION-{number}", "integration", number, rounds[-1],
-                 [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS], [i for i, j in jobs.items() if j["final"]])
+                 live_writers(task), [i for i, j in jobs.items() if j["final"]])
     return planned
 
 
@@ -222,6 +229,9 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
         target = job["target"]
         group += [target] + [i for i, j in task.jobs.items()
                              if fix_target(task, i) == target and j["status"] == "done" and i not in group]
+    dropped = [i for i in group if is_dropped(task.jobs[i])]
+    if dropped:  # [JOB-DROP]: the commits of a dropped job never reach the task branch
+        fail(EXIT_USAGE, f"{', '.join(dropped)} is dropped: dropped jobs never merge.")
     commit = None
     if task.uses_worktrees:
         require_on_task_branch(task)
@@ -310,7 +320,7 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
     if "integration" not in task.settings["review"]["points"] or task.phase != "executing":
         return
     jobs = task.jobs
-    writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+    writers = live_writers(task)  # [JOB-DROP]: rounds ignore dropped jobs
     if not writers or not all(jobs[i]["merged"] for i in writers):
         return
     if any(j["status"] in ("pending", "running") and not j["final"] and j["kind"] != "review"
@@ -326,8 +336,8 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
         previous = jobs[rounds[-1]]
         if previous["status"] != "done":
             return
-        if requires_changes(previous):
-            fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+        if unaccepted_changes(previous):  # an accepted round continues as after a pass
+            fixes = round_fixes(task, rounds[-1])
             if not fixes:
                 return
             limit, reason = "findings", f"fix jobs of {rounds[-1]} merged: {', '.join(fixes)}"
@@ -411,14 +421,15 @@ def finish_merges(task: Task) -> list[str]:
             and not any(jobs[r]["status"] != "done" for r in review_rounds(task, i))]
 
 
-def fix_job_command(task: Task, target: str) -> str:
-    """The `sae job add` line of the next fix job of a job, or of an integration review round."""
+def fix_job_command(task: Task, target: str, reason: str = "<finding>") -> str:
+    """The `sae job add` line of the next fix job of a job, or of an integration review round,
+    with the first free `-FIX-<n>`."""
     stem = "INTEGRATION" if target in task.jobs and task.jobs[target]["kind"] == "review" else target
     n = 1
     while f"{stem}-FIX-{n}" in task.jobs:
         n += 1
     return (f"sae job add {task.id} {stem}-FIX-{n} --kind implementation --fix-of {target} "
-            f"--reason \"<finding>\"")
+            f"--reason \"{reason}\"")
 
 
 def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
@@ -429,11 +440,11 @@ def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
     blocks: list[tuple[str, str]] = []
     held: set[str] = set()
     last = last_round(task, "integration")
-    if last and requires_changes(jobs[last]):
+    if last and unaccepted_changes(jobs[last]):
         blocks.append((last, last))
         held |= {i for i, j in jobs.items() if j["final"] and j["status"] != "done"}
     for job_id, job in jobs.items():
-        if job["kind"] not in WRITER_KINDS or job["merged"]:
+        if job["kind"] not in WRITER_KINDS or job["merged"] or is_dropped(job):
             continue
         review = last_round(task, job_id)
         if review and requires_changes(jobs[review]):
@@ -461,7 +472,7 @@ def stale_gate(task: Task) -> tuple[list[str], set[str]]:
             problems.append(f"{job_id} (reset by a late merge) has not run again")
             held.add(job_id)
     last = last_round(task, "integration")
-    if integration and last and jobs[last]["status"] == "done" and not requires_changes(jobs[last]):
+    if integration and last and jobs[last]["status"] == "done" and not unaccepted_changes(jobs[last]):
         late = merged_after(task, last)
         if late:
             problems.append(f"{', '.join(late)} merged after {last} passed; no round covers "
@@ -496,8 +507,10 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
         if override is None:
             lines = [f"Finish refused: {review} says changes-required." for review, _ in verdicts]
             lines.append("Ways forward:")
-            for _, target in verdicts:
-                lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}"]
+            for review, target in verdicts:
+                lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}",
+                          "  - or accept the round when the mode lets you decide:",
+                          f"    {accept_line(task, review, 'integration' if review == target else target)}"]
             lines += ["  - or close anyway, with the owner's reason:", f"    {forward}"]
             fail(EXIT_GATE, "\n".join(lines))
         overridden.append({"gate": "verdict", "jobs": [r for r, _ in verdicts] + sorted(verdict_held)})
@@ -529,7 +542,7 @@ def finish_readiness(task: Task) -> dict:
     try:
         check_finish_gates(task, False, None)
     except SaeError as exc:
-        done = all(j["status"] == "done" for j in task.jobs.values())
+        done = all(j["status"] in FINAL_STATUSES for j in task.jobs.values())
         return {"state": "blocked" if done else "waiting", "reason": str(exc)}
     return {"state": "ready", "reason": None}
 
@@ -691,11 +704,8 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
                                *raise_limit_hint(task, limit),
                                "Or adapt the graph."]))
     else:
-        out.append("\n".join([f"{target}: changes required. Add fix jobs:",
-                               f"  sae job add {task.id} {target}-FIX-1 --kind implementation --fix-of {target} "
-                               f"--reason \"{review_id}: changes required\"",
-                               "Or accept when the mode lets you decide:",
-                               f"  sae merge {task.id} {target} --accept-review \"<why>\""]))
+        fix = fix_job_command(task, target, f"{review_id}: changes required")
+        out.append("\n".join(changes_required_lines(task, review_id, target, fix)))
     return EXIT_OK
 
 
@@ -718,12 +728,14 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
         out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round "
                                f"(max-review-rounds is {limit}). Ask the owner:",
                                "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
+                               "  - or accept this round, on the owner's word:",
+                               f"    {accept_line(task, review_id, 'integration')}",
                                "  - or close anyway:", f"    {forward}",
                                *raise_limit_hint(task, limit)]))
     else:
-        out.append("\n".join([f"{review_id}: changes required. Add fix jobs (sae adds the next round when "
-                               "they are merged):", f"  {fix_job_command(task, review_id)}",
-                               "Or, on the owner's word, close anyway:", f"  {forward}"]))
+        fix = fix_job_command(task, review_id, f"{review_id}: changes required")
+        out.append("\n".join(changes_required_lines(task, review_id, "integration", fix)
+                              + ["Or, on the owner's word, close anyway:", f"  {forward}"]))
     return EXIT_OK
 
 
@@ -736,6 +748,8 @@ def cmd_merge(args) -> int:
             fail(EXIT_USAGE, f"{args.id} is not a writer job that merges (fix jobs merge with their target).")
         if job["merged"]:
             fail(EXIT_USAGE, f"{args.id} is already merged.")
+        if is_dropped(job):
+            fail(EXIT_USAGE, f"{args.id} is dropped: dropped jobs never merge.")
         accepted_park = job["status"] == "parked" and args.accept_review
         if job["status"] != "done" and not accepted_park:
             fail(EXIT_USAGE, f"{args.id} is {job['status']}, not done.")
@@ -747,9 +761,15 @@ def cmd_merge(args) -> int:
             fail(EXIT_GATE, f"The last review of {args.id} requires changes. Add fix jobs, or "
                             f"--accept-review \"<why>\".")
         if args.accept_review:
+            # [LET-GO-REPORT]: the final report lists the findings of the round this merge bypasses:
+            # the latest completed round, only when it requires changes. A newer round still
+            # pending holds no findings yet; a newer passing round supersedes the older findings.
+            completed = [r for r in review_rounds(task, args.id) if task.jobs[r]["status"] == "done"]
+            accepted = completed[-1] if completed and requires_changes(task.jobs[completed[-1]]) else None
             task.event("decision", **{"class": "consequential", "by": "agent",
                                       "summary": f"merge {args.id} despite review: {args.accept_review}",
-                                      "job": args.id})
+                                      "job": args.id, "reason": args.accept_review,
+                                      **({"accepted_review": accepted} if accepted else {})})
             job["status"] = "done"
         out: list[str] = []
         code = merge_job(task, args.id, config, out)
@@ -778,7 +798,9 @@ def register_collect(sub, command):
 def register_merge(sub, command):
     """Add the `merge` command to the parser."""
     p = command(sub, "merge", "Merge a done writer job now; --accept-review merges despite changes-required.",
-                "Normally automatic. --accept-review logs a decision event with the reason.",
+                "Normally automatic. --accept-review logs a decision event with the reason; the final report lists\n"
+                "each finding of the last review round with it. Refuses a dropped job (sae job drop). An integration\n"
+                "review round is accepted with sae accept-review instead.",
                 ['merge claims-status STATUS-API --accept-review "remaining finding is cosmetic"'], [0, 1, 3, 4], cmd_merge)
     p.add_argument("task")
     p.add_argument("id")
