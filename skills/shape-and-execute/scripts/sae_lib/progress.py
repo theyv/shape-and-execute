@@ -66,6 +66,7 @@ from .launch import (
     refuse_missing_cli,
     routing_exception,
 )
+from .park_story import INTEGRATION, limit_parked_jobs, mark_approach_check, park_stories, park_story, park_story_text
 from .prompts import EARLIER_RESULT_POINTER, build_prompt
 from .reviews import fix_job_command, materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
@@ -139,6 +140,7 @@ def task_status_data(task: Task) -> dict:
             "bypass": bypass_line(task),  # [NO-SANDBOX-VISIBLE]
             "approvals": task.info.get("approvals", {}), "jobs": rows, "parked": parked, "ready": ready,
             "warnings": warnings, "integration": integration_notice(task), "parked_task": integration_parked(task),
+            "park_stories": park_stories(task),  # [PARK-STORY]
             "holds": holds_data(task), "asks": open_asks(task), "ask_signal": ask_signal(task.settings),
             "map": process_map(task)["lines"], "next": next_command(task)}
 
@@ -176,6 +178,7 @@ def cmd_status(args) -> int:
                     lines.append(f"    {r['model']}")
         if data["parked"]:
             lines += ["", "Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+            lines += job_story_lines(task)
         if data["asks"]:
             # "waiting" only in executing, like owner_wait()
             heading = "Open asks (waiting for the owner):" if data["phase"] == "executing" else "Open asks:"
@@ -263,6 +266,7 @@ def next_text(task: Task, config: dict | None, data: dict | None = None, ask_rem
         lines += ["Running:"] + [f"  {r['id']} — last change {age_text(r['last_change'])}" for r in data["running"]]
     if data["parked"]:
         lines += ["Parked:"] + [f"  {p['id']} — {p['reason']}" for p in data["parked"]]
+        lines += job_story_lines(task)
     if data["ready"]:
         lines += ["Ready (dispatch each):", "  sae dispatch <task> <ID>"]
         for r in data["ready"]:
@@ -285,6 +289,16 @@ def next_text(task: Task, config: dict | None, data: dict | None = None, ask_rem
     return "\n".join(lines).rstrip()
 
 
+def job_story_lines(task: Task) -> list[str]:
+    """[PARK-STORY]: the story of each job parked at the round limit, after the parked list."""
+    out: list[str] = []
+    for job_id in limit_parked_jobs(task):
+        story = park_story(task, job_id)
+        if story:
+            out += ["", park_story_text(task, story), ""]
+    return out
+
+
 def integration_notice(task: Task) -> str | None:
     """The parked task, or a changes-required integration round that waits for fix jobs
     ([INTEGRATION-REVIEW-ROUNDS]), with the ways forward."""
@@ -293,12 +307,9 @@ def integration_notice(task: Task) -> str | None:
         return None
     forward = f"sae finish {task.id} --override \"<reason>\""
     accept = accept_line(task, last, "integration")
-    if integration_parked(task):
-        return "\n".join([f"The task is parked for the owner: {last} still requires changes after a fix round. "
-                          "Nothing is dispatched until the owner chooses (decision jobs still run):",
-                           "  - more fix jobs:", f"    {fix_job_command(task, last)}",
-                           "  - or accept this round, on the owner's word:", f"    {accept}",
-                           "  - or close anyway:", f"    {forward}"])
+    story = park_story(task, INTEGRATION)  # [PARK-STORY]: the parked task
+    if story:
+        return park_story_text(task, story)
     if round_fixes(task, last):
         return None
     return "\n".join([f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):",
@@ -344,6 +355,7 @@ def next_data(task: Task, config: dict | None) -> dict:
     card = next_step_card(task, config, [r["id"] for r in ready])
     return {"running": running, "parked": parked, "ready": ready, "blocked": blocked, "failed": failed,
             "integration": notice, "parked_task": integration_parked(task),
+            "park_stories": park_stories(task),  # [PARK-STORY]
             "holds": holds_data(task), "holds_active": active_holds(task),
             "slots": writer_slot_notice(task, config), "card": card,
             "map": process_map(task)["lines"],
@@ -457,6 +469,7 @@ def cmd_dispatch(args) -> int:
         command_job = is_command_job(task, model["harness"])  # [WRITER-COMMAND]
         if command_job:
             attempt["launch"] = launch_record(task, job_id, model)  # [LAUNCH-RECORD]
+        mark_approach_check(task, job_id)  # [APPROACH-CHECK]: later fixes of the target get it too
         earlier = empty_result_slot(task, job_id)  # the one place: collect accepts only a result this attempt writes
         job["attempts"].append(attempt)
         if card is not None and job_id in [b["id"] for b in card["jobs"]]:
@@ -510,7 +523,8 @@ def register_status(sub, command):
     """Add the `status` command to the parser."""
     p = command(sub, "status", "Where things are. The first command after any context reset. Read-only.",
                 "Without a task: every task, the backlog and the number of open findings.\n"
-                "With a task: the process map, settings card, phase, branch, holds, jobs, parked jobs with reasons,\n"
+                "With a task: the process map, settings card, phase, branch, holds, jobs, parked jobs with reasons\n"
+                "(the story of each park at the review-round limit: rounds, findings, fix limits, options),\n"
                 "open asks (sae ask), ready jobs, warnings, and the next suggested command. Writes nothing.", ["status", "status claims-status --json"], [0, 1], cmd_status)
     p.add_argument("task", nargs="?")
 
@@ -519,10 +533,11 @@ def register_next(sub, command):
     """Add the `next` command to the parser."""
     p = command(sub, "next", "Process map, reminder, notices, next-step card, then running, ready and blocked jobs.",
                 "Read the reminder every time. Notices: an active hold and its release command, the parked task,\n"
-                "full writer slots, how to resume in another session. A next-step card comes before research, the\n"
-                "planner, a spec, plan or integration review, and the start of execution; sae dispatch of a job\n"
-                "on it records it. Ready jobs show harness · model · effort (with the source when it is not\n"
-                "global, or override) and the workspace kind; a due spec or plan review is listed too.\n"
+                "the story of each park at the review-round limit (relay it to the user), full writer slots, how\n"
+                "to resume in another session. A next-step card comes before research, the planner, a spec, plan\n"
+                "or integration review, and the start of execution; sae dispatch of a job on it records it.\n"
+                "Ready jobs show harness · model · effort (with the source when it is not global, or override)\n"
+                "and the workspace kind; a due spec or plan review is listed too.\n"
                 "Read-only, except when it adds a due integration review round.",
                 ["next claims-status"], [0, 1, 2], cmd_next)
     p.add_argument("task")

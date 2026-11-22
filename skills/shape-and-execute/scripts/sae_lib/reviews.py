@@ -43,6 +43,7 @@ from .graph import (
     unaccepted_changes,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
+from .park_story import INTEGRATION, PARK_OPENING, approach_proposal_line, mark_limit_park, option_lines
 from .launch import command_tokens
 from .prompts import harness_output_files
 from .routing import override_key, resolve_model
@@ -589,6 +590,9 @@ def cmd_collect(args) -> int:
         if disputed:
             out.append(f"{disputed} disputed finding{'s' if disputed > 1 else ''}: settle "
                        f"{'them' if disputed > 1 else 'it'} (see execute.md). Read {path}.")
+        proposal = approach_proposal_line(path, body) if status == "done" else None
+        if proposal:  # [FIX-WORKER], audit 2026-11-20 proposal 3
+            out.append(proposal)
         code = EXIT_OK
         task.event("job.collected", job=job_id, attempt=attempt.get("n"), status=status, summary=summary,
                    tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"), disputed=disputed)
@@ -617,7 +621,8 @@ def cmd_collect(args) -> int:
                        f"  sae decision new {task.id} --from {job_id}")
         materialize_integration_review(task, out)
         emit(args, "\n".join(out), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
-                                    "disputed": disputed, "messages": out[1:]})
+                                    "disputed": disputed, "approach_proposal": bool(proposal),
+                                    "messages": out[1:]})
     return code
 
 
@@ -695,26 +700,16 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         subject["status"] = "parked"
         subject["summary"] = (f"{review_id}: changes required after {subject['review_rounds']} review rounds "
                               f"(max-review-rounds {limit}) — human decision")
-        out.append("\n".join([f"{target} parked: {subject['review_rounds']} review rounds required changes "
-                               f"(max-review-rounds is {limit}). Ask the user. Accept with:",
-                               f"  sae merge {task.id} {target} --accept-review \"<why>\"",
-                               "Or add another fix job (the next round follows it):",
-                               f"  sae job add {task.id} {target}-FIX-<n> --kind implementation --fix-of {target} "
-                               f"--reason \"<why>\"",
-                               *raise_limit_hint(task, limit),
-                               "Or adapt the graph."]))
+        mark_limit_park(task, review_id)
+        out.append("\n".join([PARK_OPENING,
+                               f"{target} parked: {subject['review_rounds']} review rounds required changes "
+                               f"(max-review-rounds is {limit}). The story to relay, round by round: "
+                               f"sae next {task.id}",
+                               *option_lines(task, target, review_id)]))
     else:
         fix = fix_job_command(task, target, f"{review_id}: changes required")
         out.append("\n".join(changes_required_lines(task, review_id, target, fix)))
     return EXIT_OK
-
-
-def raise_limit_hint(task: Task, limit: int) -> list[str]:
-    """How the owner allows more changes-required rounds before the next park ([REVIEW-ROUNDS-LIMIT])."""
-    if limit >= 10:
-        return []
-    return ["More rounds before the next park, on the user's word:",
-            f"  sae set {task.id} max-review-rounds={limit + 1}"]
 
 
 def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
@@ -725,13 +720,12 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
     forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
         limit = max_review_rounds(task.settings)
-        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round "
-                               f"(max-review-rounds is {limit}). Ask the owner:",
-                               "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
-                               "  - or accept this round, on the owner's word:",
-                               f"    {accept_line(task, review_id, 'integration')}",
-                               "  - or close anyway:", f"    {forward}",
-                               *raise_limit_hint(task, limit)]))
+        mark_limit_park(task, review_id)
+        out.append("\n".join([PARK_OPENING,
+                               f"The task is parked: {review_id} still requires changes after a fix round "
+                               f"(max-review-rounds is {limit}). The story to relay, round by round: "
+                               f"sae next {task.id}",
+                               *option_lines(task, INTEGRATION, review_id)]))
     else:
         fix = fix_job_command(task, review_id, f"{review_id}: changes required")
         out.append("\n".join(changes_required_lines(task, review_id, "integration", fix)

@@ -16,6 +16,7 @@ from .findings import ADR_INDEX, adr_folders, adr_pointer_records
 from .gitutil import git
 from .graph import fix_target, last_changes_round, review_rounds
 from .markdown import has_content, md_section, split_frontmatter
+from .park_story import approach_check, proposal_results
 from .routing import job_context
 from .stakes import prompt_block
 from .tasks import Task, as_list, job_file, job_meta, result_file, tasks_dir
@@ -257,6 +258,16 @@ def decision_source_lines(task: Task, target: str | None) -> list[str | None]:
             pointer(f"Result of {target}: ", result)]
 
 
+def approach_lines(task: Task, job_id: str) -> list[str]:
+    """[APPROACH-CHECK]: the approach paragraph of a fix job near the round limit, filled in, and
+    the earlier review rounds it asks the worker to read; empty when it is not due."""
+    check = approach_check(task, job_id)
+    if not check:
+        return []
+    paragraph = APPROACH_PARAGRAPH.format(fix=check["fix"], target=check["target"], max_rounds=check["max_rounds"])
+    return [paragraph, f"Review rounds of {check['target']} so far:", *[f"  {path}" for path in check["earlier_rounds"]]]
+
+
 def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, model: dict,
                  config: dict, external: bool = False) -> str:
     job = task.jobs[job_id]
@@ -295,6 +306,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
                                                       if done else ""))
             elif target in task.jobs:
                 lines.append(f"Fixes findings of {target} — review to address: {result_file(task, target)}")
+            lines += approach_lines(task, job_id)
         if kind == "integration" and job.get("target"):
             lines.append(f"Merge in progress in the workdir: {job_branch(task, job['target'])} into the task "
                          f"branch. Resolve the conflicts, keep both jobs' intent, commit the merge.")
@@ -371,6 +383,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
             previous = earlier_round(task, job_id)
             if previous:
                 lines.append(f"Round {job.get('round')} — check only the findings of: {result_file(task, previous)}")
+        lines += [APPROACH_PROPOSAL_POINTER.format(result=path) for path in proposal_results(task, job_id)]
         lines += ["Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "review.md"
     else:  # decision
