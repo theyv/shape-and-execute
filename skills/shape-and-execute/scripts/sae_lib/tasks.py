@@ -6,6 +6,7 @@ import contextlib
 import dataclasses
 import fcntl
 import json
+import re
 from pathlib import Path
 
 from .common import (
@@ -387,6 +388,36 @@ def result_file(task: Task, job_id: str) -> Path:
     if kind == "decision":
         return task.dir / "decisions" / f"{job_id}.md"
     return task.dir / "jobs" / f"{job_id}.result.md"
+
+
+def empty_result_slot(task: Task, job_id: str) -> Path | None:
+    """[WRITER-COMMAND], [HARNESS-FALLBACK]: every dispatch that starts an attempt calls this, so the
+    attempt starts with no result file and `sae collect` accepts only a result it wrote. An existing
+    result moves to `<ID>.result.attempt-<N>.md` beside it (N: the latest attempt, which it belongs
+    to), never over an existing file. Returns the earlier result to build on: the file it moved, or
+    the latest one an earlier dispatch moved; None when there is none."""
+    path = result_file(task, job_id)
+    if not path.is_file():
+        return latest_earlier_result(path, job_id)
+    attempts = task.jobs[job_id]["attempts"]
+    stem = f"{job_id}.result.attempt-{attempts[-1].get('n', len(attempts)) if attempts else 0}"
+    target, copy = path.with_name(f"{stem}.md"), 1
+    while target.exists():
+        copy += 1
+        target = path.with_name(f"{stem}-{copy}.md")
+    path.rename(target)
+    return target
+
+
+def latest_earlier_result(path: Path, job_id: str) -> Path | None:
+    """The `<ID>.result.attempt-<N>[-<copy>].md` beside `path` with the highest attempt and copy."""
+    pattern = re.compile(rf"{re.escape(job_id)}\.result\.attempt-(\d+)(?:-(\d+))?\.md")
+    found = []
+    for candidate in path.parent.glob(f"{job_id}.result.attempt-*.md"):
+        match = pattern.fullmatch(candidate.name)
+        if match:
+            found.append(((int(match[1]), int(match[2] or 1)), candidate))
+    return max(found)[1] if found else None
 
 
 def job_meta(task: Task, job_id: str) -> dict:
