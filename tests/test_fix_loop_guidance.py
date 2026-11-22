@@ -83,7 +83,7 @@ class JobApproachCheckTests(GuidanceCase):
         self.assertNotIn("approach_check", sb.state(task)["jobs"]["CORE-FIX-1"])
         self.review_round(sb, task, "jthree", "REVIEW-CORE-2", "CORE", [("Stale status after a delete", "Clear it on delete too")])
         second = self.fix(sb, task, "jthree", "CORE-FIX-2", "CORE", summary="clears on delete")
-        self.assertIn("FIX 2 of CORE. CORE parks for the owner after review round 3.", second["prompt"])
+        self.assertIn("FIX 2 of CORE. CORE parks for the user after review round 3.", second["prompt"])
         self.assertIn(PARAGRAPH + " CORE", second["prompt"])
         self.assertIn(str(sb.task_dir(task) / "reviews" / "REVIEW-CORE.md"), second["prompt"])
         self.assertIn(str(sb.task_dir(task) / "reviews" / "REVIEW-CORE-2.md"), second["prompt"])
@@ -135,7 +135,7 @@ class JobApproachCheckTests(GuidanceCase):
         # the owner raises the limit on the parked round: the next fix still gets the paragraph
         sb.sae("set", "jthree", "max-review-rounds=5")
         third = self.fix(sb, task, "jthree", "CORE-FIX-3", "CORE")
-        self.assertIn("FIX 3 of CORE. CORE parks for the owner after review round 5.", third["prompt"])
+        self.assertIn("FIX 3 of CORE. CORE parks for the user after review round 5.", third["prompt"])
         self.assertEqual(sb.json("next", "jthree")["park_stories"], [])
 
     def test_once_a_fix_got_the_paragraph_later_fixes_get_it_after_a_raise(self):
@@ -145,7 +145,7 @@ class JobApproachCheckTests(GuidanceCase):
         self.assertIn("FIX 1 of CORE", self.fix(sb, task, "jsticky", "CORE-FIX-1", "CORE")["prompt"])
         sb.sae("set", "jsticky", "max-review-rounds=8")  # before round 2: no park
         self.review_round(sb, task, "jsticky", "REVIEW-CORE-2", "CORE", [("B", "b")])
-        self.assertIn("FIX 2 of CORE. CORE parks for the owner after review round 8.",
+        self.assertIn("FIX 2 of CORE. CORE parks for the user after review round 8.",
                       self.fix(sb, task, "jsticky", "CORE-FIX-2", "CORE")["prompt"])
 
     def test_one_round_every_fix_gets_the_paragraph(self):
@@ -154,7 +154,7 @@ class JobApproachCheckTests(GuidanceCase):
         parked = self.review_round(sb, task, "jone", "REVIEW-CORE", "CORE", [("A", "a")])
         self.assertIn(PARK_OPENING, parked["collect"])
         first = self.fix(sb, task, "jone", "CORE-FIX-1", "CORE")
-        self.assertIn("FIX 1 of CORE. CORE parks for the owner after review round 2.", first["prompt"])
+        self.assertIn("FIX 1 of CORE. CORE parks for the user after review round 2.", first["prompt"])
 
 
 class IntegrationApproachCheckTests(GuidanceCase):
@@ -168,7 +168,7 @@ class IntegrationApproachCheckTests(GuidanceCase):
         self.assertNotIn(PARAGRAPH, first["prompt"])
         self.review_round(sb, task, "ithree", "REVIEW-INTEGRATION-2", "integration", [("Retry in LEFT", "Call the helper")])
         second = self.fix(sb, task, "ithree", "INTEGRATION-FIX-2", "REVIEW-INTEGRATION-2")
-        self.assertIn("FIX 2 of REVIEW-INTEGRATION. REVIEW-INTEGRATION parks for the owner after review round 3.",
+        self.assertIn("FIX 2 of REVIEW-INTEGRATION. REVIEW-INTEGRATION parks for the user after review round 3.",
                       second["prompt"])
         parked = self.review_round(sb, task, "ithree", "REVIEW-INTEGRATION-3", "integration", [("Retry in RIGHT", "Same")])
         self.assertIn(PARK_OPENING + "\nThe task is parked: REVIEW-INTEGRATION-3", parked["collect"])
@@ -198,7 +198,7 @@ class IntegrationApproachCheckTests(GuidanceCase):
         parked = self.review_round(sb, task, "ione", "REVIEW-INTEGRATION", "integration", [("A", "a")])
         self.assertIn(OPENING, parked["collect"])
         first = self.fix(sb, task, "ione", "INTEGRATION-FIX-1", "REVIEW-INTEGRATION")
-        self.assertIn("FIX 1 of REVIEW-INTEGRATION. REVIEW-INTEGRATION parks for the owner after review round 2.",
+        self.assertIn("FIX 1 of REVIEW-INTEGRATION. REVIEW-INTEGRATION parks for the user after review round 2.",
                       first["prompt"])
 
 
