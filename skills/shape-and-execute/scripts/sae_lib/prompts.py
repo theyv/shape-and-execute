@@ -40,7 +40,7 @@ APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
 # [WRITER-COMMAND] a dispatch that moved the job's earlier result aside (`empty_result_slot`).
 EARLIER_RESULT_POINTER = "Read first: your earlier result, moved aside: {path}. Build on it and write the full result again."
 # [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
-APPROACH_PARAGRAPH = """FIX {fix} of {target}. {target} parks for the owner after review round {max_rounds}.
+APPROACH_PARAGRAPH = """FIX {fix} of {target}. {target} parks for the user after review round {max_rounds}.
 Before you patch, read the earlier review rounds of {target} and answer under "Decisions taken"
 in your result:
 1. Do the findings share one cause? Typical causes: the same value computed in several
