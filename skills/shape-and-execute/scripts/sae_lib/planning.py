@@ -215,7 +215,7 @@ def cmd_job_add(args) -> int:
                 if requires_changes(task.jobs[last]):
                     fail(EXIT_USAGE, f"--fix-of {args.fix_of}: fix jobs answer the last integration review round. "
                                      f"Use: sae job add {task.id} {job_id} --kind implementation --fix-of {last} "
-                                     f"--reason \"<finding>\"")
+                                     f"--reason \"{last}: changes required\"")
                 fail(EXIT_USAGE, f"--fix-of {args.fix_of}: {last} does not say changes-required, so it needs no fix "
                                  f"jobs. Add an ordinary job: sae job add {task.id} {job_id} --kind implementation "
                                  f"--reason \"<why>\"")
@@ -422,7 +422,7 @@ def register_job(sub, command):
     """Add the `job` command group to the parser; returns the group parser."""
     job = sub.add_parser("job", help="Add, edit, remove, override, park or drop a job of the graph.", parents=[],
                          description="Graph changes, per-job model overrides, parking for a harness fallback and "
-                                     "dropping a job on the owner's word. "
+                                     "dropping a job on the user's word. "
                                      "sae job <add|edit|remove|override|park|drop> --help.")
     job_sub = job.add_subparsers(dest="job_command", metavar="<add|edit|remove|override|park|drop>",
                                  parser_class=Parser)

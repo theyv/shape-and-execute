@@ -38,7 +38,7 @@ from .control import (
     record_card,
 )
 from .findings import open_findings
-from .fix_loop import accept_line
+from .fix_loop import changes_required_lines
 from .graph import (
     active_holds,
     add_due_review,
@@ -68,7 +68,7 @@ from .launch import (
 )
 from .park_story import INTEGRATION, limit_parked_jobs, mark_approach_check, park_stories, park_story, park_story_text
 from .prompts import EARLIER_RESULT_POINTER, build_prompt
-from .reviews import fix_job_command, materialize_integration_review
+from .reviews import materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
 from .stakes import find_stakes, profile_path, status_line as stakes_status_line
 from .session_tokens import record_session_snapshot
@@ -305,17 +305,12 @@ def integration_notice(task: Task) -> str | None:
     last = last_round(task, "integration")
     if not last or not unaccepted_changes(task.jobs[last]):
         return None
-    forward = f"sae finish {task.id} --override \"<reason>\""
-    accept = accept_line(task, last, "integration")
     story = park_story(task, INTEGRATION)  # [PARK-STORY]: the parked task
     if story:
         return park_story_text(task, story)
     if round_fixes(task, last):
         return None
-    return "\n".join([f"{last} requires changes. Add fix jobs (sae adds the next round when they are merged):",
-                      f"  {fix_job_command(task, last)}",
-                       "Or accept when the mode lets you decide:", f"  {accept}",
-                       "Or, on the owner's word:", f"  {forward}"])
+    return "\n".join([f"{last} requires changes.", *changes_required_lines(task, last, INTEGRATION)])
 
 
 def next_data(task: Task, config: dict | None) -> dict:
@@ -435,7 +430,8 @@ def cmd_dispatch(args) -> int:
             if job["kind"] != "decision":
                 parked = integration_parked(task)
                 if parked:
-                    fail(EXIT_GATE, integration_notice(task))
+                    fail(EXIT_GATE, f"The task is parked at the round limit by {parked}: only decision jobs are "
+                                    f"dispatched until the user chooses. The story and the options: sae next {task.id}")
                 held = active_holds(task)
                 if held:
                     fail(EXIT_GATE, f"Hold after {held[0]}: nothing new is dispatched. Report to the owner.\n"

@@ -32,7 +32,7 @@ from .common import (
 )
 from .config import cfg, load_config, new_task_settings, require_harness, settings_card
 from .gitutil import find_root, git, git_ok, git_user, run
-from .graph import fix_target, parallel_possible
+from .graph import fix_target, is_dropped, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
 from .launch import exception_report_lines
@@ -366,12 +366,15 @@ def final_report(task: Task, with_open: bool, kept: list[str] | None = None) -> 
                   "Details per requirement:", f"  {result_file(task, finals[0])}"]
     lines += ["", "## Jobs"]
     for job_id, job in jobs.items():
+        if is_dropped(job) and not job["attempts"]:  # never ran; "Dropped jobs" names it
+            continue
         tokens = sum(a.get("tokens") or 0 for a in job["attempts"])
         head = [job_id, job["kind"], job["status"] + (", merged" if job["merged"] else "")]
         lines.append("- " + " · ".join(head + ([f"{tokens} tokens"] if tokens else [])))
         lines += [f"  attempt {a.get('n', n)}: {attempt_text(a)}"
                   for n, a in enumerate(job["attempts"], 1)] or ["  not dispatched"]
-    reviews = [e for e in events if e["type"] == "review.completed"]
+    reviews = [e for e in events if e["type"] == "review.completed"
+               and not (e["job"] in jobs and is_dropped(jobs[e["job"]]))]  # "Dropped jobs" names them
     if reviews:
         lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}"
                                        + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
@@ -448,7 +451,7 @@ def cmd_finish(args) -> int:
         if task.phase != "executing":
             fail(EXIT_USAGE, f"The task is in {task.phase}; finish needs executing.")
         if args.override is not None and not args.override.strip():
-            fail(EXIT_USAGE, f"--override needs the owner's reason: sae finish {task.id} --override \"<reason>\"")
+            fail(EXIT_USAGE, f"--override needs the user's reason: sae finish {task.id} --override \"<reason>\"")
         # 1. Gates, before anything merges: they judge the code that will be closed.
         overridden = check_finish_gates(task, args.with_open, args.override)
         out: list[str] = []
@@ -729,17 +732,17 @@ def register_finish(sub, command):
                 "that the checks would not cover is still unmerged); the final validation and the integration\n"
                 "review done. An integration round accepted with sae accept-review passes like a pass, and the\n"
                 "gates ignore dropped jobs (sae job drop). --override passes the verdict and stale-check gates\n"
-                "with the owner's reason; it is logged and listed in the final report, as are the findings let\n"
+                "with the user's reason; it is logged and listed in the final report, as are the findings let\n"
                 "go, the accepted integration rounds and the dropped jobs. Before the commit, harness output logs (*.codex.jsonl,\n"
                 "*.claude.json) in the record's jobs/ and reviews/ go, and the committed files outside\n"
                 ".tasks/repo/ get ~ for your home folder. Never pushes.",
                 ["finish claims-status", "finish claims-status --with-open",
-                 'finish claims-status --override "owner accepts the remaining finding"'],
+                 'finish claims-status --override "user accepts the remaining finding"'],
                 [0, 1, 3, 4], cmd_finish)
     p.add_argument("task")
     p.add_argument("--with-open", action="store_true", help="the user accepts open jobs; they are listed in the report")
     p.add_argument("--override", metavar="REASON",
-                   help="the owner's reason to close despite changes-required or stale checks")
+                   help="the user's reason to close despite changes-required or stale checks")
 
 
 def register_abandon(sub, command):

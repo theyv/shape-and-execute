@@ -54,32 +54,32 @@ from .tasks import (
 from .viewer import remember_repo_safely, stamped_items
 
 
-def decision_source(task, source: str | None) -> tuple[str, list[str]]:
-    """[DECISION-ANYTIME]: the objective and the inputs of a decision job about `source`: the
-    decision request of a parked job, a review round's review file, or any other job's job file
-    and result. Without a source, the question in the job file is the only input."""
-    if source is None:
+def decision_inputs(task, source: str | None) -> tuple[str, list[tuple[str, Path]]]:
+    """[DECISION-ANYTIME]: the objective of a decision job about `source` and its inputs as
+    (label, path), the existing files only: the decision request of a parked job, the review round
+    that parked a job at the round limit, a review round's review file, or any other job's job
+    file and result. Without a source, the question in the job file is the only input. The job
+    file (`sae decision new`) and the dispatch prompt both list these inputs."""
+    if source is None or source not in task.jobs:
         return "Answer the question below.", []
     from .graph import last_changes_round  # late import: graph imports this module
     job = task.jobs[source]
-    result = rel(result_file(task, source), task.dir)
-    if job["status"] == "parked":
-        request = md_section(split_frontmatter(read_text(result_file(task, source), "") or "")[1], "Decision request")
-        if has_content(request):
-            return (f"Answer the decision request of {source}.",
-                    [f"- The section \"Decision request\" of {result}."])
-        parked_by = last_changes_round(task, source)
-        if parked_by:  # parked by sae at the review-round limit: the result holds no request
-            return (f"Advise on {source}: {parked_by} still requires changes at the review-round limit.",
-                    [f"- The review round that parked it: {rel(result_file(task, parked_by), task.dir)}.",
-                     f"- The job file of {source}: {rel(job_file(task, source), task.dir)}."])
+    result = result_file(task, source)
+    own = [(f"Job file of {source}", job_file(task, source)), (f"Result of {source}", result)]
     if job["kind"] == "review":
-        return (f"Advise on the review round {source} (target {job.get('target')}).",
-                [f"- The review file of the round: {result}."])
-    inputs = [f"- The job file of {source}: {rel(job_file(task, source), task.dir)}."]
-    if result_file(task, source).exists():
-        inputs.append(f"- Its result: {result}.")
-    return f"Advise on {source}.", inputs
+        objective = f"Advise on the review round {source} (target {job.get('target')})."
+        inputs = [(f"Review round {source} — the findings", result)]
+    elif job["status"] == "parked" and has_content(
+            md_section(split_frontmatter(read_text(result, "") or "")[1], "Decision request")):
+        objective, inputs = f"Answer the decision request of {source}.", [
+            (f"Decision request of {source} (section \"Decision request\")", result)]
+    elif job["status"] == "parked" and last_changes_round(task, source):
+        parked_by = last_changes_round(task, source)  # parked by sae at the round limit: no request
+        objective = f"Advise on {source}: {parked_by} still requires changes at the review-round limit."
+        inputs = [(f"Review round that parked {source}", result_file(task, parked_by))] + own
+    else:
+        objective, inputs = f"Advise on {source}.", own
+    return objective, [(label, path) for label, path in inputs if path.exists()]
 
 
 def cmd_decision_new(args) -> int:
@@ -96,14 +96,15 @@ def cmd_decision_new(args) -> int:
         while f"{stem}-{n}" in task.jobs:
             n += 1
         job_id = f"{stem}-{n}"
-        objective, inputs = decision_source(task, args.from_job)
+        objective, inputs = decision_inputs(task, args.from_job)
         if question and args.from_job:
             objective = "Answer the question below, about " + args.from_job + "."
         task.jobs[job_id] = new_job("decision", [], args.difficulty, target=args.from_job)
         about = f" for {args.from_job}" if args.from_job else ""
         text = (f"---\nid: {job_id}\n---\n\n# {job_id}: decision{about}\n\n## Objective\n{objective}\n"
                 + (f"\n## Question\n{question}\n" if question else "")
-                + ("\n## Inputs\n" + "\n".join(inputs) + "\n" if inputs else ""))
+                + ("\n## Inputs\n" + "".join(f"- {label}: {rel(path, task.dir)}\n" for label, path in inputs)
+                   if inputs else ""))
         write_atomic(job_file(task, job_id), text)
         task.event("job.added", job=job_id, kind="decision", needs=[], difficulty=args.difficulty,
                    target=args.from_job, reason=f"decision{about}" + (f": {question}" if question else ""))
@@ -451,8 +452,8 @@ def register_log(sub, command):
                 "--by: human | agent | joint (default agent; agent entries appear in the final report).\n"
                 "A --by human log closes the open asks of its --job (sae ask), or without --job the open asks\n"
                 "without a job. --let-go: a decision that sets one review finding aside in triage, with --job\n"
-                "<REVIEW-ID> and the summary \"<number>: <reason>\" (the finding's number in the review); the final\n"
-                "report lists it under Findings let go.",
+                "<REVIEW-ID> and the summary \"<number>: <reason>\" (the finding's number in the review, or its title\n"
+                "when the review numbers none); the final report lists it under Findings let go.",
                 ['log claims-status decision "Cache status for 60 s" --by agent --class open-tradeoff --job STATUS-API',
                  'log claims-status decision "2: beyond the Project Stakes" --job REVIEW-STATUS-API --let-go',
                  'log claims-status amendment "Drop CSV export" --id AMEND-1 --by human'], [0, 1], cmd_log)
