@@ -54,9 +54,11 @@ VERDICTS = ("pass", "pass-with-notes", "changes-required")
 FINDING_TYPES = ("friction", "defect", "follow-up")
 CONFIDENCES = ("high", "medium", "low")
 PROVENANCES = ("human", "agent", "joint")
+# A decision job only advises, so it runs in every phase: in time for the spec or plan decision
+# it informs ([DECISION-ANYTIME]).
 KINDS_BY_PHASE = {
-    "shaping": {"research", "review"},
-    "planning": {"planning", "research", "review"},
+    "shaping": {"research", "review", "decision"},
+    "planning": {"planning", "research", "review", "decision"},
     "executing": {"research", "implementation", "integration", "validation", "review", "decision"},
 }
 REVIEW_TARGET_BY_PHASE = {"shaping": "spec", "planning": "plan"}
