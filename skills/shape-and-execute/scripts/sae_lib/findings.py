@@ -120,16 +120,18 @@ def cmd_log(args) -> int:
         if args.let_go and (args.type != "decision" or not args.job or task.jobs[args.job]["kind"] != "review"):
             fail(EXIT_USAGE, "--let-go logs one finding set aside in triage: a decision with --job <REVIEW-ID>.\n"
                              f"  sae log {task.id} decision \"<number>: <reason>\" --job <REVIEW-ID> --let-go")
+        finding = reason = None
         if args.let_go:
-            from .fix_loop import let_go_errors  # late import: graph imports this module
-            error = let_go_errors(task, args.job, args.summary)
+            from .fix_loop import resolve_let_go  # late import: graph imports this module
+            finding, reason, error = resolve_let_go(task, args.job, args.summary)
             if error:
                 fail(EXIT_USAGE, error)
         if args.type == "decision":
             if args.decision_class and args.decision_class not in DECISION_CLASSES:
                 fail(EXIT_USAGE, f"--class must be one of {', '.join(DECISION_CLASSES)}")
             fields = {"class": args.decision_class, "by": args.by, "summary": args.summary, "job": args.job,
-                      "file": args.file, "let_go": True if args.let_go else None}
+                      "file": args.file, "let_go": True if args.let_go else None,
+                      "finding": finding, "reason": reason}
             task.event("decision", **{k: v for k, v in fields.items() if v is not None})
         elif args.type == "amendment":
             if not args.amend_id:
