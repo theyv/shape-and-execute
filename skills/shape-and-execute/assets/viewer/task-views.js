@@ -125,7 +125,9 @@ function rowsOf(t,ids,at,settled){var js=JS(t),acc=null,
     if(j&&s==="done"&&j.kind==="review"&&j.verdict){r.v=j.verdict;if(/^pass/.test(j.verdict)){r.g="✓";r.tone="pass"}
       // a phase review fixed and then approved at the gate, with no later round, ends with a check
       else if(settled&&!later&&lastRound){r.g="✓";r.tone="pass";r.fixed=1;r.approved=settled.at||""}
-      else{r.g="✕";r.fixed=later||!!settled;r.tone=r.fixed?"mut":"fail"}}
+      else{r.g="✕";r.fixed=later||!!settled;r.tone=r.fixed?"mut":"fail";
+        // [ACCEPT-INTEGRATION]: an integration round accepted with `sae accept-review` keeps its verdict and says so
+        if(j.accepted&&!r.fixed){r.acc=1;r.accReason=j.accepted.reason||"";r.accWhy="Accepted despite changes required";r.tone="park"}}}
     else{r.g=r.planned?"◌":GL[s]||"○";r.tone=s}
     r.run=s==="running"});
   return L}
@@ -136,7 +138,7 @@ function rowTip(t,r,x,card){var p=PLo(t,r.id),m=card&&markOf(t,card),
   return r.id+" · "+st+(r.planned?"":"\n"+(r.run?runFor(t,r.id):spent(t,[r.id])||"no tokens or time recorded"))+(x?"\n"+[x.h,x.m,x.e].filter(Boolean).join(" · ")+(x.ovr?" (override)":""):"")+
    (exOf(t,r.id).length?"\nRouting exception — "+exLines(exOf(t,r.id)).join("\n"):"")+(dropOf(t,r.id)?"\nDropped with "+dropOf(t,r.id).group+": "+dropOf(t,r.id).reason:"")+
    (r.planned?"\nPlanned: sae adds "+(p&&p.round>1?"this round when "+(p.target==="integration"?"its fix jobs are merged":"the fix is done"):p&&p.target==="integration"?"this review when every writer job is merged":p&&/^(spec|plan)$/.test(p.target)?"this review when the "+p.target+" is ready for it":"this review when "+((p||{}).target||"its job")+" is done")+"."+
-    (m&&m.forced&&m.reviewed?"\nForced by settings: "+m.reason+".":"")+(canOvr(t,r.id)?"\nClick the model to change it.":""):"")+(r.accReason?"\nMerged despite changes required: "+r.accReason:"")}
+    (m&&m.forced&&m.reviewed?"\nForced by settings: "+m.reason+".":"")+(canOvr(t,r.id)?"\nClick the model to change it.":""):"")+(r.accReason?"\n"+(r.accWhy||"Merged despite changes required")+": "+r.accReason:"")}
 
 // model · effort, right-aligned at xr; a button when it can change ([JOB-MODEL-OVERRIDE])
 function mlab(t,id,x,xr,y,room,compact){if(!x)return"";var ed=canOvr(t,id),ov=x.ovr?(compact?" *":" · override"):"",suf=(x.e?" · "+x.e:"")+ov,
@@ -199,11 +201,12 @@ function jobCard(t,id,rows,ch){var js=JS(t),j=js[id],s=stOf(t,id),live=rows.filt
    (rows.length?"\nIts reviews and fixes are the rows below; click a row to open that job.":"");
   return c}
 function intCard(t,rows){var js=JS(t),live=rows.filter(r=>!r.planned).map(r=>js[r.id]),rv=rows.filter(r=>r.k==="review"&&!r.planned),
-   fixing=rows.some(r=>r.k==="fix"&&!r.planned&&js[r.id].status==="running"),last=rv[rv.length-1],
+   fixing=rows.some(r=>r.k==="fix"&&!r.planned&&js[r.id].status==="running"),last=rv[rv.length-1],done=rv.filter(r=>r.v).pop(),
    k=!live.length?"planned":live.some(r=>r.status==="parked")?"parked":live.some(r=>r.status==="failed")?"failed":fixing?"fixing":last?stOf(t,last.id):"pending",
-   c={id:PC.integration,title:"Integration",kind:"integration",cls:[],kc:"var(--kd-review)",st:stp1(k),rows:rows,sub:"review → integration",tk:spent(t,rows.filter(r=>!r.planned).map(r=>r.id)),v:verdictOf(rows,fixing,false)};
+   c={id:PC.integration,title:"Integration",kind:"integration",cls:[],kc:"var(--kd-review)",st:stp1(k),rows:rows,sub:"review → integration",tk:spent(t,rows.filter(r=>!r.planned).map(r=>r.id)),v:verdictOf(rows,fixing,!!(done&&js[done.id].accepted))},
+   acc=done&&js[done.id].accepted;
   if(!live.length){c.cls.push("planned","nyet");c.l3="after every writer is merged"}else if(k==="pending")c.cls.push("nyet");
-  c.tip="Integration — "+c.st.text.replace(/^\S+ /,"")+"\nThe integration review checks the whole change once every writer job is merged.\n"+RULE+"\nIts rounds and fixes are the rows below; click a row to open that job."+(c.tk?"\n"+c.tk:"");
+  c.tip="Integration — "+c.st.text.replace(/^\S+ /,"")+"\nThe integration review checks the whole change once every writer job is merged.\n"+RULE+"\nIts rounds and fixes are the rows below; click a row to open that job."+(acc?"\nAccepted despite changes required"+(acc.reason?": "+acc.reason:"")+".":"")+(c.tk?"\n"+c.tk:"");
   return c}
 function finishCard(t){var ph=t.state.task.phase,f=t.finish||{state:ph==="done"?"done":ph==="abandoned"?"abandoned":"waiting"},s=f.state,
    fin=evs(t,/^task\.finished$/)[0],why=String(f.reason||"").split(/\r?\n/)[0],
@@ -670,7 +673,8 @@ var evText=(t,e)=>(EV[e.type]||(e=>esc(JSON.stringify(e))))(e,t);
 TAB.reviews=t=>{var js=JS(t),ids=jf(t,j=>j.kind==="review");if(!ids.length)return empty("No reviews yet.");
   return box(ids.map(id=>{var j=js[id],txt=t.files["reviews/"+id+".md"],fs=[];
     if(txt)stripC(front(txt)[1]).replace(/^###\s+(\d+)\.\s+(.*?)(?:\s+[—-]\s+(blocking|major|minor))?\s*$/gm,(_,n,ti,sv)=>{fs.push("<div>"+n+". "+inl(ti)+(sv?' <span class="tag">'+esc(sv)+"</span>":"")+"</div>")});
-    return row("fv",stp(t,id),code(id)+' <span class="ink2">on '+esc(j.target)+(j.round?" · round "+j.round:"")+"</span>",byM(lastA(j)),fs.join("")||(txt?"No numbered findings.":"No review file yet."),id)}))};
+    var ac=j.accepted&&j.status==="done"?'<div class="mut">Verdict: '+esc(String(j.verdict||"").replace(/-/g," "))+" · accepted"+(j.accepted.reason?": "+esc(j.accepted.reason):"")+"</div>":"";
+    return row("fv",stp(t,id),code(id)+' <span class="ink2">on '+esc(j.target)+(j.round?" · round "+j.round:"")+"</span>",byM(lastA(j)),ac+(fs.join("")||(txt?"No numbered findings.":"No review file yet.")),id)}))};
 TAB.decisions=t=>{var js=JS(t),dj=jf(t,j=>j.kind==="decision"),ev=evs(t,FT.decisions).reverse(),d=s=>esc(s||"–");
   return scopeSeg("decisions")+sec("Decision jobs",dj.length?tbl("","ID,For,Status,Question or decision",dj.map(k=>{var j=js[k],q=js[j.target]?ask(t,j.target):"";return tr([["mono nw",esc(k)],["mono nw",esc(j.target)],["nw",jpill(t,k)],["long",j["class"]?esc(j.decision)+' <span class="mut">· '+esc(j["class"])+" · "+esc(j.recommendation)+"</span>":'<span class="ink2">'+(q||"–")+"</span>"]],' class="r1'+(S.job===k?" open":"")+'"'+dataJ("job",k)+' tabindex="0"')})):box([],"No decision jobs."))+
    drafts(scopedDrafts(t))+sec("Decisions and amendments",ev.length?tbl("","When,Type,Class,By,Summary",ev.map(e=>tr([["ink2 nw",esc(fmt(e.at))],esc(e.type)+" "+code(e.id),d(e["class"]),'<span class="tag">'+d(e.by)+"</span>",["long",esc(e.summary)+(e.job?" · "+J(e.job):"")]]))):box([],"No decisions or amendments logged."))};
