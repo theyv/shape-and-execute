@@ -177,6 +177,23 @@ class AskTests(StakesCase):
         self.profile(sb, "- Not set by the owner. Set the bar yourself.\n")
         self.assertNotIn("Question for the owner", sb.sae("status", "ask").stdout)
 
+    def test_the_question_says_the_owner_may_skip(self):
+        sb = self.home()
+        sb.new_task("skip", "skip")
+        out = " ".join(sb.sae("status", "skip").stdout.split())
+        self.assertIn("The owner may skip this", out)
+        self.assertIn("the question is not asked again", out)
+
+    def test_status_without_a_task_prints_the_question_only_while_stakes_are_not_set(self):
+        sb = self.home()
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        out = sb.sae("status").stdout
+        self.assertEqual(out.count("Question for the owner: Project Stakes"), 1)
+        self.assertIn(str(profile), out)
+        self.assertEqual(sb.json("status")["stakes"], {"source": None, "profile": str(profile)})
+        self.profile(sb, "- Not set by the owner. Set the bar yourself.\n")
+        self.assertNotIn("Question for the owner", sb.sae("status").stdout)
+
     def test_shaping_and_setup_point_to_the_printed_question_without_a_copy(self):
         for name in ("shape.md", "setup.md"):
             text = " ".join((SKILL_DIR / "references" / "modes" / name).read_text().split())

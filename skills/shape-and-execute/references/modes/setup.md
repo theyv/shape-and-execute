@@ -234,7 +234,7 @@ At the first task in a repository, or when the user asks:
   CLAUDE.md do not already say — validation commands (smoke, full suite, unit, typecheck,
   lint, end-to-end), known hot files, notes for worktree setup. Optional frontmatter pin:
   `artifact_language` (for a team).
-- For the Project Stakes section, ask the question that `sae status` prints while they are not
+- For the Project Stakes section, ask the question that plain `sae status` prints while they are not
   set; write the answer to the path it names, and on a skip the "not set" line. Do not
   explain it a second time.
 - Ask once where decision records go, and write the answer into the profile:
