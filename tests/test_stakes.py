@@ -6,6 +6,7 @@ Run from the repository root:  python3 tests/run.py test_stakes
 
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -151,6 +152,24 @@ class BlockTests(StakesCase):
         self.assertIn("Leaving out what it does not need is expected; it never lowers the requirements you "
                       "were given", flat)
 
+
+class AskTests(unittest.TestCase):
+    """INTEGRATION-FIX-5: shaping asks for the Project Stakes bullet by bullet, with the example."""
+
+    def test_the_shaping_question_names_the_section_lists_the_bullets_and_shows_the_example(self):
+        shape = (SKILL_DIR / "references" / "modes" / "shape.md").read_text()
+        template = (SKILL_DIR / "templates" / "repo" / "profile.md").read_text()
+        flat = " ".join(shape.split())
+        self.assertIn("goes into the Project Stakes section of `.tasks/repo/profile.md`", flat)
+        self.assertIn("every agent reads it", flat)
+        for label in ("Who uses it and why", "Acceptable breakage", "What matters now",
+                      "Don't build (optional)", "So build it like"):
+            self.assertIn(label, shape)
+        example = re.findall(r"(?m)^ +(- [^:\n]+: .+)$", template.split("## Project Stakes")[1].split("Do not name")[0])
+        self.assertEqual(len(example), 5)
+        for line in example:
+            self.assertIn(line.strip(), shape)
+        self.assertIn('"not set" line', shape)
 
 class PromptKindTests(StakesCase):
     def count(self, text: str) -> int:

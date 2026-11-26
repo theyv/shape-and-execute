@@ -105,7 +105,8 @@ class SetupProposalTest(unittest.TestCase):
     def setUp(self):
         text = (SKILL_DIR / "references" / "modes" / "setup.md").read_text(encoding="utf-8")
         self.guide = text[text.index("## 2. Guide"):text.index("## 3. Propose")]
-        self.tables = setup_tables(text[text.index("## 3. Propose"):text.index("## 4. Save")])
+        self.proposal_text = text[text.index("## 3. Propose"):text.index("## 4. Save")]
+        self.tables = setup_tables(self.proposal_text)
 
     def proposal(self) -> dict:
         """The schema-2 config that step 3 proposes: model lists, tiers (Tiers mode) and cells."""
@@ -146,6 +147,21 @@ class SetupProposalTest(unittest.TestCase):
     def test_the_guide_names_tiers_mode_and_free_mode(self):
         self.assertIn("Tiers mode (default, simpler)", self.guide)
         self.assertIn("Free mode: each cell has its own model + effort.", self.guide)
+
+    def test_the_guide_keeps_a_blank_line_before_every_heading(self):
+        body = self.guide[self.guide.index("```"):]
+        lines = body.split("```")[1].strip("\n").splitlines()
+        headings = [i for i, line in enumerate(lines) if line.startswith("#")]
+        self.assertGreaterEqual(len(headings), 6)
+        for i in headings[1:]:
+            self.assertEqual(lines[i - 1], "", lines[i])
+        self.assertIn("one blank line\nbefore every heading", self.guide)
+
+    def test_the_gui_note_follows_the_routing_tables_heading(self):
+        after = self.proposal_text.split("**Routing tables (Tiers mode)**", 1)[1]
+        note = "!! YOU CAN CHANGE THIS MORE EASILY IN THE GUI LATER !!"
+        self.assertIn(note, after[:after.index("|")])
+        self.assertIn("in the\nconversation language", after[:after.index(note)])
 
     def test_the_skeleton_cells_carry_only_a_tier(self):
         facts = {"claude_on_path": True, "codex_on_path": False, "default_worktree_root": "/tmp/wt"}
