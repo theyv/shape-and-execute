@@ -445,6 +445,29 @@ class LaunchAndExceptionTests(ViewerCase):
         self.assertIn(data["status"]["bypass"], sb.sae("status", "launch").stdout)
 
 
+class AcceptedIntegrationRoundTests(ViewerCase, FixLoopCase):
+    """[ACCEPT-INTEGRATION]: the Plan card and the Reviews tab show an accepted round as accepted."""
+
+    def test_plan_card_and_reviews_tab_show_the_acceptance_and_its_reason(self):
+        sb = self.sandbox()
+        task = self.integration_task(sb, "accview")
+        self.review_with(sb, task, "accview", "REVIEW-INTEGRATION", "integration", "changes-required", ["Log line too chatty"])
+        before = page(self.task(sb, task), CARD + '({card: c("@integration")})')
+        self.assertEqual(before["card"]["v"][1], "✕ changes required")
+        sb.sae("accept-review", "accview", "REVIEW-INTEGRATION", "--reason", "cosmetic only")
+        out = page(self.task(sb, task), CARD + """({card: c("@integration"), reviews: TAB.reviews(TASK),
+          tip: rowTip(TASK, c("@integration").rows.find(r => r.id === "REVIEW-INTEGRATION"), null, "@integration")})""")
+        card = out["card"]
+        self.assertEqual(card["v"][1], "◆ accepted")
+        self.assertNotIn("changes required", card["v"][1])
+        self.assertIn("Accepted despite changes required: cosmetic only", card["tip"])
+        self.assertIn("changes required, accepted", out["tip"])
+        self.assertIn("Accepted despite changes required: cosmetic only", out["tip"])
+        reviews = text(out["reviews"])
+        self.assertIn("Verdict: changes required · accepted: cosmetic only", reviews)
+        self.assertIn("1. Log line too chatty", reviews)
+
+
 class DroppedJobTests(ViewerCase, FixLoopCase):
     """[JOB-DROP]: cards, rows, the job panel, lists and counts; dropped counts as final."""
 
