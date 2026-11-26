@@ -67,20 +67,14 @@ def _is_fence(line: str) -> bool:
     return line.lstrip().startswith("```")
 
 
-def _leaves_fence_open(lines: list[str]) -> bool:
-    """True when `lines` open a code fence they never close: every heading after them would read
-    as code, so the section around them would run on and swallow the sections that follow."""
-    return sum(1 for line in lines if _is_fence(line)) % 2 == 1
-
-
 def _headings(lines: list[str]):
-    """(index, depth, title) of every heading outside the frontmatter and fenced code."""
-    fence = False
+    """(index, depth, title) of every heading line outside the frontmatter. Code fences are not
+    parsed: an unbalanced fence anywhere in the file would make a fence-aware reader take the
+    wrong line for a section end, and a save would delete the sections it skipped (REVIEW-INTEGRATION
+    findings 1, REVIEW-INTEGRATION-2 finding 1). A `# comment` line inside a fenced example reads
+    as a heading here; that can only cut a section short, never make it swallow the next one."""
     for index in range(_body_start(lines), len(lines)):
-        line = lines[index]
-        if _is_fence(line):
-            fence = not fence
-        match = None if fence else _HEADING.match(line)
+        match = _HEADING.match(lines[index])
         if match:
             yield index, len(match.group(1)), match.group(2).strip()
 
@@ -218,26 +212,27 @@ def save_profile_stakes(root: Path, text: str) -> Path:
     Only that section changes: the bytes of every other line stay, line endings included, and the
     new lines take the CRLF or LF of the section heading (or the first line). A comment right under the
     heading (the template's help) is kept. A missing section is added where the template puts
-    it, before the first other `##` section; a missing profile is created. Raises ValueError,
-    and writes nothing, when `text` holds a heading of level 1 or 2, which would split the
-    section, or leaves a code fence open, which would hide the sections after it; and when the
-    stored section leaves a code fence open, so that its end is unclear and replacing it could
-    delete the sections after it (REVIEW-INTEGRATION finding 1)."""
+    it, before the first other `##` section; a missing profile is created. The rule that keeps
+    every other byte: the section runs from its heading to the next line that starts a heading of
+    level 1 or 2, with no fence parsing. Raises ValueError, and writes nothing, when `text` holds
+    such a heading or a code fence line, and when the stored section holds a code fence line (its
+    reader-visible end may then lie inside a fenced example)."""
     body = text.replace("\r\n", "\n").strip("\n")
+    if any(_is_fence(line) for line in body.split("\n")):
+        raise ValueError(f"The {SECTION_TITLE} text cannot hold a code fence line (```): the profile reader does "
+                         "not parse fences, so a fenced line that starts with # would end the section. "
+                         "Write the example as plain text or an inline `code` span.")
     if any(d <= 2 for _, d, _ in _headings(body.split("\n"))):
         raise ValueError(f"The {SECTION_TITLE} text cannot hold a heading of level 1 or 2.")
-    if _leaves_fence_open(body.split("\n")):
-        raise ValueError(f"The {SECTION_TITLE} text opens a code fence (```) and never closes it, which would "
-                         "hide the profile sections after it. Close the fence and save again.")
     path = profile_path(root)
     lines = (read_stored(path, "") or "").split("\n")
     if lines == [""]:
         lines = ["# Repo profile", ""]
     found = _find_section(lines)
-    if found and _leaves_fence_open(lines[found[0] + 1:found[1]]):
-        raise ValueError(f"The {SECTION_TITLE} section in {path} opens a code fence (```) and never closes it, so "
-                         "its end is unclear and a save could delete the sections after it. Close the fence in "
-                         "the file, reload, and save again.")
+    if found and any(_is_fence(line) for line in lines[found[0] + 1:found[1]]):
+        raise ValueError(f"The {SECTION_TITLE} section in {path} holds a code fence line (```), so its end may lie "
+                         "inside a fenced example and a save would leave the rest of that example behind. Remove "
+                         "the fence in the file, reload, and save again.")
     # The lines this save adds take the line ending of the section heading, or of the first line.
     cr = "\r" if (lines[found[0]] if found else lines[0]).endswith("\r") else ""
     new = [f"## {SECTION_TITLE}{cr}", *(f"{line}{cr}" for line in (body.split("\n") if body else [])), cr]

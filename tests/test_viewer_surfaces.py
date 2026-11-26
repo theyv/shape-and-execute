@@ -195,11 +195,12 @@ class ProjectStakesTests(ViewerCase):
         code, answer, _ = self.save(sb, {"text": "## Other\n- x", "base": self.stakes(sb)["base"]})
         self.assertEqual(code, 400, answer)
         self.assertEqual(profile.read_text(), before)
-        # an unclosed code fence would hide the sections after it (REVIEW-INTEGRATION 1)
-        code, answer, _ = self.save(sb, {"text": "- Example:\n```\nmake smoke", "base": self.stakes(sb)["base"]})
-        self.assertEqual(code, 400, answer)
-        self.assertIn("code fence", answer["error"])
-        self.assertEqual(profile.read_text(), before)
+        # a code fence line, closed or not, is refused: the section end is read without fence parsing
+        for fenced in ("- Example:\n```\nmake smoke", "- Example:\n```\n# note\nmake smoke\n```"):
+            code, answer, _ = self.save(sb, {"text": fenced, "base": self.stakes(sb)["base"]})
+            self.assertEqual(code, 400, answer)
+            self.assertIn("code fence", answer["error"])
+            self.assertEqual(profile.read_text(), before)
         # a stored section with an unclosed fence has no clear end: refused, the file stays
         profile.write_text(before.replace("- So build it like:\n", "- So build it like:\n```\n"))
         stored = profile.read_text()

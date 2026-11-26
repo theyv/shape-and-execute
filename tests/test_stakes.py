@@ -408,23 +408,60 @@ class WriterTests(StakesCase):
             stakes.save_profile_stakes(sb.repo, "- One.\n## Hot files\n- Two.")
         self.assertFalse((sb.repo / ".tasks" / "repo" / "profile.md").exists())
 
-    def test_text_with_an_unclosed_code_fence_is_refused_and_the_next_section_stays(self):
-        # REVIEW-INTEGRATION 1: an open fence would hide `## Validation commands`, and the next save would delete it
+    def test_text_with_a_code_fence_line_is_refused_and_the_file_stays(self):
+        # REVIEW-INTEGRATION 1 and REVIEW-INTEGRATION-2 1: no fence parsing, so no fence line in the text
         sb = self.home()
         path = self.profile(sb, "- Old.\n")
         before = path.read_bytes()
-        with self.assertRaisesRegex(ValueError, "code fence"):
-            stakes.save_profile_stakes(sb.repo, "- Example:\n```\nmake smoke")
-        self.assertEqual(path.read_bytes(), before)
-        # a closed fence, also one holding a heading line, keeps the next section
-        stakes.save_profile_stakes(sb.repo, "- Example:\n```\n## not a section\n```")
-        stakes.save_profile_stakes(sb.repo, "- Corrected.")
-        self.assertEqual(path.read_text(), section("- Corrected.\n"))
+        for text in ("- Example:\n```\nmake smoke", "- Example:\n```\nmake smoke\n```", "- Ex:\n  ```sh\nx\n  ```"):
+            with self.assertRaisesRegex(ValueError, "code fence"):
+                stakes.save_profile_stakes(sb.repo, text)
+            self.assertEqual(path.read_bytes(), before)
 
-    def test_a_stored_section_with_an_unclosed_code_fence_is_never_overwritten(self):
-        # the stored section's end is ambiguous: a save would replace every section after the fence
+    def test_text_with_a_heading_of_level_one_or_two_is_refused_and_the_file_stays(self):
         sb = self.home()
-        path = self.profile(sb, "- Example:\n```\nmake smoke\n")
+        path = self.profile(sb, "- Old.\n")
+        before = path.read_bytes()
+        for text in ("- One.\n# Top\n- Two.", "- One.\n## Hot files", "- One.\n#  Title #"):
+            with self.assertRaisesRegex(ValueError, "heading"):
+                stakes.save_profile_stakes(sb.repo, text)
+            self.assertEqual(path.read_bytes(), before)
+        stakes.save_profile_stakes(sb.repo, "- One.\n### Detail\nMore.")  # a deeper heading cannot end the section
+        self.assertEqual(self.lines_outside(path.read_text()), self.lines_outside(before.decode()))
+
+    def test_a_stored_open_fence_never_costs_the_sections_after_it(self):
+        # REVIEW-INTEGRATION-2 1: an open fence in Project Stakes, `## Validation commands`, then a later
+        # fenced shell example with a `#` comment. A fence-aware reader paired the fences wrongly.
+        sb = self.home()
+        path = sb.repo / ".tasks" / "repo" / "profile.md"
+        path.write_text("# Repo profile\n\n## Project Stakes\n- Example:\n```\nmake smoke\n\n"
+                        "## Validation commands\n- Smoke: `make smoke`\n\n## Worktree notes\n```sh\n"
+                        "# set up once\nmake setup\n```\n")
+        before = path.read_text()
+        outside = self.lines_outside(before)
+        self.assertIn("## Validation commands", outside)
+        with self.assertRaisesRegex(ValueError, "code fence"):
+            stakes.save_profile_stakes(sb.repo, "- Corrected.")
+        self.assertEqual(path.read_text(), before)
+        # the owner removes the open fence by hand: the save keeps every other byte
+        path.write_text(before.replace("```\nmake smoke\n\n", "make smoke\n\n", 1))
+        outside = self.lines_outside(path.read_text())
+        stakes.save_profile_stakes(sb.repo, "- Corrected.")
+        self.assertEqual(self.lines_outside(path.read_text()), outside)
+        self.assertEqual(stakes.find_stakes(sb.repo).text, "- Corrected.")
+
+    def test_a_fenced_shell_comment_in_another_section_is_not_part_of_the_stakes_section(self):
+        sb = self.home()
+        path = sb.repo / ".tasks" / "repo" / "profile.md"
+        path.write_text("# Repo profile\n\n## Worktree notes\n```sh\n# set up once\nmake setup\n```\n\n"
+                        "## Project Stakes\n- Old.\n\n## Hot files\n- a.py\n")
+        before = path.read_text()
+        stakes.save_profile_stakes(sb.repo, "- New.")
+        self.assertEqual(path.read_text(), before.replace("- Old.", "- New."))
+
+    def test_a_stored_section_with_a_code_fence_line_is_never_overwritten(self):
+        sb = self.home()
+        path = self.profile(sb, "- Example:\n```\n# comment\nmake smoke\n```\n")
         before = path.read_bytes()
         with self.assertRaisesRegex(ValueError, "code fence"):
             stakes.save_profile_stakes(sb.repo, "- Corrected.")
