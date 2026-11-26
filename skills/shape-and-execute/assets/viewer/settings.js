@@ -56,7 +56,7 @@ var SXMODE={
  difficulty:"<p><b>Task difficulty</b> — the column of the routing tables that the planner and the spec, plan and integration reviews use. Job reviews take their own job's difficulty (a mechanical or easy job counts as normal).</p>"+sxT([["normal","most tasks."],["hard","a large or risky task: the planner and those reviews run on the hard column."]]),
  routing:"<p><b>Routing</b> — which model and effort run a job. One table per phase: rows are the levels set above, columns the difficulty the planner gives each job. Planning and reviews take only normal and hard, so their mechanical and easy cells are not used. An easy cell that no level sets uses the mechanical cell of its row; setup mode proposes the easy column.</p><p>Changes apply from the next dispatch. Running jobs keep their model.</p>",
  harness:"<p><b>Claude | Codex</b> — each harness has its own model list, tiers and tables. Jobs run on the orchestrator's harness; reviews on the harness the review provider names.</p>",
- tiers:"<p><b>Tiers</b> — four presets, each a model · effort, colored by number: L1 blue, L2 yellow, L3 orange, L4 red.</p>"+sxT([["on","every cell picks a tier; editing a tier changes every cell that uses it."],["off","cells pick a model · effort directly; the tiers are greyed out."]])+"<p>A cell can keep both a tier and a model · effort; the switch picks which one counts. Switching off below Global writes each tier's model · effort into the cells that had only a tier, on this level.</p>",
+ tiers:"<p><b>Tiers</b> — four presets, L1 to L4, each a model · effort, colored by number: L1 blue, L2 yellow, L3 orange, L4 red. Two ways to set routes:</p>"+sxT([["Tiers mode","the default. Every cell points to a tier; change a tier once, and every cell that points to it follows."],["Free mode","each cell has its own model · effort, for finer control; the tiers are greyed out."]])+"<p>The two modes are independent: a cell keeps both its tier and its own model · effort, the switch picks which one counts, and a change in one mode never affects the other. Switching to Free mode copies each tier's model · effort into the cells that have none (below Global, on this level), so the switch alone changes no route.</p>",
  models:"<p><b>Models</b> — the models offered in tiers and tables, lightest first. The order sets the colors: blue, yellow, orange, red, purple, brown. A family entry always means the newest version; sae resolves it at dispatch. Pin an older version only when you need it.</p>"+sxT([["checkbox","ticked: offered in tiers and tables. Unticked: kept in the list (and its color), not offered."],["↑ ↓","change the order, and so the colors."],["✕","remove the entry."]])+"<p>A cell or tier that uses a removed or unticked model shows \"(not in list)\" with a red dashed outline; Save waits until it changes.</p>",
  claudeold:"<p><b>Claude: families only</b> — the Agent tool accepts only family names and always runs the newest version of the family. \"Add family\" offers every Claude family sae knows that is not in the list. A family removed here comes back with its efforts; a new one takes the efforts of the families listed.</p>",
  // [STAKES-VIEWER], [AMEND-2]: the example is the one in templates/repo/profile.md, word for word
@@ -201,8 +201,8 @@ function sxRouting(sc){var hs=sxHarn();if(!hs.length)return'<section class="sg">
   var on=!R.tiers_in_cells||R.tiers_in_cells.value!==false,use={};
   SXPH.forEach(p=>LEVELS.forEach(l=>SXPD[p].forEach(d=>{var c=sxGet(R.tables,[p,l,d]),u=c&&sxUse(R,c.value,on);if(u&&u[0])use[u[0]]=(use[u[0]]||0)+1})));
   var tic=R.tiers_in_cells||{},tk="tiers-in-cells."+h,
-   tiers='<div class="tiers'+(on?"":" off")+'"><div class="sh"><h3>Tiers</h3>'+sxHelp("tiers")+'<button class="tgl" role="switch" aria-checked="'+on+'" data-act="sxtic" data-k="'+esc(K+tk)+'"'+(ro?" disabled":"")+"><i></i>Tiers in cells</button>"+sxTag(sc,tic.source,tk,"r")+
-    '<span class="d">'+(on?"cells pick a tier":"off — cells pick a model · effort")+'</span></div><div class="trow">'+SXTIERS.map(n=>{var t=R.tiers[n],v=t&&t.value,k="tier."+h+"."+n;
+   tiers='<div class="tiers'+(on?"":" off")+'"><div class="sh"><h3>Tiers</h3>'+sxHelp("tiers")+sxSeg("sxtic",K+tk,[["tiers","Tiers mode"],["free","Free mode"]],on?"tiers":"free",ro,"Routing mode")+sxTag(sc,tic.source,tk,"r")+
+    '<span class="d">'+(on?"cells point to a tier":"each cell has its own model · effort")+'</span></div><div class="trow">'+SXTIERS.map(n=>{var t=R.tiers[n],v=t&&t.value,k="tier."+h+"."+n;
      return'<div class="tcard'+(v&&!sxOk(models,h,v.model,v.effort)?" bad":"")+(t&&sc!=="global"&&t.source===sc?" own":"")+'" style="--mc:'+tierColor(n)+'"><div class="h"><b>'+n+"</b><span>"+(on?"used in "+(use[n]||0):"")+"</span></div>"+
       sxPreset(models,h,v,K+k,ro||!on,n+" model and effort")+(v?routeWords(models,h,v.model,v.effort):'<span class="mut">not set</span>')+(t?sxTag(sc,t.source,k,"r"):"")+"</div>"}).join("")+"</div></div>";
   var nfb=0,nall=0;SXPH.forEach(p=>Object.keys(SXFB).forEach(d=>{if(SXPD[p].includes(d))LEVELS.forEach(l=>{nall++;if(!sxGet(R.tables,[p,l,d]))nfb++})}));
@@ -273,7 +273,7 @@ function sxToggle(pts,p,on){var o=(pts||[]).filter(x=>x!==p&&!(p==="jobs"&&/-job
 var sxJobs=(pts,mode)=>sxPts((pts||[]).filter(x=>!/-jobs$/.test(x)).concat(mode));
 
 /* ---------- events ---------- */
-function sxTierOff(sc,h){ // switching tiers off below Global: cells that hold only a tier get the tier's model · effort on this level
+function sxTierOff(sc,h){ // switching to Free mode below Global: cells that hold only a tier get the tier's model · effort on this level
   var R=sxRoute(sc,h),pairs=["tiers-in-cells."+h+"=off"];if(!R)return pairs;
   SXPH.forEach(p=>LEVELS.forEach(l=>SXPD[p].forEach(d=>{var c=sxGet(R.tables,[p,l,d]),v=c&&c.value,t=v&&v.tier&&R.tiers[v.tier];if(v&&!v.model&&t)pairs.push("routing."+h+"."+p+"."+l+"."+d+"="+t.value.model+":"+t.value.effort)})));return pairs}
 function sxRouteSet(sc,k,val){ // one routing value: a tier name, "model|effort", or on/off
@@ -289,6 +289,7 @@ D.addEventListener("click",ev=>{var e=ev.target.closest("[data-act]"),a=e&&e.dat
   else if(a==="sxv"){var v=e.dataset.v;if(P[1]==="jobs")sxSet(sc,"review",sxJobs(sxVal(sc,"review"),v));else sxSet(sc,P[1],v)}
   else if(a==="sxr")sxReset(sc,P[1],P.slice(2).join("|"));
   else if(a==="sxtic"){var h=P[1].split(".")[1],R=sxRoute(sc,h),on=!R||!R.tiers_in_cells||R.tiers_in_cells.value!==false;
+    if((e.dataset.v==="tiers")===on)return; // the mode already shown
     if(sc==="global")sxEdit(c=>{var b=c.routing[h];b.tiers_in_cells=!on;if(on)SXPH.forEach(p=>LEVELS.forEach(l=>SXPD[p].forEach(d=>{var x=sxGet(b,["tables",p,l,d]),t=x&&x.tier&&(b.tiers||{})[x.tier];if(x&&!x.model&&t){x.model=t.model;x.effort=t.effort}})))});
     else if(!(sc==="task"&&sxRO()))sxSave(sc,on?sxTierOff(sc,h):[P[1]+"=on"])}
   else if(a==="sxm")sxEdit(c=>{var L=c.models[P[1]],i=+P[3],x,sel=$("#sxadd");

@@ -24,11 +24,7 @@ select:disabled,input:disabled{opacity:.6}
 .cbs{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.cbs .cb{display:flex;gap:4px;align-items:center}.cbs label{display:flex;gap:6px;align-items:center}.cbs input{margin:0}
 .jsub{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.note{font-size:12px;color:var(--ink3);margin:0}.mdesc{font-size:12px;color:var(--ink2);max-width:620px;margin:0}
 .seg button:disabled{cursor:default;opacity:.6}
-.tgl{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);border:0;background:none;padding:0}
-.tgl i{position:relative;width:28px;height:16px;border-radius:8px;background:var(--line2)}
-.tgl i:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ink);transition:transform .12s}
-.tgl[aria-checked=true] i{background:var(--acc-bg)}.tgl[aria-checked=true] i:after{transform:translateX(12px);background:#fff}
-/* tiers in one row; greyed out while "tiers in cells" is off */
+/* tiers in one row; greyed out in Free mode */
 .tiers{padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-bottom:14px}
 .tiers.off .trow{opacity:.4;filter:grayscale(1);pointer-events:none}
 .trow{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;overflow-x:auto}

@@ -59,6 +59,9 @@ RETIRED = [
     ("[beyond stakes]", r"\[beyond stakes\]", None),
     ("## Stakes", r"(?-i:^#+ Stakes\b)", None),
     ("section \"Stakes\"", r'(?-i:section "Stakes")', None),
+    # [AMEND-3] the two ways to set routes are Tiers mode and Free mode; the key tiers_in_cells stays.
+    # config.py still words one error message the old way: a finding of INTEGRATION-FIX-4.
+    ("tiers in cells", r"tiers in cells", lambda name, line: name == "scripts/sae_lib/config.py"),
 ]
 
 
