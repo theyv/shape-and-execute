@@ -1,0 +1,597 @@
+{
+  "source": "sae-routing-mockup",
+  "tiers": [
+    {
+      "harness": "claude",
+      "tier": "L1",
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    {
+      "harness": "claude",
+      "tier": "L2",
+      "model": "sonnet",
+      "effort": "high"
+    },
+    {
+      "harness": "claude",
+      "tier": "L3",
+      "model": "opus",
+      "effort": "medium"
+    },
+    {
+      "harness": "claude",
+      "tier": "L4",
+      "model": "opus",
+      "effort": "high"
+    },
+    {
+      "harness": "codex",
+      "tier": "L1",
+      "model": "terra",
+      "effort": "high",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "tier": "L2",
+      "model": "sol",
+      "effort": "medium"
+    },
+    {
+      "harness": "codex",
+      "tier": "L3",
+      "model": "sol",
+      "effort": "high"
+    },
+    {
+      "harness": "codex",
+      "tier": "L4",
+      "model": "sol",
+      "effort": "xhigh"
+    }
+  ],
+  "cells": [
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "easy",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "easy",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "mechanical",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "easy",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "planning",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "easy",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L3"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "easy",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L3"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "mechanical",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "easy",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L1"
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L3"
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L4"
+    },
+    {
+      "harness": "claude",
+      "phase": "review",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "easy",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "easy",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "mechanical",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "easy",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "research",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L2"
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "planning",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "easy",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L2"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L3"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "mechanical",
+      "tier": "L1"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "easy",
+      "tier": "L2",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L3"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "mechanical",
+      "tier": "L2"
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "easy",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "execution",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "economy",
+      "difficulty": "normal",
+      "tier": "L1",
+      "changed": true
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "economy",
+      "difficulty": "hard",
+      "tier": "L2"
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "balanced",
+      "difficulty": "normal",
+      "tier": "L2"
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "balanced",
+      "difficulty": "hard",
+      "tier": "L3"
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "premium",
+      "difficulty": "normal",
+      "tier": "L3"
+    },
+    {
+      "harness": "codex",
+      "phase": "review",
+      "level": "premium",
+      "difficulty": "hard",
+      "tier": "L4"
+    }
+  ]
+}

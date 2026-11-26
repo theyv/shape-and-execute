@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "interaction": "collaborative",
+  "levels": {
+    "research": "premium",
+    "planning": "balanced",
+    "execution": "balanced",
+    "review": "balanced"
+  },
+  "review": {
+    "points": [
+      "spec",
+      "plan",
+      "selected-jobs",
+      "integration"
+    ],
+    "provider": "codex"
+  },
+  "max_verify_failures": 3,
+  "max_review_rounds": 4,
+  "task_difficulty": "hard"
+}
