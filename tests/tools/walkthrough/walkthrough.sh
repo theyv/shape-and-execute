@@ -44,9 +44,9 @@ guard_sandbox() {
   fi
 }
 
-scenario_dir() {
+check_scenario() {
   case "${1:-}" in
-    fresh|upgrade) echo "$WALKTHROUGH_ROOT/$1" ;;
+    fresh|upgrade) ;;
     *) die "unknown scenario '${1:-}' (fresh or upgrade)" ;;
   esac
 }
@@ -93,7 +93,8 @@ clean_one() {
 cmd_clean() {
   local scenario
   if [ $# -gt 0 ]; then
-    clean_one "$(scenario_dir "$1")"
+    check_scenario "$1"
+    clean_one "$WALKTHROUGH_ROOT/$1"
   else
     for scenario in $SCENARIOS; do clean_one "$WALKTHROUGH_ROOT/$scenario"; done
   fi
@@ -171,7 +172,8 @@ echo "Log in with /login in the session. Then type: /shape-and-execute <a rough 
 "$SB/env.sh" claude
 if ! logged_in; then
   echo
-  echo "/login did not keep a login under the relocated HOME (the Keychain or the file fallback failed)."
+  echo "Claude is not logged in after the session: /login was skipped, or it cannot keep a login"
+  echo "under the relocated HOME (neither the Keychain nor the file fallback worked)."
   token_session
 fi
 EOF
@@ -203,7 +205,8 @@ cmd_start() {
   done
   [ -n "$scenario" ] || { usage >&2; exit 2; }
   local sb repo apm sae output
-  sb="$(scenario_dir "$scenario")"
+  check_scenario "$scenario"
+  sb="$WALKTHROUGH_ROOT/$scenario"
   guard_sandbox "$sb"
   repo="$(git -C "$TOOL_DIR" rev-parse --show-toplevel)"
   apm="$(type -P apm)" || die "APM is not installed (README, Install); the walkthrough installs the skill with it"
@@ -241,9 +244,15 @@ cmd_start() {
 
   if [ "$scenario" = upgrade ]; then
     mkdir -p "$sb/home/.config/shape-and-execute"
-    "$sb/env.sh" python3 -I - "$TOOL_DIR/upgrade-config.json" "$sb" <<'EOF'
+    # Only the session's harness is installed, so the config holds only its part, as the old
+    # proposal did for a missing CLI; a cross-harness review provider would need both.
+    "$sb/env.sh" python3 -I - "$TOOL_DIR/upgrade-config.json" "$sb" "$harness" <<'EOF'
 import json, sys
 config = json.load(open(sys.argv[1]))
+harness = sys.argv[3]
+config["models"] = {harness: config["models"][harness]}
+config["routing"] = {harness: config["routing"][harness]}
+config["defaults"]["review"]["provider"] = harness
 config["worktrees"]["root"] = sys.argv[2] + "/home/Library/Caches/shape-and-execute/worktrees"
 with open(sys.argv[2] + "/home/.config/shape-and-execute/config.json", "w") as out:
     json.dump(config, out, indent=2)
