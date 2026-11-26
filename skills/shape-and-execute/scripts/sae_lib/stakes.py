@@ -165,6 +165,38 @@ def status_line(root: Path, found: Stakes | None) -> str:
     return f'Project Stakes: not set (write them to {profile_path(root)}, section "{SECTION_TITLE}")'
 
 
+# The question printed while Project Stakes are not set ([AMEND-4]); the profile template's example.
+ASK_EXAMPLE = """\
+- Who uses it and why: A game for a kid to play in the evenings.
+- Acceptable breakage: Any. We restart and laugh; at worst a high score is lost.
+- What matters now: Speed. We are still finding out what is fun.
+- Don't build: Save-file versioning or recovery for nearly impossible races.
+- So build it like: A toy."""
+
+
+def ask_text(root: Path) -> str:
+    """The explanation and the question about the Project Stakes, printed by `sae status` only
+    while they are not set. Shaping and setup show it and ask it; neither keeps a copy."""
+    path = profile_path(root)
+    return "\n".join([
+        f'Question for the owner: Project Stakes ({SECTION_TITLE} section of {path})',
+        "Project Stakes say how much care this project needs. Every worker builds to that bar and every",
+        "reviewer judges the work against it; that is what they are for. You set them once per repository.",
+        "They are kept in `.tasks/repo/profile.md`; edit them later in the GUI or in the file.",
+        "Ask the five bullets one by one. For each, show your draft from AGENTS.md or CLAUDE.md and the",
+        "README; where they say nothing, propose your best guess. The owner confirms or corrects.",
+        "  1. Who uses it and why?",
+        "  2. Acceptable breakage: how much, in one or two sentences?",
+        "  3. What matters now?",
+        "  4. Don't build (optional): what have agents already overbuilt here?",
+        "  5. So build it like: a toy, a tool for friends, a product people pay for, or a bank?",
+        "A model answer, for a small game for a kid:",
+        *(f"    {line}" for line in ASK_EXAMPLE.split("\n")),
+        f"Write the answer to {path}, section \"{SECTION_TITLE}\". On a skip, write the profile",
+        'template\'s "not set" line there.',
+    ])
+
+
 def prompt_block(root: Path) -> str:
     """The one stakes block of a dispatch prompt ([STAKES-POINTER], [AMEND-1]): the header and the
     section text, the header and the source of a long section, or the "not set" text."""

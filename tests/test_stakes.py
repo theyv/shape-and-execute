@@ -153,23 +153,36 @@ class BlockTests(StakesCase):
                       "were given", flat)
 
 
-class AskTests(unittest.TestCase):
+class AskTests(StakesCase):
     """INTEGRATION-FIX-5: shaping asks for the Project Stakes bullet by bullet, with the example."""
 
-    def test_the_shaping_question_names_the_section_lists_the_bullets_and_shows_the_example(self):
-        shape = (SKILL_DIR / "references" / "modes" / "shape.md").read_text()
-        template = (SKILL_DIR / "templates" / "repo" / "profile.md").read_text()
-        flat = " ".join(shape.split())
-        self.assertIn("goes into the Project Stakes section of `.tasks/repo/profile.md`", flat)
-        self.assertIn("every agent reads it", flat)
+    def test_the_question_is_printed_by_status_only_while_stakes_are_not_set(self):
+        sb = self.home()
+        sb.new_task("ask", "ask")
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        out = " ".join(sb.sae("status", "ask").stdout.split())
+        self.assertIn(f"Project Stakes ({'Project Stakes'} section of {profile})", out)
+        self.assertIn("every reviewer judges the work against it", out)
+        self.assertIn("edit them later in the GUI or in the file", out)
+        self.assertIn("propose your best guess", out)
         for label in ("Who uses it and why", "Acceptable breakage", "What matters now",
                       "Don't build (optional)", "So build it like"):
-            self.assertIn(label, shape)
+            self.assertIn(label, out)
+        template = (SKILL_DIR / "templates" / "repo" / "profile.md").read_text()
         example = re.findall(r"(?m)^ +(- [^:\n]+: .+)$", template.split("## Project Stakes")[1].split("Do not name")[0])
         self.assertEqual(len(example), 5)
         for line in example:
-            self.assertIn(line.strip(), shape)
-        self.assertIn('"not set" line', shape)
+            self.assertIn(line.strip(), out)
+        self.assertIn('"not set" line', out)
+        self.profile(sb, "- Not set by the owner. Set the bar yourself.\n")
+        self.assertNotIn("Question for the owner", sb.sae("status", "ask").stdout)
+
+    def test_shaping_and_setup_point_to_the_printed_question_without_a_copy(self):
+        for name in ("shape.md", "setup.md"):
+            text = " ".join((SKILL_DIR / "references" / "modes" / name).read_text().split())
+            self.assertIn("`sae status`", text)
+            self.assertNotIn("every agent reads it", text)
+            self.assertNotIn("A game for a kid", text)
 
 class PromptKindTests(StakesCase):
     def count(self, text: str) -> int:

@@ -26,26 +26,8 @@ Keep the start short and concrete. The deep work comes after research.
 Ask one round in the grill format ([grill.md](../grill.md) — question format and rules). It has:
 
 - 2–4 questions about intent, scope or success that the repository cannot answer;
-- when `sae status` shows `Project Stakes: not set`, one question about the Project Stakes.
-  Say that the answer goes into the Project Stakes section of `.tasks/repo/profile.md` (the
-  path `sae status` names) and that every agent reads it. Then ask the bullets of
-  `templates/repo/profile.md` one by one, each with your draft from AGENTS.md or CLAUDE.md and
-  the README:
-  1. Who uses it and why?
-  2. Acceptable breakage: how much, in one or two sentences?
-  3. What matters now?
-  4. Don't build (optional): what have agents already overbuilt here?
-  5. So build it like: a toy, a tool for friends, a product people pay for, or a bank?
-
-  Show the template's example as a model answer:
-
-      - Who uses it and why: A game for a kid to play in the evenings.
-      - Acceptable breakage: Any. We restart and laugh; at worst a high score is lost.
-      - What matters now: Speed. We are still finding out what is fun.
-      - Don't build: Save-file versioning or recovery for nearly impossible races.
-      - So build it like: A toy.
-
-  Write the answer to that path. On a skip, write the template's "not set" line there.
+- when `sae status` shows that Project Stakes are not set, the question it prints: ask it,
+  write the answer to the path it names, and on a skip the "not set" line.
 - a **depth proposal** in one sentence with its reason:
   - "Grill only" — the area is familiar and the outcome is clear;
   - "Research: <topic>, <topic> at level <research level>" — there is an unknown external API
