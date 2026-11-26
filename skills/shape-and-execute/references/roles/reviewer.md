@@ -56,10 +56,17 @@ assumptions.
 
 Do not ask for rewrites only because you prefer another style.
 
-Output (template `templates/review.md`): frontmatter `target` and `verdict` (`pass`,
-`pass-with-notes`, `changes-required`); then each finding with severity (`blocking`, `major`,
-`minor`), evidence (file and lines, or the spec section), the requirement or component it
-affects, why it matters, and the recommended correction. Short and concrete.
+Output (template `templates/review.md`): frontmatter `target` and `verdict`, then each
+finding in the template's fields. `Expected` is what the fix must make true; `Suggested fix`
+is a proposal, and a change of approach when patches would not converge. When the broken
+rule applies in more places, search for them and list them under `Also in`. Short and
+concrete.
+
+Grade every finding against the Project Stakes in your prompt. They decide only where it
+goes, Findings or Notes; never drop it. A finding that needs more care than the Project Stakes
+justify goes to Notes as `[beyond Project Stakes]`, with one sentence why. When a change adds a
+safeguard, check what new failure it can cause in normal use. When your prompt points to an
+Approach proposal, judge it: when it holds, make it the `Suggested fix` of a finding.
 
 Authority: read-only. When you can write files, write the review to the result path in your
 prompt. When you cannot (a headless review), print the review in the template format as your

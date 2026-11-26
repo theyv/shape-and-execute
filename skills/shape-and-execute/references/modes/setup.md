@@ -14,6 +14,19 @@ the Codex catalog (families with their newest versions, older versions, efforts)
 subagent cap and the default worktree root for this OS. With a config they print the model
 lists, the tiers and one routing table per phase and harness.
 
+A config without an `easy` column works: `easy` jobs use the `mechanical` cell, and `sae`
+says so. To upgrade it, propose these changes, save them after the user's yes (step 4), and
+skip the guide:
+- the tiers of step 3;
+- in every cell, the tier that step 3 shows there. A model · effort the cell already has
+  stays: it is the user's data;
+- the `easy` cells of step 3, a tier each. When the config is in Free mode
+  (`tiers_in_cells` off), give each new `easy` cell its tier's model · effort as well, as the
+  first switch to Free mode does.
+
+Say that in Tiers mode the routes follow the new tiers, and that in Free mode every existing
+cell keeps its route.
+
 A schema-1 config (rungs and level maps) makes `sae` exit 2. Then `sae setup show` prints the
 proposed conversion: each rung becomes a tier, each cell points to the tier that the old level
 map chose, and the model lists hold the models the rungs used. Claude rungs had no effort:
@@ -22,22 +35,58 @@ and skip the guide.
 
 ## 2. Guide (first setup only)
 
-Show this before the proposal, in the conversation language:
+Show this before the proposal, in the conversation language. Keep its layout: one blank line
+before every heading, also after a list or a quote line, so no heading sticks to the line
+above it.
 
 ```
-How models are chosen
-- Each phase (research, planning, execution, review)
-  has a level: economy, balanced or premium.
-- Each job has a difficulty: mechanical, normal or hard.
-  Planning and review are never mechanical.
-- A routing table per harness and phase maps
-  level x difficulty to a model and an effort, directly
-  or through a tier (L1-L4: one named model + effort).
-- Change it any time, per phase: plan on premium, execute
-  on economy. The next dispatch uses the change.
-- Where: tell me in the chat; `sae set` (one task);
-  `sae project set` (this repository); the viewer
-  (Task, Project, Global tabs); setup (global).
+### Task
+- A task holds one or more goals that you state in its intent.
+- It is split into jobs. A job is usually one objective that an
+  agent can finish within one context window.
+
+### Phases
+A task goes through four phases:
+> research, planning, execution, review
+
+### Levels
+Each phase has a level:
+> economy, balanced or premium
+Economy saves tokens. Premium buys quality.
+The levels start from your defaults. You can change them for
+each task; the agent asks about them while it shapes the task.
+
+### Difficulties
+Each job has a difficulty:
+> mechanical, easy, normal or hard
+The agent sets it when it plans the task.
+Planning and review use only normal and hard.
+
+## Model routing tables
+- You can use different models for different difficulties.
+- You can set a MODEL+EFFORT (cell) for every LEVEL (row)
+  x DIFFICULTY (column), grouped by PHASE. You can edit the
+  tables later in the GUI.
+- Projects and tasks inherit the global tables. You can
+  change them later per project or per task.
+
+#### Two ways to set model routing
+- Tiers mode (default, simpler): four named steps, L1 to L4,
+  each one model + effort. A cell only points to a step.
+  Change a step once, and every cell that points to it
+  follows.
+- Free mode: each cell has its own model + effort. Use it
+  when four steps are too coarse and you want finer control.
+- Tiers mode and Free mode are independent. Switch between
+  them any time; a change in one never affects the other.
+  Free mode starts as a copy of your tiers.
+
+### Changing settings later
+- You can change every setting in the GUI, or ask the agent
+  to change it for you.
+- Tip: phases can use different levels, for example "plan on
+  premium, execute on economy." The next dispatch uses the
+  change.
 ```
 
 ## 3. Propose — tables, one confirmation
@@ -52,81 +101,90 @@ family (the newest version of it), switched on:
 | Claude | sonnet | low, medium, high, xhigh, max |
 | Claude | opus | low, medium, high, xhigh, max |
 | Codex | luna | low, medium, high, xhigh, max |
+| Codex | terra | low, medium, high, xhigh, max |
 | Codex | sol | low, medium, high, xhigh, max, ultra |
 | Codex | astra | low, medium, high, xhigh, max, ultra |
 
 Drop a family the user does not want; it can be ticked on again later. Other families (for
-example haiku, fable, terra) and older Codex versions can be added; pick Codex versions from the
+example haiku, fable) and older Codex versions can be added; pick Codex versions from the
 catalog of `sae setup show`, never type them.
 
 **Codex against the catalog.** Without a Codex catalog in `sae setup show`, leave the Codex
 part (model list and routing) out. With one:
 - Keep only the efforts that the catalog lists for the family's newest version.
-- A seed family missing from the catalog is replaced, in the tiers and the cells, by the
-  nearest stronger family that is there (luna → sol → astra), else the nearest weaker one; drop
-  its entry. Keep each effort when the new model's list has it, else take the nearest effort in
+- A seed family missing from the catalog is replaced, in the tiers, by the nearest stronger
+  family that is there (luna → terra → sol → astra), else the nearest weaker one; drop its
+  entry. Keep each effort when the new model's list has it, else take the nearest effort in
   that list (the stronger on a tie). Effort order: low, medium, high, xhigh, max, ultra.
 
-**Tiers** (model · effort):
+**Tiers** (model · effort). They follow the difficulties: at the balanced level, each
+difficulty of execution has its own tier.
 
-| tier | Claude | Codex |
-|---|---|---|
-| L1 | sonnet · medium | luna · xhigh |
-| L2 | opus · medium | sol · low |
-| L3 | opus · high | sol · medium |
-| L4 | opus · xhigh | sol · high |
-
-**Routing tables**, "tiers in cells" on. Each cell is tier · model · effort: the tier applies
-while tiers in cells is on, the model · effort when the user turns it off. Save both in every
-cell.
-
-| claude · research | mechanical | normal | hard |
+| tier | difficulty | Claude | Codex |
 |---|---|---|---|
-| economy | L1 · sonnet · medium | L1 · sonnet · medium | L2 · sonnet · high |
-| balanced | L1 · sonnet · medium | L2 · sonnet · high | L3 · opus · low |
-| premium | L2 · sonnet · high | L3 · opus · low | L4 · opus · medium |
+| L1 | mechanical | sonnet · medium | terra · high |
+| L2 | easy | sonnet · high | sol · medium |
+| L3 | normal | opus · medium | sol · high |
+| L4 | hard | opus · high | sol · xhigh |
 
-| claude · execution | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · sonnet · medium | L1 · sonnet · high | L2 · opus · low |
-| balanced | L1 · sonnet · high | L2 · opus · medium | L3 · opus · high |
-| premium | L2 · opus · low | L3 · opus · high | L4 · opus · xhigh |
+**Routing tables (Tiers mode)**. Right under this heading, show the user this line, in the
+conversation language (it is for users who skipped the guide):
+
+```
+!! YOU CAN CHANGE THIS MORE EASILY IN THE GUI LATER !!
+```
+
+Tiers mode means `tiers_in_cells` on. Cells carry only a tier, no model ·
+effort of their own. The first switch to Free mode copies the tier's model · effort into each
+cell, so the switch alone changes no route.
+
+| claude · research | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 | L1 | L2 | L2 |
+| balanced | L1 | L2 | L2 | L3 |
+| premium | L2 | L2 | L3 | L4 |
+
+| claude · execution | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 | L1 | L2 | L3 |
+| balanced | L1 | L2 | L3 | L4 |
+| premium | L2 | L3 | L3 | L4 |
 
 | claude · planning | normal | hard |
 |---|---|---|
-| economy | L2 · sonnet · high | L3 · opus · medium |
-| balanced | L3 · opus · high | L4 · opus · xhigh |
-| premium | L4 · opus · xhigh | L4 · opus · xhigh |
+| economy | L2 | L3 |
+| balanced | L3 | L4 |
+| premium | L4 | L4 |
 
 | claude · review | normal | hard |
 |---|---|---|
-| economy | L1 · sonnet · high | L2 · opus · medium |
-| balanced | L2 · opus · medium | L3 · opus · high |
-| premium | L3 · opus · high | L4 · opus · xhigh |
+| economy | L1 | L2 |
+| balanced | L3 | L4 |
+| premium | L4 | L4 |
 
-| codex · research | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · luna · high | L1 · luna · xhigh | L2 · sol · low |
-| balanced | L1 · luna · xhigh | L3 · sol · medium | L4 · sol · high |
-| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| codex · research | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 | L1 | L1 | L2 |
+| balanced | L1 | L1 | L2 | L3 |
+| premium | L1 | L2 | L3 | L4 |
 
-| codex · execution | mechanical | normal | hard |
-|---|---|---|---|
-| economy | L1 · luna · xhigh | L1 · luna · xhigh | L2 · sol · low |
-| balanced | L2 · sol · low | L3 · sol · medium | L4 · sol · high |
-| premium | L3 · sol · medium | L4 · sol · high | L4 · sol · xhigh |
+| codex · execution | mechanical | easy | normal | hard |
+|---|---|---|---|---|
+| economy | L1 | L1 | L2 | L3 |
+| balanced | L1 | L2 | L3 | L4 |
+| premium | L2 | L3 | L3 | L4 |
 
 | codex · planning | normal | hard |
 |---|---|---|
-| economy | L2 · sol · low | L3 · sol · medium |
-| balanced | L4 · sol · high | L4 · sol · xhigh |
-| premium | L4 · sol · xhigh | L4 · sol · max |
+| economy | L1 | L2 |
+| balanced | L2 | L3 |
+| premium | L3 | L4 |
 
 | codex · review | normal | hard |
 |---|---|---|
-| economy | L2 · sol · low | L3 · sol · medium |
-| balanced | L3 · sol · medium | L4 · sol · high |
-| premium | L4 · sol · high | L4 · sol · xhigh |
+| economy | L1 | L2 |
+| balanced | L2 | L3 |
+| premium | L3 | L4 |
 
 **Defaults for new tasks:** interaction mode `critical-only`; levels per phase; review points
 `spec, plan, selected-jobs, integration` (a second model checks the spec against the intent
@@ -148,19 +206,21 @@ Codex exact version or effort that the catalog does not offer, and backs up the 
 
 ## 5. Harness permissions
 
-`sae setup snippets` prints what each harness needs:
+Writer jobs need git writes in their worktree and often local sockets for their checks. For
+now SaE starts them with a bypass request:
 
-- **Codex:** a permission profile that lets git write `.git` (but keeps `.git/hooks` and
-  `.git/config` read-only) and makes the worktree root writable. Without it, Codex blocks every
-  commit and merge.
+- **Orchestrator session:** run it with full access (Claude Code: bypassed permissions;
+  Codex: `codex --yolo`). Its subagents inherit it.
+- **Jobs in the other harness:** `sae dispatch` prints a launch command without a sandbox.
 - **Codex subagent cap:** `[agents] max_threads`. By default a Codex session holds only 3
-  subagents (6 on older models); parallel writers, reviews and research then fail with "agent
-  thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to set it.
-- **Claude Code:** the worktree root in `additionalDirectories`, and optional allow rules for
-  `git` and the `sae` command for users who do not run with bypassed permissions.
+  subagents (6 on older models); parallel writers, reviews and research then fail with
+  "agent thread limit reached". When `sae` reports fewer than 8, recommend 10 and offer to
+  set it.
 
-Show each snippet, explain it in one sentence, and apply it only after the user says yes. Back
-up the file first.
+A sandboxed setup waits in the backlog.
+
+Show each change, explain it in one sentence, and apply it only after the user says yes.
+Back up the file first.
 
 ## 6. Verify
 
@@ -174,6 +234,9 @@ At the first task in a repository, or when the user asks:
   CLAUDE.md do not already say — validation commands (smoke, full suite, unit, typecheck,
   lint, end-to-end), known hot files, notes for worktree setup. Optional frontmatter pin:
   `artifact_language` (for a team).
+- For the Project Stakes section, ask the question that plain `sae status` prints while they are not
+  set; write the answer to the path it names, and on a skip the "not set" line. Do not
+  explain it a second time.
 - Ask once where decision records go, and write the answer into the profile:
   - one flat folder: `adr_folder: docs/adr` (no answer: an existing ADR folder, else
     `docs/decisions/`);

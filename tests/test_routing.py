@@ -135,7 +135,7 @@ class ResolutionTests(RoutingTestCase):
         sb = self.sandbox(points=["all-jobs"])
         plans = self.task(sb, "plans")
         out = sb.sae("job", "add", "plans", "PLAN", "--kind", "planning", "--difficulty", "mechanical", code=1).stderr
-        self.assertIn("never mechanical", out)
+        self.assertIn("Planning takes --difficulty normal or hard, not mechanical", out)
         sb.sae("set", "plans", "task-difficulty=hard")
         sb.sae("job", "add", "plans", "PLAN", "--kind", "planning")
         self.assertEqual(sb.state(plans)["jobs"]["PLAN"]["difficulty"], "hard")

@@ -1,0 +1,6 @@
+
+[permissions.shape-and-execute.network]
+allow_local_binding = true
+
+[permissions.shape-and-execute.network.unix_sockets]
+"@IPC@" = "allow"

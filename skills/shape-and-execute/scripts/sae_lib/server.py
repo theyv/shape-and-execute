@@ -1,5 +1,6 @@
 """The viewer server: serves assets/viewer/, reads task data
-live from every worktree of every known repository, and writes only by running `sae` itself.
+live from every worktree of every known repository, and writes by running `sae` itself; the one
+exception is the Project Stakes save, which calls the profile writer of `stakes.py`.
 
 Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origin `Origin`):
   /                      the viewer shell, with the token embedded
@@ -10,12 +11,12 @@ Routes (GET reads need no token; every POST needs `X-SAE-Token` and a same-origi
                          backlog, decision drafts
   /api/task?repo=K&task=ID         one task: files, events, the process-map steps, routing,
                                    effective difficulty, review marks, waits, next, finish readiness,
-                                   per-phase stats, changed lines
+                                   per-phase stats, changed lines, routing exceptions
   /api/settings?repo=K[&task=ID]   effective settings with sources, project entry, config,
-                                   Codex catalog, known Claude families
+                                   Codex catalog, known Claude families, the Project Stakes
   /proto/K/ID/<path>     a file under the task's prototypes/ (sandboxed); the folder structure
                          is kept in the URL, so relative CSS, scripts, images and links load
-  POST /api/<route>      a write route of WRITE_ROUTES; body JSON {repo, …}
+  POST /api/<route>      a write route of WRITE_ROUTES, or `stakes`; body JSON {repo, …}
 """
 
 from __future__ import annotations
@@ -269,7 +270,12 @@ def computed(task, config: dict | None) -> dict:
         with contextlib.suppress(Exception):
             out["difficulty"][job_id] = job_context(task, job_id)["difficulty"]
     with contextlib.suppress(Exception):
-        out["status"] = task_status_data(task)
+        out["status"] = task_status_data(task)  # with `bypass` and `park_stories` ([NO-SANDBOX-VISIBLE], [PARK-STORY])
+    # [HARNESS-FALLBACK]: every attempt that ran on another route than routing chose, as the final report lists them
+    out["routing_exceptions"] = []
+    with contextlib.suppress(Exception):
+        from .launch import exception_text, routing_exceptions
+        out["routing_exceptions"] = [{**e, "text": exception_text(e)} for e in routing_exceptions(task)]
     # the steps of the Shape and Plan cards and the Finish card's readiness ([GRAPH-PHASE-CARDS], [GRAPH-PLACEHOLDER-FINISH])
     out["steps"], out["finish"] = [], None
     with contextlib.suppress(Exception):
@@ -478,7 +484,34 @@ def settings_data(key: str, task_id: str | None) -> dict:
             "task": task_id, "task_settings": task_settings,
             "sources": level_sources(task_settings, (config or {}).get("defaults") or {}, project.get("defaults") or {})
             if task_settings and config else {},
-            "routing": routing, "codex_catalog": codex_catalog(), "claude_families": list(CLAUDE_FAMILIES)}
+            "routing": routing, "codex_catalog": codex_catalog(), "claude_families": list(CLAUDE_FAMILIES),
+            "stakes": stakes_data(root)}
+
+
+def stakes_data(root: Path) -> dict:
+    """[STAKES-VIEWER] The Project Stakes for the Project tab, read as a dispatch reads them
+    (`stakes.find_stakes`): the text and the file it comes from, and whether the viewer may edit
+    them (only from the profile, or when no source has any). `base` is the revision of the profile's
+    own section as stored (`stakes.section_revision`, "" when missing); a save sends it back so that it
+    never overwrites a change made in the meantime, even one that leaves the shown text as it was.
+    `draft` fills the edit box: the section, or the five empty labels. `draft` and `base` come from one
+    read of the profile (`stakes.section_and_revision`)."""
+    from .gitutil import main_worktree
+    from .stakes import LABELS, SECTION_TITLE, find_stakes, profile_path, section_and_revision
+    home = main_worktree(root)
+
+    def shown(path: Path) -> str:
+        with contextlib.suppress(ValueError):
+            return path.relative_to(home).as_posix()
+        return str(path)
+
+    found, profile = find_stakes(root), profile_path(root)
+    own, base = section_and_revision(profile)
+    own = own or ""
+    return {"title": SECTION_TITLE, "source": str(found.path) if found else None,
+            "source_name": shown(found.path) if found else None, "text": found.text if found else None,
+            "editable": found is None or found.in_profile, "profile": str(profile), "profile_name": shown(profile),
+            "base": base, "draft": own if own.strip() else "\n".join(f"- {label}:" for label in LABELS)}
 
 
 def prototype_path(url_path: str) -> Path:
@@ -592,7 +625,60 @@ WRITE_ROUTES = {
 }
 
 
+# One lock per profile: the base check and the write of a Project Stakes save are one step, so two
+# overlapping saves from the same base give one success and one conflict. Request threads of the one
+# viewer server are the only writers of the section, so a process lock is enough.
+_STAKES_LOCKS: dict[str, threading.Lock] = {}
+_STAKES_LOCKS_GUARD = threading.Lock()
+
+
+def stakes_lock(profile: Path) -> threading.Lock:
+    with _STAKES_LOCKS_GUARD:
+        return _STAKES_LOCKS.setdefault(str(profile.resolve()), threading.Lock())
+
+
+def save_stakes(body: dict) -> tuple[int, dict]:
+    """[STAKES-VIEWER] POST /api/stakes {repo, text, base}: replaces only the Project Stakes section
+    of `.tasks/repo/profile.md` in the repository's main worktree (`stakes.save_profile_stakes`).
+    Refused when the stakes come from AGENTS.md or CLAUDE.md (SaE never writes those: edit them
+    there), without a `base`, and when the profile's stored section changed since the page read it
+    (`base`, its revision)."""
+    from .stakes import SECTION_TITLE, find_stakes, profile_path, save_profile_stakes, section_revision
+    root = repo_by_key(body.get("repo"))
+    text = body.get("text")
+    if not isinstance(text, str):
+        raise RequestError(400, "text: expected the section text as a string.")
+    command = f"write the {SECTION_TITLE} section of {profile_path(root)}"
+
+    def refused(status: int, error: str) -> tuple[int, dict]:
+        return status, {"ok": False, "code": 1, "result": None, "error": error, "command": command}
+
+    base = body.get("base")
+    if not isinstance(base, str):
+        raise RequestError(400, "base: expected the revision of the section the edit started from, as a string.")
+    with stakes_lock(profile_path(root)):
+        found = find_stakes(root)
+        if found and not found.in_profile:
+            return refused(409, f"The {SECTION_TITLE} come from {found.path.name}: edit them there. "
+                                "sae never writes AGENTS.md or CLAUDE.md.")
+        if base != section_revision(profile_path(root)):
+            return refused(409, f"The {SECTION_TITLE} in the profile changed since this page read them. "
+                                "Copy your text, reload, and save again.")
+        try:
+            path = save_profile_stakes(root, text)
+        except ValueError as exc:
+            return refused(400, str(exc))
+    return 200, {"ok": True, "code": 0, "result": {"path": str(path), "stakes": stakes_data(root)}, "error": None,
+                 "command": command}
+
+
+# Routes that do not run `sae`: only the Project Stakes save, which calls the profile writer.
+DIRECT_ROUTES = {"stakes": save_stakes}
+
+
 def run_write(route: str, body: dict) -> tuple[int, dict]:
+    if route in DIRECT_ROUTES:
+        return DIRECT_ROUTES[route](body)
     # `sae` runs as a subprocess, not the command functions in-process: they rely on the working
     # folder and process state, and `sae` stays the only writer.
     builder = WRITE_ROUTES.get(route)

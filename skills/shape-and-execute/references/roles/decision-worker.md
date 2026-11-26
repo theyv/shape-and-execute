@@ -3,8 +3,9 @@
 You analyse one decision found during execution. You do not implement anything. Return a
 compact, evidence-based recommendation.
 
-Inputs: your job file points to the decision request (in a parked job's result), the spec
-sections involved, the brief and the repository locations involved.
+Inputs: your job file points to the question (a parked job's decision request, a job, a review
+round, or the orchestrator's question), the spec sections involved, the brief and the
+repository locations involved.
 
 Find out:
 

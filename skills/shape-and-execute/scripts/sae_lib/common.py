@@ -36,8 +36,10 @@ Exit codes:
 PHASES = ("shaping", "planning", "executing", "done", "abandoned")
 JOB_KINDS = ("research", "planning", "implementation", "integration", "validation", "review", "decision")
 WRITER_KINDS = ("implementation", "integration")
-JOB_STATUSES = ("pending", "running", "done", "failed", "parked")
-DIFFICULTIES = ("mechanical", "normal", "hard")
+# `dropped` is final like `done`: the owner decided the job must never merge ([JOB-DROP]).
+JOB_STATUSES = ("pending", "running", "done", "failed", "parked", "dropped")
+FINAL_STATUSES = ("done", "dropped")
+DIFFICULTIES = ("mechanical", "easy", "normal", "hard")
 LEVELS = ("economy", "balanced", "premium")
 # Old level names, read as the new one; `sae` writes only LEVELS ([DECISION-LEVEL-PREMIUM]).
 OLD_LEVEL_NAMES = {"max": "premium"}
@@ -52,9 +54,11 @@ VERDICTS = ("pass", "pass-with-notes", "changes-required")
 FINDING_TYPES = ("friction", "defect", "follow-up")
 CONFIDENCES = ("high", "medium", "low")
 PROVENANCES = ("human", "agent", "joint")
+# A decision job only advises, so it runs in every phase: in time for the spec or plan decision
+# it informs ([DECISION-ANYTIME]).
 KINDS_BY_PHASE = {
-    "shaping": {"research", "review"},
-    "planning": {"planning", "research", "review"},
+    "shaping": {"research", "review", "decision"},
+    "planning": {"planning", "research", "review", "decision"},
     "executing": {"research", "implementation", "integration", "validation", "review", "decision"},
 }
 REVIEW_TARGET_BY_PHASE = {"shaping": "spec", "planning": "plan"}

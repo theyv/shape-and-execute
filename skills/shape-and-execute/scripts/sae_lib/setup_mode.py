@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 from .common import (
@@ -35,6 +36,7 @@ from .common import (
 )
 from .config import (
     CONFIG_SCHEMA,
+    FALLBACK_COLUMNS,
     PHASE_DIFFICULTIES,
     REVIEW_PROVIDERS,
     ROUTING_KEYS_HELP,
@@ -42,7 +44,9 @@ from .config import (
     TIERS,
     apply_routing_key,
     config_path,
+    effective_cell,
     effective_routing,
+    fallback_line,
     flatten_routing,
     is_routing_key,
     load_config,
@@ -220,10 +224,9 @@ def config_skeleton(facts: dict) -> dict:
     models, routing = {}, {}
 
     def block() -> dict:
-        tables = {phase: {lvl: {d: {"tier": "<L1-L4>", "model": "<model, used when tiers are off>",
-                                    "effort": "<effort>"} for d in PHASE_DIFFICULTIES[phase]}
+        # Tiers mode: a cell carries only its tier; the first switch to Free mode copies the tier into it
+        tables = {phase: {lvl: {d: {"tier": "<L1-L4>"} for d in PHASE_DIFFICULTIES[phase]}
                           for lvl in LEVELS} for phase in LEVEL_PHASES}
-        # tiers in cells stays on by default, although the owner works with it off
         return {"tiers_in_cells": True, "tiers": {t: {"model": "<model>", "effort": "<effort>"} for t in TIERS},
                 "tables": tables}
 
@@ -280,7 +283,8 @@ def convert_schema1(old: dict, catalog: list[dict] | None) -> dict:
             tables[phase] = {}
             for level in LEVELS:
                 row = {}
-                for difficulty in columns:
+                # schema 1 had no easy column: it falls back to mechanical until setup fills it
+                for difficulty in (c for c in columns if c not in FALLBACK_COLUMNS):
                     names = [level] + [o for o, n in OLD_LEVEL_NAMES.items() if n == level]
                     tier = next((t for t in (review_map.get(n) if phase == "review"
                                              else (level_map.get(n) or {}).get(difficulty) for n in names) if t), None)
@@ -306,7 +310,8 @@ def routing_tables_text(layers: list, harness: str, marks: bool = False) -> list
     """The tiers and one small table per phase for one harness (`marks`: a source letter)."""
     effective = effective_routing(layers, harness)
     letter = {"global": "", "project": "ᵖ", "task": "ᵗ"}
-    lines = [f"  tiers in cells: {'on' if effective.get('tiers_in_cells', (True,))[0] else 'off'}"]
+    tiers_on = effective.get("tiers_in_cells", (True,))[0]
+    lines = ["  Tiers mode (tiers_in_cells on)" if tiers_on else "  Free mode (tiers_in_cells off)"]
     for name in TIERS:
         if name in effective["tiers"]:
             tier, source = effective["tiers"][name]
@@ -317,10 +322,16 @@ def routing_tables_text(layers: list, harness: str, marks: bool = False) -> list
         for level in LEVELS:
             row = [level]
             for difficulty in columns:
-                found = effective["tables"].get(phase, {}).get(level, {}).get(difficulty)
-                row.append(cell_text(effective, found[0]) + (letter[found[1]] if marks else "") if found else "-")
+                found = effective_cell(effective, phase, level, difficulty)
+                if found and found[2]:  # no layer sets it: the fallback column's cell ([EASY-UPGRADE])
+                    row.append(f"= {found[2]}")
+                else:
+                    row.append(cell_text(effective, found[0]) + (letter[found[1]] if marks else "") if found else "-")
             rows.append(row)
         lines += ["", f"  {harness} · {phase}", table(rows, indent="  ")]
+    line = fallback_line(layers, [harness])
+    if line:
+        lines += ["", textwrap.fill(line, 70, initial_indent="  ", subsequent_indent="  ", break_on_hyphens=False)]
     return lines
 
 

@@ -55,6 +55,13 @@ RETIRED = [
                         r"|decisions-and-safety|quality-and-review|git-and-worktrees|models-settings-setup"
                         r"|viewer-spec|findings|team-readiness|decision-log|parking-lot|genesis-review)\b", None),
     ("DL-<n>", r"\bDL-\d+", None),
+    # [AMEND-2] the term is "Project Stakes"; case-sensitive so prose may still say "stakes"
+    ("[beyond stakes]", r"\[beyond stakes\]", None),
+    ("## Stakes", r"(?-i:^#+ Stakes\b)", None),
+    ("section \"Stakes\"", r'(?-i:section "Stakes")', None),
+    # [AMEND-3] the two ways to set routes are Tiers mode and Free mode; the key tiers_in_cells stays.
+    # config.py still words one error message the old way: a finding of INTEGRATION-FIX-4.
+    ("tiers in cells", r"tiers in cells", lambda name, line: name == "scripts/sae_lib/config.py"),
 ]
 
 
@@ -91,6 +98,11 @@ class RetiredTermsTests(unittest.TestCase):
     def test_rung_is_allowed_only_in_its_named_places(self):
         self.assertEqual(scan([("references/modes/setup.md", "each rung becomes a tier")]), [])
         self.assertEqual(len(scan([("references/modes/plan.md", "each rung becomes a tier")])), 1)
+
+    def test_old_stakes_names_are_retired(self):
+        text = "## Stakes\nA note: `[beyond stakes]`.\n## Project Stakes\n`[beyond Project Stakes]`\n"
+        self.assertEqual([hit.split(": ")[1] for hit in scan([("templates/review.md", text)])],
+                         ["## Stakes", "[beyond stakes]"])
 
 
 if __name__ == "__main__":

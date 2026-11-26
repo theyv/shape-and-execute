@@ -32,9 +32,11 @@ from .common import (
 )
 from .config import cfg, load_config, new_task_settings, require_harness, settings_card
 from .gitutil import find_root, git, git_ok, git_user, run
-from .graph import fix_target, parallel_possible
+from .graph import fix_target, is_dropped, parallel_possible
 from .markdown import split_frontmatter
 from .progress import next_text
+from .launch import exception_report_lines
+from .fix_loop import fix_loop_report_lines
 from .prompts import REVIEW_OUTPUT_SUFFIX
 from .findings import finding_stem, open_findings_everywhere
 from .reviews import check_finish_gates, finish_merges, merge_job
@@ -364,22 +366,28 @@ def final_report(task: Task, with_open: bool, kept: list[str] | None = None) -> 
                   "Details per requirement:", f"  {result_file(task, finals[0])}"]
     lines += ["", "## Jobs"]
     for job_id, job in jobs.items():
+        if is_dropped(job) and not job["attempts"]:  # never ran; "Dropped jobs" names it
+            continue
         tokens = sum(a.get("tokens") or 0 for a in job["attempts"])
         head = [job_id, job["kind"], job["status"] + (", merged" if job["merged"] else "")]
         lines.append("- " + " · ".join(head + ([f"{tokens} tokens"] if tokens else [])))
         lines += [f"  attempt {a.get('n', n)}: {attempt_text(a)}"
                   for n, a in enumerate(job["attempts"], 1)] or ["  not dispatched"]
-    reviews = [e for e in events if e["type"] == "review.completed"]
+    reviews = [e for e in events if e["type"] == "review.completed"
+               and not (e["job"] in jobs and is_dropped(jobs[e["job"]]))]  # "Dropped jobs" names them
     if reviews:
         lines += ["", "## Reviews"] + [f"- {e['job']} → {e['target']}"
                                        + (f", round {e['round']}" if (e.get("round") or 1) > 1 else "")
                                        + f": {e['verdict']} ({e.get('provider')}, {e.get('model')})"
                                        for e in reviews]
+    lines += exception_report_lines(task)  # [HARNESS-FALLBACK]
+    lines += fix_loop_report_lines(task, events)  # [LET-GO-REPORT], [ACCEPT-INTEGRATION], [JOB-DROP]
     overridden = [e for e in events if e["type"] == "gate.overridden"]
     if overridden:
         lines += ["", "## Overridden gates"] + [f"- {e['gate']} gate: {', '.join(e.get('jobs') or []) or '-'}. "
                                                 f"Reason: {e.get('reason')}" for e in overridden]
-    agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"]
+    agent = [e for e in events if e["type"] in ("decision", "amendment") and e.get("by") == "agent"
+             and not e.get("let_go")]  # a finding let go is listed under "Findings let go"
     lines += ["", "## To check before you merge"]
     lines += [f"- {e['type']}{' ' + e['id'] if e.get('id') else ''}: {e.get('summary')}"
               + (f" ({e['class']})" if e.get("class") else "") for e in agent] \
@@ -443,7 +451,7 @@ def cmd_finish(args) -> int:
         if task.phase != "executing":
             fail(EXIT_USAGE, f"The task is in {task.phase}; finish needs executing.")
         if args.override is not None and not args.override.strip():
-            fail(EXIT_USAGE, f"--override needs the owner's reason: sae finish {task.id} --override \"<reason>\"")
+            fail(EXIT_USAGE, f"--override needs the user's reason: sae finish {task.id} --override \"<reason>\"")
         # 1. Gates, before anything merges: they judge the code that will be closed.
         overridden = check_finish_gates(task, args.with_open, args.override)
         out: list[str] = []
@@ -548,9 +556,9 @@ def tilde_home_bytes(data: bytes) -> bytes:
 
 
 def remove_harness_logs(record: Path) -> None:
-    """[RECORD-PRIVACY]: harness output logs left beside job or review files (`jobs/<stem>.codex.jsonl`,
+    """[RECORD-PRIVACY]: harness output logs left beside job, review, research or decision files (`jobs/<stem>.codex.jsonl`,
     `reviews/<stem>.claude.json`, …) never reach git; same-named files elsewhere in the record stay."""
-    for folder in (record / "jobs", record / "reviews"):
+    for folder in (record / "jobs", record / "reviews", record / "research", record / "decisions"):
         if folder.is_symlink() or not folder.is_dir():
             continue
         for path in folder.iterdir():
@@ -722,17 +730,19 @@ def register_finish(sub, command):
                 "no last review round (integration, or a job review of an unmerged job) says changes-required;\n"
                 "no stale checks (a round or final validation after a late merge has not run, or a done writer\n"
                 "that the checks would not cover is still unmerged); the final validation and the integration\n"
-                "review done. --override passes the verdict and stale-check gates with the owner's reason; it is\n"
-                "logged and listed in the final report. Before the commit, harness output logs (*.codex.jsonl,\n"
+                "review done. An integration round accepted with sae accept-review passes like a pass, and the\n"
+                "gates ignore dropped jobs (sae job drop). --override passes the verdict and stale-check gates\n"
+                "with the user's reason; it is logged and listed in the final report, as are the findings let\n"
+                "go, the accepted integration rounds and the dropped jobs. Before the commit, harness output logs (*.codex.jsonl,\n"
                 "*.claude.json) in the record's jobs/ and reviews/ go, and the committed files outside\n"
                 ".tasks/repo/ get ~ for your home folder. Never pushes.",
                 ["finish claims-status", "finish claims-status --with-open",
-                 'finish claims-status --override "owner accepts the remaining finding"'],
+                 'finish claims-status --override "user accepts the remaining finding"'],
                 [0, 1, 3, 4], cmd_finish)
     p.add_argument("task")
     p.add_argument("--with-open", action="store_true", help="the user accepts open jobs; they are listed in the report")
     p.add_argument("--override", metavar="REASON",
-                   help="the owner's reason to close despite changes-required or stale checks")
+                   help="the user's reason to close despite changes-required or stale checks")
 
 
 def register_abandon(sub, command):

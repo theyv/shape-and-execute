@@ -2,7 +2,8 @@
 
 The viewer of the shape-and-execute skill: a small web app that the **viewer server** inside
 `sae` serves (`scripts/sae_lib/server.py`). It shows every task of every repository where `sae`
-has run, and changes settings only through the server, which runs the `sae` commands.
+has run, and changes settings only through the server, which runs the `sae` commands (the Project
+Stakes save calls the profile writer instead; see "Project settings").
 
 ## Files
 
@@ -12,7 +13,7 @@ has run, and changes settings only through the server, which runs the `sae` comm
 | `app.css` | tokens (dark and light), layout, shared components, the fixed palette |
 | `app.js` | data loading, palette, tabs, sidebar, Markdown, project switcher, events, boot |
 | `task-views.css` / `task-views.js` | the Plan graph and the other task tabs (`TAB.*`), the job panel |
-| `settings.css` / `settings.js` | the Settings tab (Task, Project, Global), the routing panel, the model lists, the editable header card; saving through the server |
+| `settings.css` / `settings.js` | the Settings tab (Task, Project, Global), the Project settings section, the routing panel, the model lists, the editable header card; saving through the server |
 | `favicon.svg` / `favicon-wait.svg` | the owner's icon (its dark half turns light under `prefers-color-scheme: dark`); the second with the dot of "waiting for the owner" |
 
 Classic scripts in this order: `app.js`, `task-views.js`, `settings.js`. They share their
@@ -59,6 +60,16 @@ no ES modules, no CDN, no web fonts, no external requests.
   a filled card. The legend of kinds and marks below the graph stays.
 - Hover or keyboard focus on a card highlights its edges (`gvHi`, `gvLinks`); the highlight survives
   a refresh.
+- **Dropped jobs** ([JOB-DROP]): status `dropped` is final, like `done` (`isFinal` in `app.js`). A
+  dropped card and its rows are faded and dashed, with the ID struck through and the pill "⊘ dropped";
+  the card has no verdict badge. Counts ("n / m done" in the step bar, the Overview and the sidebar)
+  leave dropped jobs out of both numbers and show them on their own. The job panel shows the
+  `drop` record (`{group, reason, was, at}`) and the jobs dropped with it; the final report lists each
+  dropped group.
+- **Routing exceptions** ([HARNESS-FALLBACK]): the server sends `routing_exceptions`
+  (`launch.routing_exceptions`, each with its `text` from `launch.exception_text`). A card whose job has
+  one gets the mark "⇄ routing exception" on line 4 (requested route, actual route and reason in its
+  tooltip); the job panel lists them.
 
 ## The header and the Overview
 
@@ -77,6 +88,40 @@ no ES modules, no CDN, no web fonts, no external requests.
   null without a task branch).
 - Tokens show the sum with the main session only when every started phase knows its main-session
   tokens; otherwise the subagent tokens, marked "subagents only".
+- The settings card shows the `bypass` line of `sae status` when the task sends a writer job to the
+  other harness ([NO-SANDBOX-VISIBLE], `launch.bypass_line`, served in `status`).
+- **Park stories** ([PARK-STORY]): `status.park_stories` (`park_story.park_stories`, as `sae next --json`
+  and `sae status --json`). `storyBox()` draws a story: the target, the rounds against the limit, the
+  objective and first result, each round's findings with their suggested fixes, the fix jobs'
+  summaries and "do not" limits, and the options with copyable commands. It appears in the panel of a
+  job parked at the round limit, in the panel of the integration round that parked the task, and in
+  the Overview below "Needs you".
+
+## The job panel
+
+`jobBody()` in `task-views.js`: status, the drop record, routing exceptions, summary, needs and
+reviews, the park story, the attempts, and **Launch commands** ([LAUNCH-RECORD]): for each attempt
+with a `launch` record (`{harness, model, effort, command, request}`), the route, the request
+("bypass requested" or "read-only requested") and the command with `<prompt>`, `<workdir>` and the
+other placeholders. It records what the command requested, not the permissions the job had.
+
+## Project settings
+
+The Project tab of Settings starts with "Project settings", above "Defaults for new tasks in
+<repo>" ([STAKES-VIEWER], [AMEND-2]). It shows the Project Stakes with their source and a "?" whose
+help (`HELP.stakes`) holds the example of `templates/repo/profile.md` word for word.
+
+- **Server data**: `stakes` in the settings answer (`server.stakes_data`, from `stakes.find_stakes`):
+  `{title, source, source_name, text, editable, profile, profile_name, base, draft}`. `editable` is
+  true when the stakes come from the profile or no source has any; stakes from AGENTS.md or
+  CLAUDE.md are read-only with "edit there". `draft` fills the edit box; `base` is a revision of the
+  profile's section exactly as stored when the page read it (`stakes.section_revision`, a hash of
+  its raw text), so a change to comments or spaces alone also moves it.
+- **Save**: `POST /api/stakes {repo, text, base}` (`server.save_stakes`, the one entry of
+  `DIRECT_ROUTES`) calls `stakes.save_profile_stakes`: only the Project Stakes section of
+  `.tasks/repo/profile.md` in the main worktree changes. It refuses (409) while AGENTS.md or
+  CLAUDE.md is the source and when the section changed since `base`; a heading in the text is 400.
+  The edit stays in `SX.stk` until Save or Discard, so a refresh keeps it and its caret.
 
 ## Findings and Decisions: this task or all
 
@@ -100,7 +145,8 @@ decision events are the task's own in both views.
   `X-SAE-Token`; the server answers with the command's `--json` output (`ok`, `result`, `error`).
   The body names its `repo` (and `task`): the one the change was made for, captured when the
   owner made it, never the selection when a queued save leaves; `post` refuses a body without it.
-  Routes are `WRITE_ROUTES` in `server.py`; a new one is one entry there.
+  Routes are `WRITE_ROUTES` in `server.py`; a new one is one entry there. The one route that runs no
+  `sae` command is `stakes` (`DIRECT_ROUTES`, see "Project settings").
 - Polling: every 3 s while the open repository has an executing task, else every 30 s. A hidden
   tab keeps polling, slower (15 s and 60 s), so the title and favicon follow the task.
 - UI state lives in the URL hash (`#repo=…&task=…&tab=…&job=…`); small conveniences (theme,

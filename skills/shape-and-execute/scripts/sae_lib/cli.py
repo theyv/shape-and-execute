@@ -10,6 +10,7 @@ from .common import EXIT_CODES_HELP, EXIT_USAGE, Parser, SaeError
 from .control import register_hold
 from .doctor import register_doctor
 from .findings import register_decision, register_finding, register_log
+from .fix_loop import register_accept_review
 from .lifecycle import register_abandon, register_finish, register_new, register_start
 from .planning import register_approve, register_check, register_job, register_set
 from .progress import register_dispatch, register_next, register_status
@@ -62,6 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_ask(sub, command)
     register_collect(sub, command)
     register_merge(sub, command)
+    register_accept_review(sub, command)
     decision = register_decision(sub, command)
     register_log(sub, command)
     finding = register_finding(sub, command)
@@ -91,7 +93,7 @@ ARGUMENT_HELP = {
     "final": "the final validation job; runs after every other job and review",
     "fix_of": "the writer job this fix job repairs; it works in that job's workspace and branch",
     "needs": "comma list of job IDs that must be done first (writers: also merged)",
-    "difficulty": "mechanical | normal | hard; with the phase level it selects the routing cell",
+    "difficulty": "mechanical | easy | normal | hard (planning and review: normal | hard); with the phase level it selects the routing cell",
     "kind": "what the job does",
     "allow_dirty": "start although tracked files outside .tasks/ have uncommitted changes",
     "open": "open the URL in the default browser",
@@ -103,7 +105,7 @@ ARGUMENT_HELP = {
     "job": "the job this entry is about",
     "decision_class": "decision class",
     "amend_id": "the amendment ID under ## Amendments in specs.md",
-    "from_job": "the parked job whose decision request this answers",
+    "from_job": "the job or review round the decision is about (a parked job: its decision request)",
     "confidence": "how sure you are",
     "source": "where it came from: <task>/<JOB-ID> for findings, <task> for backlog items",
     "paths": "comma list of related paths",

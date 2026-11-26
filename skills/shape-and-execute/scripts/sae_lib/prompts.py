@@ -12,13 +12,45 @@ from typing import Callable
 from .common import (ASK_CLASSES, PARK_CLASSES, SKILL_DIR, WRITER_KINDS, glob_regex, in_scope, read_text,
                      sae_prefix)
 from .config import cfg
-from .findings import ADR_INDEX, adr_folders, adr_pointer_records
+from .findings import ADR_INDEX, adr_folders, adr_pointer_records, decision_inputs
 from .gitutil import git
 from .graph import fix_target, review_rounds
 from .markdown import split_frontmatter
+from .park_story import approach_check, proposal_results
 from .routing import job_context
+from .stakes import prompt_block
 from .tasks import Task, as_list, job_file, job_meta, result_file, tasks_dir
 from .workspaces import job_branch, workspace_of, workspace_owner
+
+
+# [PROMPT-SAE] Texts that dispatch prompts carry. Fill them with str.format; reword them only in the
+# prompt-text job of a task, so the owner reads every prompt change in one diff.
+# [STAKES-POINTER], [AMEND-1], [AMEND-2] one Project Stakes block in every dispatch prompt: STAKES_LINE and the
+# section text, or the "not set" text. STAKES_LONG_SUFFIX replaces the section text of a long section.
+STAKES_LINE = ('Project Stakes: how much care this project needs (from {path}, section "Project Stakes"). '
+               "Work to this bar. Leaving out what the bar does not need is expected, not a failure. "
+               "They never lower the requirements you were given:")
+STAKES_LONG_SUFFIX = " The section is longer than {limit} lines: read it before you start."
+STAKES_NOT_SET_LINE = ("Project Stakes: how much care this project needs. Not set, so set the bar yourself: from the "
+                       "repository instructions and the README, judge who uses it, what breakage is acceptable and "
+                       "what matters now. Then work to that bar. Leaving out what the bar does not need is "
+                       "expected, not a failure. They never lower the requirements you were given.")
+# [FIX-WORKER] the next review round's prompt, when the fix result has an Approach proposal.
+APPROACH_PROPOSAL_POINTER = 'Read first: the "Approach proposal" in {result}'
+# [WRITER-COMMAND] a dispatch that moved the job's earlier result aside (`empty_result_slot`).
+EARLIER_RESULT_POINTER = "Read first: your earlier result, moved aside: {path}. Build on it and write the full result again."
+# [APPROACH-CHECK] the fix of changes-required round k of its target, for k >= max-review-rounds - 1.
+APPROACH_PARAGRAPH = """FIX {fix} of {target}. {target} parks for the user after review round {max_rounds}.
+Before you patch, read the earlier review rounds of {target} and answer under "Decisions taken"
+in your result:
+1. Do the findings share one cause? Typical causes: the same value computed in several
+   places; a function that gets a new special case in every round; a requirement read
+   wider than the spec states.
+2. Would a different approach remove that cause, so the same kind of finding cannot come
+   back? Typical approaches: one function that every place calls; a value stored once
+   instead of derived; a smaller reading of the requirement.
+If yes and it fits your job, use it. If your job forbids it, still make your best fix and
+describe the approach under "Approach proposal" in your result."""
 
 
 def profile_meta(task: Task) -> dict:
@@ -205,6 +237,22 @@ def earlier_round(task: Task, review_id: str) -> str | None:
     return rounds[index - 1] if index > 0 else None
 
 
+def decision_source_lines(task: Task, target: str | None) -> list[str]:
+    """[DECISION-ANYTIME]: the inputs of a decision job, the same list its job file holds
+    (`decision_inputs`), with absolute paths."""
+    return [f"{label + ':':<38} {path}" for label, path in decision_inputs(task, target)[1]]
+
+
+def approach_lines(task: Task, job_id: str) -> list[str]:
+    """[APPROACH-CHECK]: the approach paragraph of a fix job near the round limit, filled in, and
+    the earlier review rounds it asks the worker to read; empty when it is not due."""
+    check = approach_check(task, job_id)
+    if not check:
+        return []
+    paragraph = APPROACH_PARAGRAPH.format(fix=check["fix"], target=check["target"], max_rounds=check["max_rounds"])
+    return [paragraph, f"Review rounds of {check['target']} so far:", *[f"  {path}" for path in check["earlier_rounds"]]]
+
+
 def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, model: dict,
                  config: dict, external: bool = False) -> str:
     job = task.jobs[job_id]
@@ -223,6 +271,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
         f"You are {who} for the shape-and-execute skill. Follow your protocol:",
         f"  {roles / protocol}",
         f"Task: {task.id} · Job: {job_id} ({kind}, {job_context(task, job_id)['difficulty']})",
+        prompt_block(task.root),  # [STAKES-POINTER]: exactly one stakes block, read now
     ]
     spec, intent = d / "specs.md", d / "intent.md"
     spec_pointer = pointer("Spec — read the parts your job covers: ", spec)
@@ -242,6 +291,7 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
                                                       if done else ""))
             elif target in task.jobs:
                 lines.append(f"Fixes findings of {target} — review to address: {result_file(task, target)}")
+            lines += approach_lines(task, job_id)
         if kind == "integration" and job.get("target"):
             lines.append(f"Merge in progress in the workdir: {job_branch(task, job['target'])} into the task "
                          f"branch. Resolve the conflicts, keep both jobs' intent, commit the merge.")
@@ -318,13 +368,13 @@ def build_prompt(task: Task, job_id: str, workdir: Path, branch: str | None, mod
             previous = earlier_round(task, job_id)
             if previous:
                 lines.append(f"Round {job.get('round')} — check only the findings of: {result_file(task, previous)}")
+        lines += [APPROACH_PROPOSAL_POINTER.format(result=path) for path in proposal_results(task, job_id)]
         lines += ["Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "review.md"
     else:  # decision
         target = job.get("target")
         lines += [pointer("Job file — the question:               ", job_file(task, job_id))]
-        if target in task.jobs:
-            lines.append(pointer("Decision request (section \"Decision request\"): ", result_file(task, target)))
+        lines += decision_source_lines(task, target)
         lines += [spec_pointer, pointer("Brief:                                 ", d / "brief.md"),
                   *index_lines(task), "Workdir — read-only; run every command here:", f"  {task.root}"]
         result_template = "decision.md"
@@ -407,21 +457,6 @@ def review_output_tokens(path: Path, harness: str) -> int | None:
 
 
 def external_review_command(task: Task, job_id: str, model: dict, prompt: str) -> str:
-    """Print one shell line; printf restores the literal newlines in the review prompt."""
-    result = result_file(task, job_id)
-    result.parent.mkdir(parents=True, exist_ok=True)
-    output = review_output_file(task, job_id, model["harness"])
-    q = shlex.quote
-    escaped_prompt = prompt.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-    prompt_arg = '"$(printf %b ' + q(escaped_prompt) + ')"'
-    clean = f"rm -f {q(str(result))} {q(str(output))}"
-    if model["harness"] == "codex":
-        return (f"{clean} && codex exec -m {q(model['model'])} "
-                f"-c model_reasoning_effort={q(model['effort'])} -s read-only "
-                f"-C {q(str(task.root))} -o {q(str(result))} --ephemeral --json {prompt_arg} "
-                f"< /dev/null > {q(str(output))}")
-    return (f"cd {q(str(task.root))} && {clean} && claude -p {prompt_arg} --output-format json "
-            f"--model {q(model['model'])} "
-            f"--effort {q(model['effort'])} --permission-mode dontAsk "
-            f"--allowedTools {q('Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(git show *)')} "
-            f"> {q(str(output))} && python3 -c {q(CLAUDE_RESULT_TEXT)} {q(str(output))} > {q(str(result))}")
+    """The review COMMAND: one shell line; printf restores the literal newlines in the review prompt."""
+    from .launch import launch_command  # late import: launch imports this module
+    return launch_command(task, job_id, model, prompt, task.root)

@@ -7,9 +7,9 @@ var TABS=[["plan","Plan"],["spec","Intent & Spec"],["reviews","Reviews"],["findi
  PHASES=[["executing","Executing"],["planning","Planning"],["shaping","Shaping"],["done","Done"],["abandoned","Abandoned"]],
  WR={implementation:1,integration:1},
  MODES=["full-auto","auto","critical-only","collaborative","interactive"],LEVELS=["economy","balanced","premium"],POINTS=["spec","plan","selected-jobs","all-jobs","integration"],
- GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
+ GL={pending:"○",ready:"▷",running:"◐",done:"●",parked:"‖",failed:"✕",removed:"–",dropped:"⊘"},VC={pass:"done","pass-with-notes":"done","changes-required":"failed"},
  FILTERS=[["all","All"],["graph","Graph changes"],["decisions","Decisions"],["reviews","Reviews"],["settings","Settings"],["holds","Holds"]],
- FT={graph:/^(job\.(added|changed|removed)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/,holds:/^hold\./},
+ FT={graph:/^(job\.(added|changed|removed|dropped)|merge\.conflict)$/,decisions:/^(decision|amendment)$/,reviews:/^review\.completed$/,settings:/^settings\.changed$/,holds:/^hold\./},
  FAM=[["f-fail",/^(job\.verify_failed|merge\.conflict)$/],["f-job",/^(job|merge)\./],["f-review",/^review\./],["f-decision",/^(decision|amendment)$/],["f-gate",/^(spec|plan|execution|task)\./]],
  STALE=60, // minutes; mirrors STALE_RUNNING_MINUTES in sae_lib/common.py
  S={repo:null,task:null,tab:"plan",job:null,doc:null,f:"all",bl:null,sc:"task"},IDX=null,PROJ=null,psig="",isig="",TASKS={},tsig={},timer=0,PSEQ=0,MISS={},ERR="",OPEN={},FOLD={},OPENER="",
@@ -47,6 +47,10 @@ var T=()=>own(TASKS,S.task)||null,
  // t.waits: what each pending job waits for; a task the server could not load has none, so nothing shows ready
  waits=(t,id)=>own(t.waits||{},id)||[],
  stOf=(t,id)=>{var j=JS(t)[id],w=own(t.waits||{},id);return j.status==="pending"&&w&&!w.length?"ready":j.status},
+ // [JOB-DROP]: a dropped job is final, like a done one (FINAL_STATUSES in common.py); it never merges or runs again
+ isFinal=s=>s==="done"||s==="dropped",
+ // "n / m" done: dropped jobs leave both numbers and are counted on their own
+ doneOf=c=>(c.done||0)+" / "+(Object.keys(c).reduce((v,k)=>v+c[k],0)-(c.dropped||0)),
  // t.difficulty: the effective difficulty of `sae next` (a review takes its target's or the task's), never a raw null
  difOf=(t,id)=>own(t.difficulty||{},id)||(JO(t,id)||{}).difficulty||"–",
  model=a=>a?a.model+(a.effort?" ("+a.effort+")":""):"",
@@ -120,7 +124,7 @@ var DOCN={"intent.md":"Intent","specs.md":"Spec","brief.md":"Brief","plan.md":"P
 var pill=s=>'<span class="pill k-'+s+'"><i aria-hidden="true">'+(GL[s]||"")+"</i>"+esc(s)+"</span>",
  vpill=v=>v?'<span class="pill k-'+(VC[v]||"pending")+'"><i aria-hidden="true">'+(v[0]==="c"?"✕":"✓")+"</i>"+esc(v)+"</span>":"",
  sp=h=>h?" "+h:"",
- stp=(t,id)=>{var j=JS(t)[id];return j.verdict?vpill(j.verdict):pill(stOf(t,id))+sp(stale(t,id))},
+ stp=(t,id)=>{var j=JS(t)[id];return j.verdict&&j.status!=="dropped"?vpill(j.verdict):pill(stOf(t,id))+sp(stale(t,id))},
  jpill=(t,id)=>pill(stOf(t,id))+sp(stale(t,id))+(JS(t)[id].merged?' <span class="mut" title="merged">✓ merged</span>':""),
  fam=type=>(FAM.find(f=>f[1].test(type))||[""])[0],
  dataJ=(a,id)=>' data-act="'+a+'" data-id="'+esc(id)+'"',
@@ -168,7 +172,7 @@ function renderTop(){var it=IT(S.task),th=D.documentElement.dataset.theme||"dark
    '<div class="live" title="Read live from the repository; this page asks again every few seconds.">'+(IDX?'<span class="hm">Last updated '+esc(clock(IDX.generated))+' · </span><span class="sm">Updated </span><span data-ago="'+esc(IDX.generated)+'">'+esc(ago(IDX.generated))+"</span>":"No data")+"</div>"+
    '<div class="seg" role="radiogroup" aria-label="Theme">'+["dark","light"].map(m=>'<button role="radio" data-act="theme" data-m="'+m+'" aria-checked="'+(th===m)+'">'+(m==="dark"?"Dark":"Light")+"</button>").join("")+"</div>"}
 /* ---------- sidebar: collapsible sections, phase and backlog-folder groups, ten items per group ---------- */
-var BAR=["done","running","parked","failed","pending"],GROUP_CAP=10,MORE={}, // MORE: groups opened past their first ten
+var BAR=["done","dropped","running","parked","failed","pending"],GROUP_CAP=10,MORE={}, // MORE: groups opened past their first ten
  shut=(k,n)=>own(FOLD,k)!=null?!!FOLD[k]:/^ph:(done|abandoned)$/.test(k)&&n>3,
  fold=(k,n,cls,label,cnt)=>'<button class="sx '+cls+'" data-act="fold" data-k="'+esc(k)+'" data-n="'+n+'" data-nav aria-expanded="'+!shut(k,n)+'"><svg class="cv" viewBox="0 0 10 10" aria-hidden="true"><path d="M3.5 2l3 3-3 3"/></svg>'+label+'<span class="n">'+cnt+"</span></button>",
  pmark=p=>'<i class="pd" aria-hidden="true">'+(p==="done"?"✓":p==="abandoned"?"–":"")+"</i>",
@@ -191,7 +195,7 @@ function renderSide(){if(!IDX){$("#side").innerHTML="";return}var ts=IDX.tasks,b
     if(!on)return item(false,"task",t.id,t.title||t.id,meta,"",cls,pmark(p));
     var c=t.counts||{},tot=BAR.reduce((v,x)=>v+(c[x]||0),0),
      right=(t.parked?pill("parked").replace("parked</span>",t.parked+" parked</span>"):"")+(t.holds&&!/^(done|abandoned)$/.test(p)?' <span class="tag" title="'+esc(plural(t.holds,"hold"))+'">⏸ held</span>':"")||(p==="planning"&&t.plan_approved?"<span>plan approved</span>":""),
-     bar=tot?'<span class="sbw" title="'+esc(BAR.filter(x=>c[x]).map(x=>c[x]+" "+x).join(", "))+'"><span class="sbar">'+BAR.filter(x=>c[x]).map(x=>'<i class="k-'+x+'" style="flex:'+c[x]+'"></i>').join("")+"</span><b>"+(c.done||0)+"/"+tot+"</b></span>":"";
+     bar=tot?'<span class="sbw" title="'+esc(BAR.filter(x=>c[x]).map(x=>c[x]+" "+x).join(", "))+'"><span class="sbar">'+BAR.filter(x=>c[x]).map(x=>'<i class="k-'+x+'" style="flex:'+c[x]+'"></i>').join("")+"</span><b>"+(c.done||0)+"/"+(tot-(c.dropped||0))+"</b></span>":"";
     return item(true,"task",t.id,t.title||t.id,meta+right,bar+where(t),cls,pmark(p))},
   blItem=b=>item(S.bl===b.file,"bl",b.file,b.title,"<span>"+esc(ago(b.created)+(b.source?" · from "+slug(b.source):""))+"</span>"+(b.picked_up_by?'<span class="tag" title="'+esc("Picked up by "+b.picked_up_by)+'">picked up</span>':"")),
   // one group: its fold (when it has a label), its items and its "Show N more"

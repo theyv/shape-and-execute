@@ -12,6 +12,7 @@ import re
 from .common import (
     EXIT_OK,
     EXIT_USAGE,
+    FINAL_STATUSES,
     HARNESSES,
     LEVEL_PHASES,
     SaeError,
@@ -102,6 +103,7 @@ def settings_snapshot(task: Task, config: dict | None) -> dict:
                         text = f"tier {cell['tier']}" if cell["tier"] else f"{cell['model_entry']} · {cell['effort']}"
                         source = cell["sources"]["cell"]
                         text += "" if source == "global" else f" ({source})"
+                        text += f" ({cell['fallback']} cell)" if cell.get("fallback") else ""
                         if cell["tier"]:
                             tier = effective_routing(layers, harness)["tiers"][cell["tier"]]
                             snap[f"tier {harness} {cell['tier']}"] = (
@@ -280,7 +282,7 @@ def map_steps(task: Task) -> list[dict]:
     step("plan", "plan approval", "done" if "plan" in approvals else "pending", gate=True)
 
     work = [i for i in planned if not jobs[i]["final"]]
-    done = sum(1 for i in work if jobs[i]["status"] == "done")
+    done = sum(1 for i in work if jobs[i]["status"] in FINAL_STATUSES)  # dropped is final ([JOB-DROP])
     started = task.phase in ("executing", "done")
     step("execute", f"jobs {done}/{len(work)}", "done" if started and done == len(work) else "pending", key="jobs")
     from .reviews import planned_reviews, review_due  # late import: reviews imports this module's deps
@@ -291,14 +293,15 @@ def map_steps(task: Task) -> list[dict]:
     else:
         job_reviews = [i for i, j in jobs.items() if j["kind"] == "review" and j.get("target") in jobs]
         open_planned = [p for p in planned_reviews(task) if p["target"] in jobs]
-        finished = started and not open_planned and all(jobs[i]["status"] == "done" for i in job_reviews)
+        finished = started and not open_planned and all(jobs[i]["status"] in FINAL_STATUSES for i in job_reviews)
         step("execute", "job-reviews", "done" if finished else "pending")
     rounds = review_rounds(task, "integration")
     if "integration" not in points and not rounds:
         step("execute", "integration-review", "off")
     else:
         last = jobs[rounds[-1]] if rounds else None
-        passed = bool(last) and last["status"] == "done" and last.get("verdict") in ("pass", "pass-with-notes")
+        passed = bool(last) and last["status"] == "done" and (last.get("verdict") in ("pass", "pass-with-notes")
+                                                              or bool(last.get("accepted")))
         note = f"round {len(rounds)}" if len(rounds) > 1 and not passed else ""
         step("execute", "integration-review", "done" if passed else "pending", note=note)
     finals = [i for i, j in jobs.items() if j["final"]]

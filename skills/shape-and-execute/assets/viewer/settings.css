@@ -24,11 +24,7 @@ select:disabled,input:disabled{opacity:.6}
 .cbs{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:center}.cbs .cb{display:flex;gap:4px;align-items:center}.cbs label{display:flex;gap:6px;align-items:center}.cbs input{margin:0}
 .jsub{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.note{font-size:12px;color:var(--ink3);margin:0}.mdesc{font-size:12px;color:var(--ink2);max-width:620px;margin:0}
 .seg button:disabled{cursor:default;opacity:.6}
-.tgl{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);border:0;background:none;padding:0}
-.tgl i{position:relative;width:28px;height:16px;border-radius:8px;background:var(--line2)}
-.tgl i:after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ink);transition:transform .12s}
-.tgl[aria-checked=true] i{background:var(--acc-bg)}.tgl[aria-checked=true] i:after{transform:translateX(12px);background:#fff}
-/* tiers in one row; greyed out while "tiers in cells" is off */
+/* tiers in one row; greyed out in Free mode */
 .tiers{padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);margin-bottom:14px}
 .tiers.off .trow{opacity:.4;filter:grayscale(1);pointer-events:none}
 .trow{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:8px;overflow-x:auto}
@@ -43,6 +39,7 @@ table.rt{table-layout:fixed;min-width:560px}.rt th{padding:6px 8px;border-bottom
 .cell select,.tcard select{width:100%;background:var(--s2)}
 .cell.bad,.tcard.bad{outline:1px dashed var(--fail);outline-offset:-1px}.cell.own,.tcard.own{outline:1px solid var(--acc-bd);outline-offset:-1px}
 .foot{margin:10px 0 0;font-size:12px;color:var(--ink2)}
+.foot.fbn{margin:0 0 8px}.rt .cell.fb{outline:1px dashed var(--line);outline-offset:-1px}
 /* model lists (Global) */
 .ml{display:flex;flex-direction:column;gap:2px;max-width:620px}
 .mr{display:flex;align-items:center;gap:8px;padding:3px 6px;border-radius:5px}.mr:hover{background:var(--hl)}
@@ -52,6 +49,12 @@ table.rt{table-layout:fixed;min-width:560px}.rt th{padding:6px 8px;border-bottom
 .sw{width:10px;height:10px;border-radius:3px;background:var(--mc);flex-shrink:0}
 .btn.ar{width:22px;height:22px;padding:0;justify-content:center;font-size:11px}
 .add{display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap}
+/* Project settings: the Project Stakes ([STAKES-VIEWER]) */
+textarea.stk,pre.stk{width:100%;max-width:720px;margin:0;padding:8px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--s2);color:var(--ink);font:12px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere}
+textarea.stk{resize:vertical}pre.stk.ro{background:var(--bg);color:var(--ink2)}
+.stkb{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+/* [NO-SANDBOX-VISIBLE]: the bypass line in the settings card */
+.card .byp{flex-basis:100%;color:var(--park);white-space:normal}
 /* [?] popover */
 .pop{position:fixed;z-index:30;width:min(400px,calc(100% - 24px));max-height:calc(100vh - 24px);overflow-y:auto;background:var(--s2);border:1px solid var(--line2);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.5;color:var(--ink2);box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .pop b{color:var(--ink);font-weight:600}.pop p{margin:0 0 6px}.pop p:last-child{margin:0}.pop table{margin:4px 0 6px}

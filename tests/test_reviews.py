@@ -133,10 +133,12 @@ class IntegrationRoundTests(ReviewFlowCase):
         nxt = sb.json("next", "rounds2")
         self.assertEqual(nxt["parked_task"], "REVIEW-INTEGRATION-2")
         self.assertEqual(nxt["ready"], [])
-        self.assertIn("parked for the owner", sb.sae("next", "rounds2").stdout)
-        self.assertIn("parked for the owner", sb.sae("status", "rounds2").stdout)
+        self.assertIn("parked for the user", sb.sae("next", "rounds2").stdout)
+        self.assertIn("parked for the user", sb.sae("status", "rounds2").stdout)
         proc = sb.sae("dispatch", "rounds2", "FINAL", code=3)
-        self.assertIn("--override", proc.stderr)
+        # the dispatch refusal points to the story; the options are printed in full only there
+        self.assertIn(f"The story and the options: sae next {task}", proc.stderr)
+        self.assertNotIn("Options:", proc.stderr)
         sb.sae("job", "add", "rounds2", "INTEGRATION-FIX-2", "--kind", "implementation",
                "--fix-of", "REVIEW-INTEGRATION", "--reason", "old round", code=1)  # only the last round
         sb.sae("job", "add", "rounds2", "INTEGRATION-FIX-2", "--kind", "implementation",
@@ -252,7 +254,7 @@ class DisputedFindingTests(ReviewFlowCase):
             path.write_text(path.read_text() + "## Disputed findings\n" + section + "\n## Risks\n- none\n")
         data = sb.json("collect", "disputes", "FIX")
         self.assertEqual(data["disputed"], 2)
-        self.assertIn("2 disputed findings: settle them (see execute.md)", data["messages"][0])
+        self.assertIn("2 disputed findings: settle them (references/modes/execute.md, Disputed findings)", data["messages"][0])
         quiet = sb.json("collect", "disputes", "QUIET")
         self.assertEqual(quiet["disputed"], 0)
         self.assertNotIn("disputed", " ".join(quiet["messages"]))
@@ -390,7 +392,9 @@ class ReviewNoticeTests(ReviewFlowCase):
         self.run_writer(sb, task, "narrow-job-review-notices", "A-LONG-CORE-JOB-IDENTIFIER")
         job_review = self.review(sb, task, "narrow-job-review-notices", "REVIEW-A-LONG-CORE-JOB-IDENTIFIER",
                                  "A-LONG-CORE-JOB-IDENTIFIER", "changes-required")["collect"]
-        self.assertIn("changes required. Add fix jobs:", job_review)
+        # audit 2026-11-20, proposal 2: the line after the verdict sends the orchestrator to triage first
+        self.assertIn("verdict: changes-required\nTriage the findings first (references/modes/execute.md, Loop step 3).",
+                      job_review)
         open_jobs = sb.sae("finish", "narrow-job-review-notices", code=3).stderr
         self.assertIn("Open jobs: SIDE", open_jobs)
         refused = sb.sae("finish", "narrow-job-review-notices", "--with-open", code=3).stderr

@@ -1,0 +1,2776 @@
+{
+  "schema": 1,
+  "task": {
+    "id": "2026-11-17-2334--sae-routing-harness-permissions-and-revi",
+    "title": "SaE routing, harness permissions and review workflow",
+    "created": "2026-11-17T23:34:39+01:00",
+    "author": "theyv",
+    "phase": "done",
+    "git": true,
+    "layout": "worktrees",
+    "orchestrator_harness": "claude",
+    "branch": "task/2026-11-17-2334--sae-routing-harness-permissions-and-revi",
+    "base": {
+      "branch": "main",
+      "commit": "3892f20"
+    },
+    "home": "~/Documents/fn-local/shape-and-execute",
+    "approvals": {
+      "spec": {
+        "at": "2026-11-20T14:52:19+01:00",
+        "by": "theyv"
+      },
+      "plan": {
+        "at": "2026-11-20T15:18:10+01:00",
+        "by": "theyv"
+      }
+    },
+    "settings_seen": {
+      "schema": 1,
+      "interaction": "collaborative",
+      "levels": {
+        "research": "premium",
+        "planning": "balanced",
+        "execution": "balanced",
+        "review": "balanced"
+      },
+      "review": {
+        "points": [
+          "spec",
+          "plan",
+          "selected-jobs",
+          "integration"
+        ],
+        "provider": "codex"
+      },
+      "max_verify_failures": 3,
+      "max_review_rounds": 4,
+      "task_difficulty": "hard"
+    },
+    "last_change": "2026-11-26T13:29:08+01:00",
+    "overrides": {
+      "PLAN": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-17T23:38:34+01:00"
+      },
+      "CODEX-LAUNCH": {
+        "harness": "codex",
+        "at": "2026-11-17T23:53:55+01:00",
+        "reason": "owner: run this research on Codex with stronger models"
+      },
+      "CLAUDE-LAUNCH": {
+        "harness": "codex",
+        "at": "2026-11-17T23:53:55+01:00",
+        "reason": "owner: run this research on Codex with stronger models"
+      },
+      "PROMPT-TEXT": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "medium",
+        "at": "2026-11-20T15:05:30+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (normal)"
+      },
+      "EASY-DIFFICULTY": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "medium",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (normal)"
+      },
+      "WRITER-LAUNCH": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (hard)"
+      },
+      "STAKES-IN-PROMPTS": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "high",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (easy)"
+      },
+      "FIX-LOOP-EXITS": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (hard)"
+      },
+      "FIX-LOOP-GUIDANCE": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "medium",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (normal)"
+      },
+      "VIEWER-SURFACES": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-20T15:05:31+01:00",
+        "reason": "owner: implementation on Claude, by the four-level mapping (hard: complex UI)"
+      },
+      "FINAL-VALIDATION": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-22T20:49:09+01:00"
+      },
+      "REVIEW-INTEGRATION": {
+        "harness": "codex",
+        "model": "sol",
+        "effort": "high",
+        "at": "2026-11-22T19:42:26+01:00"
+      },
+      "FIX-LOOP-TEXTS": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-22T19:18:30+01:00",
+        "reason": "owner: opus high, the texts matter"
+      },
+      "SANDBOX-ISOLATION": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "high",
+        "at": "2026-11-26T11:26:34+01:00",
+        "reason": "owner asked for Sonnet; high effort because this is research"
+      },
+      "FIRST-RUN-WALKTHROUGH": {
+        "harness": "claude",
+        "model": "opus",
+        "effort": "high",
+        "at": "2026-11-26T11:49:36+01:00",
+        "reason": "owner asked for opus high"
+      },
+      "INTEGRATION-FIX-6": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium",
+        "at": "2026-11-26T12:28:42+01:00",
+        "reason": "owner: fixes run on sonnet"
+      },
+      "INTEGRATION-FIX-7": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "high",
+        "at": "2026-11-26T12:36:54+01:00",
+        "reason": "owner: fixes on sonnet; high because the finding loses data"
+      },
+      "INTEGRATION-FIX-8": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium",
+        "at": "2026-11-26T12:36:54+01:00",
+        "reason": "owner: fixes on sonnet"
+      },
+      "INTEGRATION-FIX-9": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium",
+        "at": "2026-11-26T12:40:12+01:00",
+        "reason": "owner: fixes on sonnet"
+      },
+      "INTEGRATION-FIX-10": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium",
+        "at": "2026-11-26T12:48:54+01:00",
+        "reason": "owner: fixes on sonnet"
+      },
+      "INTEGRATION-FIX-11": {
+        "harness": "claude",
+        "model": "sonnet",
+        "effort": "medium",
+        "at": "2026-11-26T12:48:54+01:00",
+        "reason": "owner: fixes on sonnet"
+      }
+    },
+    "last_card": {
+      "at": "2026-11-26T12:52:35+01:00",
+      "phase": "executing",
+      "jobs": [
+        "REVIEW-INTEGRATION-4"
+      ],
+      "settings": {
+        "interaction": "collaborative",
+        "levels.research": "premium",
+        "levels.planning": "balanced",
+        "levels.execution": "balanced",
+        "levels.review": "balanced",
+        "review.points": [
+          "spec",
+          "plan",
+          "selected-jobs",
+          "integration"
+        ],
+        "review.provider": "codex",
+        "max_verify_failures": 3,
+        "max_review_rounds": 4,
+        "task_difficulty": "hard",
+        "ask_signal": "off (mode default)",
+        "routing claude research premium mechanical": "sonnet · high",
+        "routing claude research premium normal": "opus · low",
+        "routing claude research premium hard": "opus · medium",
+        "routing claude planning balanced normal": "opus · high",
+        "routing claude planning balanced hard": "opus · xhigh",
+        "routing claude execution balanced mechanical": "sonnet · high",
+        "routing claude execution balanced normal": "opus · medium",
+        "routing claude execution balanced hard": "opus · high",
+        "routing claude review balanced normal": "opus · medium",
+        "routing claude review balanced hard": "opus · high",
+        "tier codex L3": "sol · medium",
+        "routing codex research premium mechanical": "tier L3",
+        "tier codex L4": "sol · high",
+        "routing codex research premium normal": "tier L4",
+        "routing codex research premium hard": "tier L4",
+        "routing codex planning balanced normal": "tier L4",
+        "routing codex planning balanced hard": "tier L4",
+        "tier codex L2": "sol · low",
+        "routing codex execution balanced mechanical": "tier L2",
+        "routing codex execution balanced normal": "tier L3",
+        "routing codex execution balanced hard": "tier L4",
+        "routing codex review balanced normal": "tier L3",
+        "routing codex review balanced hard": "tier L4",
+        "override PLAN": "claude · opus · high",
+        "override CODEX-LAUNCH": "codex",
+        "override CLAUDE-LAUNCH": "codex",
+        "override PROMPT-TEXT": "claude · opus · medium",
+        "override EASY-DIFFICULTY": "claude · opus · medium",
+        "override WRITER-LAUNCH": "claude · opus · high",
+        "override STAKES-IN-PROMPTS": "claude · sonnet · high",
+        "override FIX-LOOP-EXITS": "claude · opus · high",
+        "override FIX-LOOP-GUIDANCE": "claude · opus · medium",
+        "override VIEWER-SURFACES": "claude · opus · high",
+        "override FINAL-VALIDATION": "claude · opus · high",
+        "override REVIEW-INTEGRATION": "codex · sol · high",
+        "override FIX-LOOP-TEXTS": "claude · opus · high",
+        "override SANDBOX-ISOLATION": "claude · sonnet · high",
+        "override FIRST-RUN-WALKTHROUGH": "claude · opus · high",
+        "override INTEGRATION-FIX-6": "claude · sonnet · medium",
+        "override INTEGRATION-FIX-7": "claude · sonnet · high",
+        "override INTEGRATION-FIX-8": "claude · sonnet · medium",
+        "override INTEGRATION-FIX-9": "claude · sonnet · medium",
+        "override INTEGRATION-FIX-10": "claude · sonnet · medium",
+        "override INTEGRATION-FIX-11": "claude · sonnet · medium",
+        "review flag PROMPT-TEXT": "on",
+        "review flag EASY-DIFFICULTY": "off",
+        "review flag WRITER-LAUNCH": "on",
+        "review flag STAKES-IN-PROMPTS": "off",
+        "review flag FIX-LOOP-EXITS": "on",
+        "review flag FIX-LOOP-GUIDANCE": "off",
+        "review flag VIEWER-SURFACES": "on",
+        "review flag PROMPT-TEXT-FIX-1": "off",
+        "review flag PROMPT-TEXT-FIX-2": "off",
+        "review flag PROMPT-LEAN": "off",
+        "review flag PROMPT-STAKES": "off",
+        "review flag STAKES-TEXT-FIX": "off",
+        "review flag WRITER-LAUNCH-FIX-1": "off",
+        "review flag STAKES-ESTIMATE-DROP": "off",
+        "review flag WRITER-LAUNCH-FIX-2": "off",
+        "review flag WRITER-LAUNCH-FIX-3": "off",
+        "review flag INTEGRATE-WRITER-LAUNCH": "off",
+        "review flag FIX-LOOP-EXITS-FIX-1": "off",
+        "review flag FIX-LOOP-EXITS-FIX-2": "off",
+        "review flag FIX-LOOP-TEXTS": "off",
+        "review flag VIEWER-SURFACES-FIX-1": "off",
+        "review flag APPROACH-WORD": "off",
+        "review flag VIEWER-SURFACES-FIX-2": "off",
+        "review flag VIEWER-SURFACES-FIX-3": "off",
+        "review flag INTEGRATION-FIX-1": "off",
+        "review flag INTEGRATION-FIX-2": "off",
+        "review flag INTEGRATION-FIX-3": "off",
+        "review flag INTEGRATION-FIX-4": "off",
+        "review flag FIRST-RUN-WALKTHROUGH": "off",
+        "review flag INTEGRATION-FIX-5": "off",
+        "review flag INTEGRATION-FIX-6": "off",
+        "review flag INTEGRATION-FIX-7": "off",
+        "review flag INTEGRATION-FIX-8": "off",
+        "review flag INTEGRATION-FIX-9": "off",
+        "review flag INTEGRATION-FIX-10": "off",
+        "review flag INTEGRATION-FIX-11": "off"
+      }
+    },
+    "holds": {},
+    "worktree": "~/Library/Caches/shape-and-execute/worktrees/shape-and-execute-3f2d3e60/2026-11-17-2334--sae-routing-harness-permissions-and-revi/task"
+  },
+  "jobs": {
+    "CODEX-LAUNCH": {
+      "kind": "research",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-18T00:05:23+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "xhigh",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-17T23:54:38+01:00",
+          "ended": "2026-11-18T00:05:23+01:00",
+          "tokens": 3506806,
+          "duration_s": 625,
+          "agent_ref": "01a1ebb8-6756-72d0-a19a-da4b83fd667f",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "research done, confidence medium",
+      "research_status": "done",
+      "confidence": "medium"
+    },
+    "CLAUDE-LAUNCH": {
+      "kind": "research",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-18T00:03:58+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "xhigh",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-17T23:54:38+01:00",
+          "ended": "2026-11-18T00:03:58+01:00",
+          "tokens": 3021551,
+          "duration_s": 535,
+          "agent_ref": "01a1ebb8-69de-7780-92c5-5f0bb095d96f",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "research done, confidence high",
+      "research_status": "done",
+      "confidence": "high"
+    },
+    "REVIEW-SPEC": {
+      "kind": "review",
+      "needs": [],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "spec",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T14:32:25+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "xhigh",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T14:27:25+01:00",
+          "ended": "2026-11-20T14:32:25+01:00",
+          "tokens": 1517743,
+          "duration_s": 281,
+          "agent_ref": "01a1f924-2492-70e1-9dad-3c41c57f28b4",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "PLAN": {
+      "kind": "planning",
+      "needs": [],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:13:01+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T14:52:55+01:00",
+          "ended": "2026-11-20T15:03:53+01:00",
+          "tokens": 200116,
+          "duration_s": 645,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        },
+        {
+          "n": 2,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T15:10:29+01:00",
+          "ended": "2026-11-20T15:13:01+01:00",
+          "tokens": 222706,
+          "duration_s": 136,
+          "agent_ref": "a25a9f526abc661b9",
+          "reason": "plan review: changes required",
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "PROMPT-TEXT (review, hold) ∥ EASY-DIFFICULTY → WRITER-LAUNCH (review) ∥ STAKES-IN-PROMPTS → FIX-LOOP-EXITS (review) → FIX-LOOP-GUIDANCE → VIEWER-SURFACES (review) → FINAL-VALIDATION (final)"
+    },
+    "PROMPT-TEXT": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": true,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 2,
+      "last_change": "2026-11-20T15:49:22+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T15:19:42+01:00",
+          "ended": "2026-11-20T15:28:03+01:00",
+          "tokens": 146530,
+          "duration_s": 480,
+          "agent_ref": "a5477c3461731cceb",
+          "reason": null,
+          "head": "3892f20058464911d986726e014ed671261479a2"
+        }
+      ],
+      "commits": [
+        "956113af8dc951e255476ffe239479cdaaba86f7"
+      ],
+      "summary": "Applied every \"Prompt text\" draft to the skill files, added the four PROMPT-SAE constants (unwired) to prompts.py, and listed the CLI and code contradictions"
+    },
+    "EASY-DIFFICULTY": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:31:33+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T15:19:42+01:00",
+          "ended": "2026-11-20T15:30:48+01:00",
+          "tokens": 172025,
+          "duration_s": 633,
+          "agent_ref": "ab1703f1b80820d1f",
+          "reason": null,
+          "head": "3892f20058464911d986726e014ed671261479a2"
+        }
+      ],
+      "commits": [
+        "9b4f2902adbf5e48b0611734ae1707947065e224"
+      ],
+      "summary": "easy is a fourth difficulty for execution and research; with no easy cell in any layer it uses the effective mechanical cell, and sae and the viewer name that fallback"
+    },
+    "WRITER-LAUNCH": {
+      "kind": "implementation",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES"
+      ],
+      "difficulty": "hard",
+      "review": true,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 3,
+      "last_change": "2026-11-22T17:46:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T19:09:46+01:00",
+          "ended": "2026-11-20T19:27:06+01:00",
+          "tokens": 230390,
+          "duration_s": 1016,
+          "agent_ref": "ac74b00044b253601",
+          "reason": null,
+          "head": "703e9b667c40fe4c6fa55d80bb67483b0e39eb90"
+        }
+      ],
+      "commits": [
+        "a82fc94a7bce8d1d05e5b3e97d6648c2f1f8d2bf"
+      ],
+      "summary": "REVIEW-WRITER-LAUNCH-3: changes required after 3 review rounds (max-review-rounds 3) — human decision"
+    },
+    "STAKES-IN-PROMPTS": {
+      "kind": "implementation",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T19:16:46+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-20T19:09:46+01:00",
+          "ended": "2026-11-20T19:16:05+01:00",
+          "tokens": 129758,
+          "duration_s": 342,
+          "agent_ref": "aa76b3a23ae2c87ae",
+          "reason": null,
+          "head": "703e9b667c40fe4c6fa55d80bb67483b0e39eb90"
+        }
+      ],
+      "commits": [
+        "a034d6e7d2230b747cf73bd7603b61ad1dfdd8b1"
+      ],
+      "summary": "Project Stakes lookup (profile, AGENTS.md, CLAUDE.md of the main worktree), one stakes block in every dispatch prompt, a status line, and the profile section writer"
+    },
+    "FIX-LOOP-EXITS": {
+      "kind": "implementation",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS"
+      ],
+      "difficulty": "hard",
+      "review": true,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 2,
+      "last_change": "2026-11-22T18:52:13+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-22T17:46:31+01:00",
+          "ended": "2026-11-22T18:05:31+01:00",
+          "tokens": 251692,
+          "duration_s": 1120,
+          "agent_ref": "aae98c15fc1559b57",
+          "reason": null,
+          "head": "2343cee49b849a9d29e1fe2a1a6a11e43fbbb552"
+        }
+      ],
+      "commits": [
+        "e74d4c224103a135b71fc8e096365c44b4113bd9"
+      ],
+      "summary": "Decision jobs for any job, round or question (they pass holds and the parked task); sae job drop with the dropped status; sae accept-review; --let-go; the four changes-required lines; a final report with findings let go, accepted rounds and dropped jobs."
+    },
+    "FIX-LOOP-GUIDANCE": {
+      "kind": "implementation",
+      "needs": [
+        "FIX-LOOP-EXITS"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T19:07:18+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-22T18:52:17+01:00",
+          "ended": "2026-11-22T19:05:59+01:00",
+          "tokens": 175571,
+          "duration_s": 804,
+          "agent_ref": "af6d9d74a1a76ea70",
+          "reason": null,
+          "head": "18292981e122529b0dbe8bdfbd3916da33d9b714"
+        }
+      ],
+      "commits": [
+        "e5c939b9d034c291c965e2bd26239245b0f5fb30"
+      ],
+      "summary": "Approach paragraph in fix prompts from round N-1 (sticky after a park or an earlier paragraph), Approach proposal pointer in the next review round and in sae collect, park story in sae next/status with the audit opening line in every round-limit park message."
+    },
+    "VIEWER-SURFACES": {
+      "kind": "implementation",
+      "needs": [
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS",
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-GUIDANCE"
+      ],
+      "difficulty": "normal",
+      "review": true,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 4,
+      "last_change": "2026-11-22T20:49:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-22T19:18:37+01:00",
+          "ended": "2026-11-22T19:48:04+01:00",
+          "tokens": 370850,
+          "duration_s": 1730,
+          "agent_ref": "adb6ac8fc0dae451e",
+          "reason": null,
+          "head": "d72127406a9aa7a1abfc2a4191f1db1fc319a8f9"
+        }
+      ],
+      "commits": [
+        "d9ec1b17a95fa489e5e6b75dcdc54541b7a366c9"
+      ],
+      "summary": "REVIEW-VIEWER-SURFACES-4: changes required after 4 review rounds (max-review-rounds 4) — human decision"
+    },
+    "FINAL-VALIDATION": {
+      "kind": "validation",
+      "needs": [
+        "VIEWER-SURFACES",
+        "REVIEW-INTEGRATION-4"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": true,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T13:20:50+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T13:04:35+01:00",
+          "ended": "2026-11-26T13:20:50+01:00",
+          "tokens": 124937,
+          "duration_s": 956,
+          "agent_ref": "a07e00f88afec906b",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated_needs": [
+        "REVIEW-INTEGRATION-4"
+      ],
+      "summary": "Full suite green (470 tests, 3 skipped); every acceptance item of all 27 requirements passes on the integrated branch, 3 judged against AMEND-3."
+    },
+    "REVIEW-PLAN": {
+      "kind": "review",
+      "needs": [],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "plan",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:10:09+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "xhigh",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:05:39+01:00",
+          "ended": "2026-11-20T15:10:09+01:00",
+          "tokens": 1787378,
+          "duration_s": 263,
+          "agent_ref": "01a1f946-ff69-7332-980d-6f70a1e1d9f0",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "REVIEW-PROMPT-TEXT": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "PROMPT-TEXT",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:33:36+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:29:18+01:00",
+          "ended": "2026-11-20T15:33:36+01:00",
+          "tokens": 1267865,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "PROMPT-TEXT-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "PROMPT-TEXT",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:49:22+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:33:47+01:00",
+          "ended": "2026-11-20T15:44:20+01:00",
+          "tokens": 78820,
+          "duration_s": 163,
+          "agent_ref": "a543c48286785dc4a",
+          "reason": null,
+          "head": "956113af8dc951e255476ffe239479cdaaba86f7"
+        }
+      ],
+      "commits": [
+        "9633af629da57dd771ac35f29033730ba59b601b"
+      ],
+      "summary": "execute.md checks the round-limit park before fixes or acceptance, uses fresh fix IDs and reads a reported Approach proposal; execute, shape and plan cover the fallback for a reopened done job"
+    },
+    "REVIEW-PROMPT-TEXT-2": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "PROMPT-TEXT-FIX-1"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "PROMPT-TEXT",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:46:10+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:44:27+01:00",
+          "ended": "2026-11-20T15:46:10+01:00",
+          "tokens": 432267,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "PROMPT-TEXT-FIX-2": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "PROMPT-TEXT",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:49:22+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:46:18+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "9633af629da57dd771ac35f29033730ba59b601b"
+        },
+        {
+          "n": 2,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:46:25+01:00",
+          "ended": "2026-11-20T15:47:58+01:00",
+          "tokens": 48561,
+          "duration_s": 76,
+          "agent_ref": "a71cf3b75681b90ab",
+          "reason": "orchestrator truncated the printed prompt before spawning; first spawn",
+          "head": "9633af629da57dd771ac35f29033730ba59b601b"
+        }
+      ],
+      "commits": [
+        "9c6bd8d284451490f328afa26f8547de02588de5"
+      ],
+      "summary": "execute, plan and shape keep a reopened done job unparked only when sae refuses for a missing CLI; a follow-up COMMAND that starts and fails is parked like a running job"
+    },
+    "REVIEW-PROMPT-TEXT-3": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "PROMPT-TEXT-FIX-1",
+        "PROMPT-TEXT-FIX-2"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "PROMPT-TEXT",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T15:49:22+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T15:47:59+01:00",
+          "ended": "2026-11-20T15:49:22+01:00",
+          "tokens": 261647,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 3,
+      "summary": "verdict: pass",
+      "verdict": "pass"
+    },
+    "PROMPT-LEAN": {
+      "kind": "implementation",
+      "needs": [
+        "PROMPT-TEXT"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T17:20:47+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T17:16:31+01:00",
+          "ended": "2026-11-20T17:19:38+01:00",
+          "tokens": 75008,
+          "duration_s": 163,
+          "agent_ref": "ad2d714ff8811375b",
+          "reason": null,
+          "head": "34876a120bf45fbb1e7b800d8dd521fdbcfae962"
+        }
+      ],
+      "commits": [
+        "ef5b4b9d5d748dce9fe147f00662fd6d3fddf3a5"
+      ],
+      "summary": "Applied lean-audit proposals 1–9 to the prompt files in one commit (ef5b4b9); orchestrator mode files keep pointer sentences."
+    },
+    "PROMPT-STAKES": {
+      "kind": "implementation",
+      "needs": [
+        "PROMPT-LEAN"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T19:06:08+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T19:01:05+01:00",
+          "ended": "2026-11-20T19:04:53+01:00",
+          "tokens": 76619,
+          "duration_s": 203,
+          "agent_ref": "ae6d81c9b7c1e2ba2",
+          "reason": null,
+          "head": "3fb7bd0d79af7eea78c44f65a926dac75e069364"
+        }
+      ],
+      "commits": [
+        "f48b0a4355f983af4dcf2be301b8753a0469333e"
+      ],
+      "summary": "Prompt findings 1, 6, 7, 8, 9 and 11 applied; the term is \"Project Stakes\" in all owned prompt text; old names retired in the test."
+    },
+    "REVIEW-WRITER-LAUNCH": {
+      "kind": "review",
+      "needs": [
+        "WRITER-LAUNCH"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "WRITER-LAUNCH",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T19:51:45+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-20T19:48:49+01:00",
+          "ended": "2026-11-20T19:51:45+01:00",
+          "tokens": 746047,
+          "duration_s": 600,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "STAKES-TEXT-FIX": {
+      "kind": "implementation",
+      "needs": [
+        "STAKES-IN-PROMPTS"
+      ],
+      "difficulty": "mechanical",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T19:50:41+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T19:48:50+01:00",
+          "ended": "2026-11-20T19:50:15+01:00",
+          "tokens": 48761,
+          "duration_s": 61,
+          "agent_ref": "a6974c72834361218",
+          "reason": null,
+          "head": "6f425699a380b75d1c4680f4c729d9e0e970fb04"
+        }
+      ],
+      "commits": [
+        "9ac7326cca59aaad6c5ff47e6314d22adfddf4cd"
+      ],
+      "summary": "Project Stakes texts now use the owner's final wording; tests updated."
+    },
+    "WRITER-LAUNCH-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "WRITER-LAUNCH",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T17:46:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T19:52:35+01:00",
+          "ended": "2026-11-20T20:03:17+01:00",
+          "tokens": 100657,
+          "duration_s": 612,
+          "agent_ref": "a158aa1f1e9e9e5ca",
+          "reason": null,
+          "head": "a82fc94a7bce8d1d05e5b3e97d6648c2f1f8d2bf"
+        }
+      ],
+      "commits": [
+        "72a0b72191e6524f851634d56aa2c4a0a49e7659"
+      ],
+      "summary": "Fixed REVIEW-WRITER-LAUNCH findings 1–4, each with a test that failed before the fix"
+    },
+    "STAKES-ESTIMATE-DROP": {
+      "kind": "implementation",
+      "needs": [
+        "STAKES-TEXT-FIX"
+      ],
+      "difficulty": "mechanical",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T19:54:21+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T19:52:36+01:00",
+          "ended": "2026-11-20T19:54:06+01:00",
+          "tokens": 43474,
+          "duration_s": 50,
+          "agent_ref": "ae5df546a1b3d18f2",
+          "reason": null,
+          "head": "0fb0ab3406de8de71ba708ff2bbf9ce11d598e46"
+        }
+      ],
+      "commits": [
+        "e47820a85cc8dbaeea3a616ecee97932fd814fb5"
+      ],
+      "summary": "Removed the estimate sentence from STAKES_NOT_SET_LINE and updated the test that asserted it."
+    },
+    "REVIEW-WRITER-LAUNCH-2": {
+      "kind": "review",
+      "needs": [
+        "WRITER-LAUNCH",
+        "WRITER-LAUNCH-FIX-1"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "WRITER-LAUNCH",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T20:06:35+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-20T20:03:42+01:00",
+          "ended": "2026-11-20T20:06:35+01:00",
+          "tokens": 611936,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "WRITER-LAUNCH-FIX-2": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "WRITER-LAUNCH",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T17:46:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-20T20:06:50+01:00",
+          "ended": "2026-11-20T20:38:59+01:00",
+          "tokens": 77878,
+          "duration_s": 1910,
+          "agent_ref": "a45d9d14f47869759",
+          "reason": null,
+          "head": "72a0b72191e6524f851634d56aa2c4a0a49e7659"
+        }
+      ],
+      "commits": [
+        "fa6564b9c1c1f0b04ff5a5fb07658bbbbf4b5821"
+      ],
+      "summary": "Collect refuses a result unchanged since dispatch, for a COMMAND attempt and for its fallback, using one fingerprint rule"
+    },
+    "REVIEW-WRITER-LAUNCH-3": {
+      "kind": "review",
+      "needs": [
+        "WRITER-LAUNCH",
+        "WRITER-LAUNCH-FIX-1",
+        "WRITER-LAUNCH-FIX-2"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "WRITER-LAUNCH",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-20T21:09:36+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-20T20:46:58+01:00",
+          "ended": "2026-11-20T21:09:36+01:00",
+          "tokens": 537293,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 3,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "WRITER-LAUNCH-FIX-3": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "WRITER-LAUNCH",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T17:46:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T17:20:44+01:00",
+          "ended": "2026-11-22T17:39:55+01:00",
+          "tokens": 114215,
+          "duration_s": 1127,
+          "agent_ref": "a9b35489a999d9106",
+          "reason": null,
+          "head": "fa6564b9c1c1f0b04ff5a5fb07658bbbbf4b5821"
+        }
+      ],
+      "commits": [
+        "7be0c55ac67ba3c9107bfef26711a168d3d652fb"
+      ],
+      "summary": "Every dispatch moves an existing result aside in one function, so collect accepts only a result the attempt wrote; the fingerprint check is gone"
+    },
+    "REVIEW-WRITER-LAUNCH-4": {
+      "kind": "review",
+      "needs": [
+        "WRITER-LAUNCH",
+        "WRITER-LAUNCH-FIX-1",
+        "WRITER-LAUNCH-FIX-2",
+        "WRITER-LAUNCH-FIX-3"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "WRITER-LAUNCH",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T17:43:02+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-22T17:40:52+01:00",
+          "ended": "2026-11-22T17:43:02+01:00",
+          "tokens": 558468,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 4,
+      "summary": "verdict: pass",
+      "verdict": "pass"
+    },
+    "INTEGRATE-WRITER-LAUNCH": {
+      "kind": "integration",
+      "needs": [
+        "WRITER-LAUNCH"
+      ],
+      "difficulty": "hard",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "WRITER-LAUNCH",
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T17:46:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T17:43:08+01:00",
+          "ended": "2026-11-22T17:46:26+01:00",
+          "tokens": 62173,
+          "duration_s": 183,
+          "agent_ref": "a2ce83db31404e0e5",
+          "reason": null,
+          "head": "b343366a2b62184cdf4e64d285b8b2c29dd706c8"
+        }
+      ],
+      "commits": [
+        "a82fc94a7bce8d1d05e5b3e97d6648c2f1f8d2bf",
+        "72a0b72191e6524f851634d56aa2c4a0a49e7659",
+        "fa6564b9c1c1f0b04ff5a5fb07658bbbbf4b5821",
+        "7be0c55ac67ba3c9107bfef26711a168d3d652fb",
+        "79fafff6eab1dc968960daab46bdf5ccd8bb8330"
+      ],
+      "generated": true,
+      "round": null,
+      "summary": "Merged WRITER-LAUNCH into the task branch; one status-line conflict in progress.py resolved by keeping both the bypass and the Project Stakes lines"
+    },
+    "REVIEW-FIX-LOOP-EXITS": {
+      "kind": "review",
+      "needs": [
+        "FIX-LOOP-EXITS"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "FIX-LOOP-EXITS",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T18:11:16+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-22T18:07:30+01:00",
+          "ended": "2026-11-22T18:11:16+01:00",
+          "tokens": 1372416,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "FIX-LOOP-EXITS-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "FIX-LOOP-EXITS",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T18:52:13+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T18:11:29+01:00",
+          "ended": "2026-11-22T18:21:34+01:00",
+          "tokens": 115492,
+          "duration_s": 581,
+          "agent_ref": "a95e2297a4e910fcc",
+          "reason": null,
+          "head": "e74d4c224103a135b71fc8e096365c44b4113bd9"
+        }
+      ],
+      "commits": [
+        "fe8402ee6a3155564d36a4a10a8298365c0426af"
+      ],
+      "summary": "Fixed REVIEW-FIX-LOOP-EXITS findings 1–4. INTEGRATE-<ID> cannot be dropped alone. --accept-review records the completed changes-required round. A let-go names one finding by its number. A decision job for a review-limit park points to the review round."
+    },
+    "REVIEW-FIX-LOOP-EXITS-2": {
+      "kind": "review",
+      "needs": [
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-EXITS-FIX-1"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "FIX-LOOP-EXITS",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T18:29:28+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-22T18:26:37+01:00",
+          "ended": "2026-11-22T18:29:28+01:00",
+          "tokens": 756953,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "FIX-LOOP-EXITS-FIX-2": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "FIX-LOOP-EXITS",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T18:52:13+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T18:29:44+01:00",
+          "ended": "2026-11-22T18:45:21+01:00",
+          "tokens": 78117,
+          "duration_s": 912,
+          "agent_ref": "a8238eabf29827e64",
+          "reason": null,
+          "head": "fe8402ee6a3155564d36a4a10a8298365c0426af"
+        }
+      ],
+      "commits": [
+        "ef3835e61076c102c7513d53b5b1e69a431cb7b3"
+      ],
+      "summary": "merge --accept-review records only a latest completed changes-required round; --let-go refuses an absent or duplicated finding number and a blank reason"
+    },
+    "REVIEW-FIX-LOOP-EXITS-3": {
+      "kind": "review",
+      "needs": [
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-EXITS-FIX-1",
+        "FIX-LOOP-EXITS-FIX-2"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "FIX-LOOP-EXITS",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T18:52:13+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "global",
+          "tier": "L4",
+          "started": "2026-11-22T18:50:25+01:00",
+          "ended": "2026-11-22T18:52:13+01:00",
+          "tokens": 344840,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 3,
+      "summary": "verdict: pass",
+      "verdict": "pass"
+    },
+    "FIX-LOOP-TEXTS": {
+      "kind": "implementation",
+      "needs": [
+        "FIX-LOOP-GUIDANCE"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T19:58:44+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-22T19:18:37+01:00",
+          "ended": "2026-11-22T19:53:22+01:00",
+          "tokens": 237598,
+          "duration_s": 2058,
+          "agent_ref": "a1b551ed0b639261f",
+          "reason": null,
+          "head": "d72127406a9aa7a1abfc2a4191f1db1fc319a8f9"
+        }
+      ],
+      "commits": [
+        "99b2a209a40baf8615cd4aa3aa0d897dcc1f0ca6"
+      ],
+      "summary": "Fix-loop texts fixed for issues 1-8, 10-12, 14; the options print in full only in the story; \"user\" is the word for the human"
+    },
+    "REVIEW-VIEWER-SURFACES": {
+      "kind": "review",
+      "needs": [
+        "VIEWER-SURFACES"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "VIEWER-SURFACES",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T19:58:50+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "global",
+          "tier": "L3",
+          "started": "2026-11-22T19:51:32+01:00",
+          "ended": "2026-11-22T19:58:50+01:00",
+          "tokens": 637951,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "VIEWER-SURFACES-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "VIEWER-SURFACES",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:49:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:00:37+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "d9ec1b17a95fa489e5e6b75dcdc54541b7a366c9"
+        },
+        {
+          "n": 2,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:07:16+01:00",
+          "ended": "2026-11-22T20:16:29+01:00",
+          "tokens": 74159,
+          "duration_s": 524,
+          "agent_ref": "a1c07deeb04ba6219",
+          "reason": "session restarted",
+          "head": "d9ec1b17a95fa489e5e6b75dcdc54541b7a366c9"
+        }
+      ],
+      "commits": [
+        "6a5fe3d8f5d99b0b10cf5ad674041a9955186998"
+      ],
+      "summary": "A Project Stakes save keeps the user's text; the editor is locked while a save is pending, and each profile save runs its base check and write under one lock."
+    },
+    "APPROACH-WORD": {
+      "kind": "implementation",
+      "needs": [
+        "FIX-LOOP-TEXTS"
+      ],
+      "difficulty": "mechanical",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:02:30+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:00:37+01:00",
+          "ended": "2026-11-22T20:02:01+01:00",
+          "tokens": 43083,
+          "duration_s": 50,
+          "agent_ref": "a41b741f479dd9692",
+          "reason": null,
+          "head": "635ddacc056606334527a4b9a0e328bc5e92e8d0"
+        }
+      ],
+      "commits": [
+        "5159713c566aba9a30934366e3e9ee6b552d63b1"
+      ],
+      "summary": "APPROACH_PARAGRAPH now says \"parks for the user\"; tests updated."
+    },
+    "REVIEW-VIEWER-SURFACES-2": {
+      "kind": "review",
+      "needs": [
+        "VIEWER-SURFACES",
+        "VIEWER-SURFACES-FIX-1"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "VIEWER-SURFACES",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:18:32+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "global",
+          "tier": "L3",
+          "started": "2026-11-22T20:16:54+01:00",
+          "ended": "2026-11-22T20:18:32+01:00",
+          "tokens": 369159,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "VIEWER-SURFACES-FIX-2": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "VIEWER-SURFACES",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:49:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:18:57+01:00",
+          "ended": "2026-11-22T20:27:23+01:00",
+          "tokens": 66971,
+          "duration_s": 485,
+          "agent_ref": "aba63281b291c680e",
+          "reason": null,
+          "head": "6a5fe3d8f5d99b0b10cf5ad674041a9955186998"
+        }
+      ],
+      "commits": [
+        "de2b7687833557d7a48bb11dc61fb6674263507b"
+      ],
+      "summary": "The Project Stakes save base is now a SHA-256 revision of the exact stored section, compared under the existing lock; regression tests for comment-only and trailing-space-only saves."
+    },
+    "REVIEW-VIEWER-SURFACES-3": {
+      "kind": "review",
+      "needs": [
+        "VIEWER-SURFACES",
+        "VIEWER-SURFACES-FIX-1",
+        "VIEWER-SURFACES-FIX-2"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "VIEWER-SURFACES",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:29:21+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "global",
+          "tier": "L3",
+          "started": "2026-11-22T20:27:46+01:00",
+          "ended": "2026-11-22T20:29:21+01:00",
+          "tokens": 305423,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 3,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "VIEWER-SURFACES-FIX-3": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "VIEWER-SURFACES",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:49:27+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:29:44+01:00",
+          "ended": "2026-11-22T20:47:13+01:00",
+          "tokens": 85405,
+          "duration_s": 1026,
+          "agent_ref": "ac3de51ff55d6ebd5",
+          "reason": null,
+          "head": "de2b7687833557d7a48bb11dc61fb6674263507b"
+        }
+      ],
+      "commits": [
+        "36c57335493ff769c196967713f2ee43bb601154",
+        "5d5906e3aedb7fc78572ff47b31b8b8230b8c189"
+      ],
+      "summary": "Stakes draft and revision come from one profile read; stakes reads, revisions and saves keep the profile's stored line endings"
+    },
+    "REVIEW-VIEWER-SURFACES-4": {
+      "kind": "review",
+      "needs": [
+        "VIEWER-SURFACES",
+        "VIEWER-SURFACES-FIX-1",
+        "VIEWER-SURFACES-FIX-2",
+        "VIEWER-SURFACES-FIX-3"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "VIEWER-SURFACES",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:49:03+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "medium",
+          "source": "global",
+          "tier": "L3",
+          "started": "2026-11-22T20:47:36+01:00",
+          "ended": "2026-11-22T20:49:03+01:00",
+          "tokens": 224026,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 4,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "REVIEW-INTEGRATION": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS",
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-GUIDANCE",
+        "VIEWER-SURFACES",
+        "PROMPT-TEXT-FIX-1",
+        "PROMPT-TEXT-FIX-2",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES",
+        "STAKES-TEXT-FIX",
+        "WRITER-LAUNCH-FIX-1",
+        "STAKES-ESTIMATE-DROP",
+        "WRITER-LAUNCH-FIX-2",
+        "WRITER-LAUNCH-FIX-3",
+        "INTEGRATE-WRITER-LAUNCH",
+        "FIX-LOOP-EXITS-FIX-1",
+        "FIX-LOOP-EXITS-FIX-2",
+        "FIX-LOOP-TEXTS",
+        "VIEWER-SURFACES-FIX-1",
+        "APPROACH-WORD",
+        "VIEWER-SURFACES-FIX-2",
+        "VIEWER-SURFACES-FIX-3"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T20:55:18+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-22T20:49:33+01:00",
+          "ended": "2026-11-22T20:55:18+01:00",
+          "tokens": 5522999,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "94f9592bd6900a1e15f5c0b5cf630475196520e8"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 1,
+      "limit": null,
+      "since": null,
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "INTEGRATION-FIX-1": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T21:24:32+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:56:21+01:00",
+          "ended": "2026-11-22T21:24:10+01:00",
+          "tokens": 72457,
+          "duration_s": 1100,
+          "agent_ref": "ac35635d9ec64b233",
+          "reason": null,
+          "head": "94f9592bd6900a1e15f5c0b5cf630475196520e8"
+        }
+      ],
+      "commits": [
+        "0c00d0122d09eefd92c84573a9226f5f69b5ca6e"
+      ],
+      "summary": "A Project Stakes save is refused, file untouched, when the new text or the stored section leaves a code fence open"
+    },
+    "INTEGRATION-FIX-2": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T21:25:07+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:56:21+01:00",
+          "ended": "2026-11-22T21:24:33+01:00",
+          "tokens": 94486,
+          "duration_s": 1496,
+          "agent_ref": "a65f52bcab370601f",
+          "reason": null,
+          "head": "94f9592bd6900a1e15f5c0b5cf630475196520e8"
+        }
+      ],
+      "commits": [
+        "65c92fecc4b5692459028bd03780b7cdc06a8d15"
+      ],
+      "summary": "A fallback resume continues the same chain writer's uncommitted edits, and a parked job meets holds and the integration park on every resume"
+    },
+    "INTEGRATION-FIX-3": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-22T21:26:12+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-22T20:56:22+01:00",
+          "ended": "2026-11-22T21:25:08+01:00",
+          "tokens": 93148,
+          "duration_s": 1506,
+          "agent_ref": "aba92029b8fcf7363",
+          "reason": null,
+          "head": "94f9592bd6900a1e15f5c0b5cf630475196520e8"
+        }
+      ],
+      "commits": [
+        "ce3f3c3e96b7df1f565eccf66b6366f0ccc4a0be",
+        "55c2b0df9609906bb213278da4deb962c7bcaeb4"
+      ],
+      "summary": "Decision jobs dispatch and collect in shaping and planning; --let-go resolves to exactly one finding and stores finding and reason apart"
+    },
+    "REVIEW-INTEGRATION-2": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS",
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-GUIDANCE",
+        "VIEWER-SURFACES",
+        "PROMPT-TEXT-FIX-1",
+        "PROMPT-TEXT-FIX-2",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES",
+        "STAKES-TEXT-FIX",
+        "WRITER-LAUNCH-FIX-1",
+        "STAKES-ESTIMATE-DROP",
+        "WRITER-LAUNCH-FIX-2",
+        "WRITER-LAUNCH-FIX-3",
+        "INTEGRATE-WRITER-LAUNCH",
+        "FIX-LOOP-EXITS-FIX-1",
+        "FIX-LOOP-EXITS-FIX-2",
+        "FIX-LOOP-TEXTS",
+        "VIEWER-SURFACES-FIX-1",
+        "APPROACH-WORD",
+        "VIEWER-SURFACES-FIX-2",
+        "VIEWER-SURFACES-FIX-3",
+        "INTEGRATION-FIX-1",
+        "INTEGRATION-FIX-2",
+        "INTEGRATION-FIX-3",
+        "INTEGRATION-FIX-4",
+        "FIRST-RUN-WALKTHROUGH",
+        "INTEGRATION-FIX-5",
+        "INTEGRATION-FIX-6"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:36:26+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:33:27+01:00",
+          "ended": "2026-11-26T12:36:26+01:00",
+          "tokens": 743483,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "900006da37b687c1a0f13bad58bb0303a071d95a"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 2,
+      "limit": "findings",
+      "since": "94f9592bd6900a1e15f5c0b5cf630475196520e8",
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "SANDBOX-ISOLATION": {
+      "kind": "research",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T11:34:43+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T11:26:34+01:00",
+          "ended": "2026-11-26T11:34:43+01:00",
+          "tokens": 207759,
+          "duration_s": 476,
+          "agent_ref": "a357c1fd4e1b98250",
+          "reason": null,
+          "head": null
+        }
+      ],
+      "commits": [],
+      "summary": "research done, confidence medium",
+      "research_status": "done",
+      "confidence": "medium"
+    },
+    "INTEGRATION-FIX-4": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T11:56:11+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-26T11:47:51+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "7968bbef5b5c9323499c5e20dbdb93ff90f66bc7"
+        },
+        {
+          "n": 2,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-26T11:48:50+01:00",
+          "ended": "2026-11-26T11:56:02+01:00",
+          "tokens": 139869,
+          "duration_s": 410,
+          "agent_ref": "a2e79e6e4052c4f05",
+          "reason": "owner: run on opus high instead of medium",
+          "head": "7968bbef5b5c9323499c5e20dbdb93ff90f66bc7"
+        }
+      ],
+      "commits": [
+        "0a32d076e609042d75c78803e18a7aa48d57a659"
+      ],
+      "summary": "setup.md, the skeleton of `sae setup show` and the viewer switch follow AMEND-3 (owner's tiers, tier-only cells, Tiers mode | Free mode, new guide, upgrade rule)"
+    },
+    "FIRST-RUN-WALKTHROUGH": {
+      "kind": "implementation",
+      "needs": [
+        "INTEGRATION-FIX-4"
+      ],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:03:05+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T11:56:16+01:00",
+          "ended": "2026-11-26T12:03:05+01:00",
+          "tokens": 122755,
+          "duration_s": 393,
+          "agent_ref": "ac3c2770933ba55cb",
+          "reason": null,
+          "head": "d8df659641886197af3f6f0e1cb5f15f85fe0105"
+        }
+      ],
+      "commits": [
+        "270598620f740b5dc621a93102a0bafb27edf7d6",
+        "d5d48a213ffe6de31c2695ecb00b74dc35aa7914"
+      ],
+      "summary": "tests/tools/walkthrough/walkthrough.sh builds a relocated-HOME sandbox (fresh or upgrade), installs the skill with APM from a git export, checks isolation, opens the session in a new Orca terminal; clean removes it all."
+    },
+    "INTEGRATION-FIX-5": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:26:18+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-26T12:19:40+01:00",
+          "ended": null,
+          "tokens": null,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "2af4fa75ad3f1f74c53bfee064b227eac84edaae"
+        },
+        {
+          "n": 2,
+          "harness": "claude",
+          "model": "opus",
+          "model_entry": "opus",
+          "effort": "medium",
+          "source": "global",
+          "tier": null,
+          "started": "2026-11-26T12:24:33+01:00",
+          "ended": "2026-11-26T12:26:12+01:00",
+          "tokens": 58193,
+          "duration_s": 64,
+          "agent_ref": "ad10aed60e48570e7",
+          "reason": "owner follow-up: see the job file, section Owner follow-up (round 2)",
+          "head": "15316228e2d2b13ae05065baa1a9d2f94595d9ea"
+        }
+      ],
+      "commits": [
+        "15316228e2d2b13ae05065baa1a9d2f94595d9ea",
+        "dc1a5c7547cc04629def8d8543a799ce38ef2125"
+      ],
+      "summary": "Guide keeps a blank line before every heading, GUI note under \"Routing tables (Tiers mode)\", shaping asks Project Stakes bullet by bullet with the example"
+    },
+    "INTEGRATION-FIX-6": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:33:21+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:28:42+01:00",
+          "ended": "2026-11-26T12:33:14+01:00",
+          "tokens": 53768,
+          "duration_s": 250,
+          "agent_ref": "abc6ca54132ca665a",
+          "reason": null,
+          "head": "5a3e2b0716a239b503d7209867da740b6caccdcf"
+        }
+      ],
+      "commits": [
+        "553aa357ca2cc1c234b2d150f4504652a4413171"
+      ],
+      "summary": "Plain `sae status` prints the Project Stakes question while not set; the question now says the owner may skip."
+    },
+    "INTEGRATION-FIX-7": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION-2",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:41:56+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:36:55+01:00",
+          "ended": "2026-11-26T12:41:11+01:00",
+          "tokens": 69374,
+          "duration_s": 235,
+          "agent_ref": "a799270a93a1642ca",
+          "reason": null,
+          "head": "900006da37b687c1a0f13bad58bb0303a071d95a"
+        }
+      ],
+      "commits": [
+        "d6bc4e329ebf4f947f3367e06bc9de93ef43e27f"
+      ],
+      "summary": "Profile sections are read without fence parsing; a Project Stakes save refuses fence lines and can no longer change a byte outside the section"
+    },
+    "INTEGRATION-FIX-8": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION-2",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:46:00+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:36:55+01:00",
+          "ended": "2026-11-26T12:45:15+01:00",
+          "tokens": 73725,
+          "duration_s": 465,
+          "agent_ref": "ac1594d433875af8c",
+          "reason": null,
+          "head": "900006da37b687c1a0f13bad58bb0303a071d95a"
+        }
+      ],
+      "commits": [
+        "27d2e67ddec6e34bda389ff2fe3f2dbbebe29a8d"
+      ],
+      "summary": "Let-go takes the finding and the reason as separate arguments; no title is guessed."
+    },
+    "INTEGRATION-FIX-9": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION-2",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:44:35+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:40:14+01:00",
+          "ended": "2026-11-26T12:43:59+01:00",
+          "tokens": 72961,
+          "duration_s": 206,
+          "agent_ref": "a5f110bc360b507fd",
+          "reason": null,
+          "head": "900006da37b687c1a0f13bad58bb0303a071d95a"
+        }
+      ],
+      "commits": [
+        "23ba0a3ec8f6264e8e1286479b1db2f3a9e4c004"
+      ],
+      "summary": "Plan card and Reviews tab show an accepted integration round as accepted, with its reason; the verdict stays visible."
+    },
+    "REVIEW-INTEGRATION-3": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS",
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-GUIDANCE",
+        "VIEWER-SURFACES",
+        "PROMPT-TEXT-FIX-1",
+        "PROMPT-TEXT-FIX-2",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES",
+        "STAKES-TEXT-FIX",
+        "WRITER-LAUNCH-FIX-1",
+        "STAKES-ESTIMATE-DROP",
+        "WRITER-LAUNCH-FIX-2",
+        "WRITER-LAUNCH-FIX-3",
+        "INTEGRATE-WRITER-LAUNCH",
+        "FIX-LOOP-EXITS-FIX-1",
+        "FIX-LOOP-EXITS-FIX-2",
+        "FIX-LOOP-TEXTS",
+        "VIEWER-SURFACES-FIX-1",
+        "APPROACH-WORD",
+        "VIEWER-SURFACES-FIX-2",
+        "VIEWER-SURFACES-FIX-3",
+        "INTEGRATION-FIX-1",
+        "INTEGRATION-FIX-2",
+        "INTEGRATION-FIX-3",
+        "INTEGRATION-FIX-4",
+        "FIRST-RUN-WALKTHROUGH",
+        "INTEGRATION-FIX-5",
+        "INTEGRATION-FIX-6",
+        "INTEGRATION-FIX-7",
+        "INTEGRATION-FIX-8",
+        "INTEGRATION-FIX-9"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:48:31+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:46:00+01:00",
+          "ended": "2026-11-26T12:48:31+01:00",
+          "tokens": 531520,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "ceba3de820975e2fd30229bb8c7a3ad3915c2c4e"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 3,
+      "limit": "findings",
+      "since": "900006da37b687c1a0f13bad58bb0303a071d95a",
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required"
+    },
+    "INTEGRATION-FIX-10": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION-3",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:50:44+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:48:55+01:00",
+          "ended": "2026-11-26T12:50:25+01:00",
+          "tokens": 53180,
+          "duration_s": 70,
+          "agent_ref": "aabe11c75f770122a",
+          "reason": null,
+          "head": "ceba3de820975e2fd30229bb8c7a3ad3915c2c4e"
+        }
+      ],
+      "commits": [
+        "1ce4a2362322b0689502f6e34f1e20c57dcb36ce"
+      ],
+      "summary": "More than one Project Stakes heading line makes the section ambiguous; save is refused, lookup says so."
+    },
+    "INTEGRATION-FIX-11": {
+      "kind": "implementation",
+      "needs": [],
+      "difficulty": "normal",
+      "review": false,
+      "final": false,
+      "fix_of": "REVIEW-INTEGRATION-3",
+      "target": null,
+      "status": "done",
+      "merged": true,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T12:52:35+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "claude",
+          "model": "sonnet",
+          "model_entry": "sonnet",
+          "effort": "medium",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:48:55+01:00",
+          "ended": "2026-11-26T12:51:59+01:00",
+          "tokens": 49101,
+          "duration_s": 151,
+          "agent_ref": "a64ee259880e2e36c",
+          "reason": null,
+          "head": "ceba3de820975e2fd30229bb8c7a3ad3915c2c4e"
+        }
+      ],
+      "commits": [
+        "b9aa05b82c13cbc9dc81ab9cfd8b87dce03c7245"
+      ],
+      "summary": "A let-go selector is a number only when the whole argument is one; a selector matching two findings is refused."
+    },
+    "REVIEW-INTEGRATION-4": {
+      "kind": "review",
+      "needs": [
+        "PROMPT-TEXT",
+        "EASY-DIFFICULTY",
+        "WRITER-LAUNCH",
+        "STAKES-IN-PROMPTS",
+        "FIX-LOOP-EXITS",
+        "FIX-LOOP-GUIDANCE",
+        "VIEWER-SURFACES",
+        "PROMPT-TEXT-FIX-1",
+        "PROMPT-TEXT-FIX-2",
+        "PROMPT-LEAN",
+        "PROMPT-STAKES",
+        "STAKES-TEXT-FIX",
+        "WRITER-LAUNCH-FIX-1",
+        "STAKES-ESTIMATE-DROP",
+        "WRITER-LAUNCH-FIX-2",
+        "WRITER-LAUNCH-FIX-3",
+        "INTEGRATE-WRITER-LAUNCH",
+        "FIX-LOOP-EXITS-FIX-1",
+        "FIX-LOOP-EXITS-FIX-2",
+        "FIX-LOOP-TEXTS",
+        "VIEWER-SURFACES-FIX-1",
+        "APPROACH-WORD",
+        "VIEWER-SURFACES-FIX-2",
+        "VIEWER-SURFACES-FIX-3",
+        "INTEGRATION-FIX-1",
+        "INTEGRATION-FIX-2",
+        "INTEGRATION-FIX-3",
+        "INTEGRATION-FIX-4",
+        "FIRST-RUN-WALKTHROUGH",
+        "INTEGRATION-FIX-5",
+        "INTEGRATION-FIX-6",
+        "INTEGRATION-FIX-7",
+        "INTEGRATION-FIX-8",
+        "INTEGRATION-FIX-9",
+        "INTEGRATION-FIX-10",
+        "INTEGRATION-FIX-11"
+      ],
+      "difficulty": null,
+      "review": false,
+      "final": false,
+      "fix_of": null,
+      "target": "integration",
+      "status": "done",
+      "merged": false,
+      "review_rounds": 0,
+      "last_change": "2026-11-26T13:04:18+01:00",
+      "attempts": [
+        {
+          "n": 1,
+          "harness": "codex",
+          "model": "gpt-6.2-sol",
+          "model_entry": "sol",
+          "effort": "high",
+          "source": "override",
+          "tier": null,
+          "started": "2026-11-26T12:52:35+01:00",
+          "ended": "2026-11-26T12:54:34+01:00",
+          "tokens": 342237,
+          "duration_s": null,
+          "agent_ref": null,
+          "reason": null,
+          "head": "352c5fd90333f16cd22666cf614ee7562ed77672"
+        }
+      ],
+      "commits": [],
+      "generated": true,
+      "round": 4,
+      "limit": "findings",
+      "since": "ceba3de820975e2fd30229bb8c7a3ad3915c2c4e",
+      "summary": "verdict: changes-required",
+      "verdict": "changes-required",
+      "accepted": {
+        "reason": "owner accepted: the only Project Stakes heading inside a fenced example needs a hand-pasted example in a generated profile; the file is under git; filed as a finding for triage",
+        "at": "2026-11-26T13:04:18+01:00",
+        "by": "cli"
+      }
+    }
+  }
+}

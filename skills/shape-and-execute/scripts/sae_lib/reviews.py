@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .common import (
     DECISION_CLASSES,
+    FINAL_STATUSES,
     EXIT_GATE,
     EXIT_GIT,
     EXIT_OK,
@@ -26,18 +27,25 @@ from .common import (
 )
 from .config import cfg, load_config, max_review_rounds, max_verify_failures
 from .findings import close_resolved, resolution_notes
+from .fix_loop import EXECUTE_MD, accept_line, changes_required_lines, close_anyway_command, fix_job_command
 from .gitutil import find_root, git, run
 from .graph import (
     add_generated_job,
     fix_target,
     integration_parked,
+    is_dropped,
     last_round,
+    live_writers,
     place_final_after,
     requires_changes,
     review_rounds,
+    round_fixes,
+    unaccepted_changes,
 )
 from .markdown import md_section, split_frontmatter, strip_html_comments
-from .prompts import harness_output_files, review_output_file, review_output_tokens
+from .park_story import INTEGRATION, PARK_OPENING, approach_proposal_line, mark_limit_park
+from .launch import command_tokens
+from .prompts import harness_output_files
 from .routing import override_key, resolve_model
 from .session_tokens import record_session_snapshot
 from .tasks import Task, as_list, job_meta, open_task, parked_reason, result_file
@@ -136,11 +144,11 @@ def planned_reviews(task: Task, config: dict | None = None) -> list[dict]:
     if "plan" in points and task.phase in ("shaping", "planning") and not review_rounds(task, "plan"):
         plan("REVIEW-PLAN", "plan", [], [])
     for job_id, job in jobs.items():
-        if (review_due(task, job_id) and not job["merged"] and job["status"] not in ("failed",)
+        if (review_due(task, job_id) and not job["merged"] and job["status"] not in ("failed", "dropped")
                 and not review_rounds(task, job_id) and f"REVIEW-{job_id}" not in jobs):
             plan(f"REVIEW-{job_id}", job_id, [job_id], [])
     if "integration" in points and not review_rounds(task, "integration") and "REVIEW-INTEGRATION" not in jobs:
-        writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+        writers = live_writers(task)
         if writers:
             finals = [i for i, j in jobs.items() if j["final"]]
             plan("REVIEW-INTEGRATION", "integration", writers, finals)
@@ -174,19 +182,20 @@ def next_review_rounds(task: Task, config: dict | None = None) -> list[dict]:
 
     for job_id, job in jobs.items():
         rounds = review_rounds(task, job_id)
-        if job["kind"] not in WRITER_KINDS or job["merged"] or not rounds or not requires_changes(jobs[rounds[-1]]):
+        if (job["kind"] not in WRITER_KINDS or job["merged"] or is_dropped(job) or not rounds
+                or not requires_changes(jobs[rounds[-1]])):
             continue
         fixes = [i for i in jobs if fix_target(task, i) == job_id]
         if any(jobs[i]["status"] != "done" for i in fixes):
             number = (job.get("review_rounds") or 0) + 1
             plan(f"REVIEW-{job_id}-{number}", job_id, number, rounds[-1], [job_id] + fixes, [])
     rounds = review_rounds(task, "integration")
-    if "integration" in task.settings["review"]["points"] and rounds and requires_changes(jobs[rounds[-1]]):
-        fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+    if "integration" in task.settings["review"]["points"] and rounds and unaccepted_changes(jobs[rounds[-1]]):
+        fixes = round_fixes(task, rounds[-1])
         if any(not jobs[i]["merged"] for i in fixes):
             number = (jobs[rounds[-1]].get("round") or len(rounds)) + 1
             plan(f"REVIEW-INTEGRATION-{number}", "integration", number, rounds[-1],
-                 [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS], [i for i, j in jobs.items() if j["final"]])
+                 live_writers(task), [i for i, j in jobs.items() if j["final"]])
     return planned
 
 
@@ -221,6 +230,9 @@ def merge_job(task: Task, job_id: str, config: dict | None, out: list[str]) -> i
         target = job["target"]
         group += [target] + [i for i, j in task.jobs.items()
                              if fix_target(task, i) == target and j["status"] == "done" and i not in group]
+    dropped = [i for i in group if is_dropped(task.jobs[i])]
+    if dropped:  # [JOB-DROP]: the commits of a dropped job never reach the task branch
+        fail(EXIT_USAGE, f"{', '.join(dropped)} is dropped: dropped jobs never merge.")
     commit = None
     if task.uses_worktrees:
         require_on_task_branch(task)
@@ -309,7 +321,7 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
     if "integration" not in task.settings["review"]["points"] or task.phase != "executing":
         return
     jobs = task.jobs
-    writers = [i for i, j in jobs.items() if j["kind"] in WRITER_KINDS]
+    writers = live_writers(task)  # [JOB-DROP]: rounds ignore dropped jobs
     if not writers or not all(jobs[i]["merged"] for i in writers):
         return
     if any(j["status"] in ("pending", "running") and not j["final"] and j["kind"] != "review"
@@ -325,8 +337,8 @@ def materialize_integration_review(task: Task, out: list[str]) -> None:
         previous = jobs[rounds[-1]]
         if previous["status"] != "done":
             return
-        if requires_changes(previous):
-            fixes = [i for i, j in jobs.items() if j.get("fix_of") == rounds[-1]]
+        if unaccepted_changes(previous):  # an accepted round continues as after a pass
+            fixes = round_fixes(task, rounds[-1])
             if not fixes:
                 return
             limit, reason = "findings", f"fix jobs of {rounds[-1]} merged: {', '.join(fixes)}"
@@ -410,16 +422,6 @@ def finish_merges(task: Task) -> list[str]:
             and not any(jobs[r]["status"] != "done" for r in review_rounds(task, i))]
 
 
-def fix_job_command(task: Task, target: str) -> str:
-    """The `sae job add` line of the next fix job of a job, or of an integration review round."""
-    stem = "INTEGRATION" if target in task.jobs and task.jobs[target]["kind"] == "review" else target
-    n = 1
-    while f"{stem}-FIX-{n}" in task.jobs:
-        n += 1
-    return (f"sae job add {task.id} {stem}-FIX-{n} --kind implementation --fix-of {target} "
-            f"--reason \"<finding>\"")
-
-
 def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
     """[FINISH-VERDICT-GATE]: ([(review, fix-of target)], held-back jobs) for the last round of
     the integration review, and of each job review of an unmerged job, that says
@@ -428,11 +430,11 @@ def verdict_gate(task: Task) -> tuple[list[tuple[str, str]], set[str]]:
     blocks: list[tuple[str, str]] = []
     held: set[str] = set()
     last = last_round(task, "integration")
-    if last and requires_changes(jobs[last]):
+    if last and unaccepted_changes(jobs[last]):
         blocks.append((last, last))
         held |= {i for i, j in jobs.items() if j["final"] and j["status"] != "done"}
     for job_id, job in jobs.items():
-        if job["kind"] not in WRITER_KINDS or job["merged"]:
+        if job["kind"] not in WRITER_KINDS or job["merged"] or is_dropped(job):
             continue
         review = last_round(task, job_id)
         if review and requires_changes(jobs[review]):
@@ -460,7 +462,7 @@ def stale_gate(task: Task) -> tuple[list[str], set[str]]:
             problems.append(f"{job_id} (reset by a late merge) has not run again")
             held.add(job_id)
     last = last_round(task, "integration")
-    if integration and last and jobs[last]["status"] == "done" and not requires_changes(jobs[last]):
+    if integration and last and jobs[last]["status"] == "done" and not unaccepted_changes(jobs[last]):
         late = merged_after(task, last)
         if late:
             problems.append(f"{', '.join(late)} merged after {last} passed; no round covers "
@@ -478,7 +480,7 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
     """The gates of `sae finish`, checked before it merges anything. Refuses
     (exit 3), or returns the gates that `--override` passes: [{"gate", "jobs"}]."""
     jobs = task.jobs
-    forward = f"sae finish {task.id} --override \"<reason>\""
+    forward = close_anyway_command(task)
     running = [i for i, j in jobs.items() if j["status"] == "running"]
     if running:
         fail(EXIT_GATE, f"Still running: {', '.join(running)}. Collect them first:\n"
@@ -495,9 +497,11 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
         if override is None:
             lines = [f"Finish refused: {review} says changes-required." for review, _ in verdicts]
             lines.append("Ways forward:")
-            for _, target in verdicts:
-                lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}"]
-            lines += ["  - or close anyway, with the owner's reason:", f"    {forward}"]
+            for review, target in verdicts:
+                lines += ["  - fix jobs:", f"    {fix_job_command(task, target)}",
+                          "  - or accept the round when the mode lets you decide:",
+                          f"    {accept_line(task, review, 'integration' if review == target else target)}"]
+            lines += ["  - or close anyway, on the user's word:", f"    {forward}"]
             fail(EXIT_GATE, "\n".join(lines))
         overridden.append({"gate": "verdict", "jobs": [r for r, _ in verdicts] + sorted(verdict_held)})
     if stale:
@@ -505,7 +509,7 @@ def check_finish_gates(task: Task, with_open: bool, override: str | None) -> lis
             fail(EXIT_GATE, "\n".join(["Finish refused: the checks do not cover the code that will be closed."]
                                       + [f"  - {p}" for p in stale]
                                       + ["Run the checks:", f"  sae next {task.id}",
-                                         "Or close anyway, with the owner's reason:", f"  {forward}"]))
+                                         "Or close anyway, on the user's word:", f"  {forward}"]))
         overridden.append({"gate": "stale", "jobs": sorted(stale_held) + finish_merges(task)})
     passed = held if override is not None else set()
     finals = [i for i, j in jobs.items() if j["final"] and j["status"] != "done" and i not in passed]
@@ -528,7 +532,7 @@ def finish_readiness(task: Task) -> dict:
     try:
         check_finish_gates(task, False, None)
     except SaeError as exc:
-        done = all(j["status"] == "done" for j in task.jobs.values())
+        done = all(j["status"] in FINAL_STATUSES for j in task.jobs.values())
         return {"state": "blocked" if done else "waiting", "reason": str(exc)}
     return {"state": "ready", "reason": None}
 
@@ -544,7 +548,9 @@ def cmd_collect(args) -> int:
         path = result_file(task, job_id)
         text = read_text(path)
         if text is None:
-            fail(EXIT_USAGE, f"No result file at {path}.")
+            launched = job["attempts"] and job["attempts"][-1].get("launch")
+            fail(EXIT_USAGE, f"No result file at {path}." + (" If the COMMAND exited, it failed: follow the IF IT "
+                                                              "FAILS rule that dispatch printed." if launched else ""))
         if not text.strip():
             fail(EXIT_USAGE, f"The result file {path} is empty. If an external reviewer wrote it, the provider "
                              "failed: run the IF IT FAILS line that dispatch printed.")
@@ -556,11 +562,9 @@ def cmd_collect(args) -> int:
         for key, value in (("tokens", args.tokens), ("duration_s", args.duration_s), ("agent_ref", args.agent_ref)):
             if value is not None:
                 attempt[key] = value
-        harness = attempt.get("harness")
-        if (args.tokens is None and job["kind"] == "review" and harness in ("codex", "claude")
-                and harness != task.info.get("orchestrator_harness")):
-            # [REVIEW-TOKENS]: a review in the other harness ran the COMMAND, which kept its output.
-            tokens = review_output_tokens(review_output_file(task, job_id, harness), harness)
+        if args.tokens is None and attempt:
+            # [REVIEW-TOKENS], [WRITER-COMMAND]: a job in the other harness ran the COMMAND, which kept its output.
+            tokens = command_tokens(task, job_id, attempt)
             if tokens is not None:
                 attempt["tokens"] = tokens
         record = task.dir.resolve()
@@ -574,7 +578,10 @@ def cmd_collect(args) -> int:
         out: list[str] = [f"{job_id}: {status}" + (f" — {summary}" if summary else "")]
         if disputed:
             out.append(f"{disputed} disputed finding{'s' if disputed > 1 else ''}: settle "
-                       f"{'them' if disputed > 1 else 'it'} (see execute.md). Read {path}.")
+                       f"{'them' if disputed > 1 else 'it'} ({EXECUTE_MD}, Disputed findings). Read {path}.")
+        proposal = approach_proposal_line(path, body) if status == "done" else None
+        if proposal:  # [FIX-WORKER], audit 2026-11-20 proposal 3
+            out.append(proposal)
         code = EXIT_OK
         task.event("job.collected", job=job_id, attempt=attempt.get("n"), status=status, summary=summary,
                    tokens=attempt.get("tokens"), duration_s=attempt.get("duration_s"), disputed=disputed)
@@ -599,11 +606,12 @@ def cmd_collect(args) -> int:
         else:
             job["status"] = "parked"
             out.append(f"Parked: {parked_reason(task, job_id)}")
-            out.append(f"Decision flow: answer it, or ask the user (mode table). To add a decision job:\n"
+            out.append(f"Decision flow ({EXECUTE_MD}): answer it, or ask the user (mode table). To add a decision job:\n"
                        f"  sae decision new {task.id} --from {job_id}")
         materialize_integration_review(task, out)
         emit(args, "\n".join(out), {"job": job_id, "status": job["status"], "summary": summary, "exit": code,
-                                    "disputed": disputed, "messages": out[1:]})
+                                    "disputed": disputed, "approach_proposal": bool(proposal),
+                                    "messages": out[1:]})
     return code
 
 
@@ -681,29 +689,15 @@ def apply_review(task: Task, review_id: str, config: dict | None, out: list[str]
         subject["status"] = "parked"
         subject["summary"] = (f"{review_id}: changes required after {subject['review_rounds']} review rounds "
                               f"(max-review-rounds {limit}) — human decision")
-        out.append("\n".join([f"{target} parked: {subject['review_rounds']} review rounds required changes "
-                               f"(max-review-rounds is {limit}). Ask the user. Accept with:",
-                               f"  sae merge {task.id} {target} --accept-review \"<why>\"",
-                               "Or add another fix job (the next round follows it):",
-                               f"  sae job add {task.id} {target}-FIX-<n> --kind implementation --fix-of {target} "
-                               f"--reason \"<why>\"",
-                               *raise_limit_hint(task, limit),
-                               "Or adapt the graph."]))
+        mark_limit_park(task, review_id)
+        n = subject["review_rounds"]
+        out.append("\n".join([PARK_OPENING,
+                               f"{target} parked: {n} review round{'s' if n != 1 else ''} required changes "
+                               f"(max-review-rounds is {limit}). The story and the options to relay: "
+                               f"sae next {task.id}"]))
     else:
-        out.append("\n".join([f"{target}: changes required. Add fix jobs:",
-                               f"  sae job add {task.id} {target}-FIX-1 --kind implementation --fix-of {target} "
-                               f"--reason \"{review_id}: changes required\"",
-                               "Or accept when the mode lets you decide:",
-                               f"  sae merge {task.id} {target} --accept-review \"<why>\""]))
+        out.append("\n".join(changes_required_lines(task, review_id, target)))
     return EXIT_OK
-
-
-def raise_limit_hint(task: Task, limit: int) -> list[str]:
-    """How the owner allows more changes-required rounds before the next park ([REVIEW-ROUNDS-LIMIT])."""
-    if limit >= 10:
-        return []
-    return ["More rounds before the next park, on the user's word:",
-            f"  sae set {task.id} max-review-rounds={limit + 1}"]
 
 
 def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
@@ -711,18 +705,15 @@ def apply_integration_review(task: Task, review_id: str, out: list[str]) -> int:
     if verdict in POSITIVE_VERDICTS:
         out.append(f"{review_id}: {verdict}. The final validation can run.")
         return EXIT_OK
-    forward = f"sae finish {task.id} --override \"<reason>\""
     if integration_parked(task):
         limit = max_review_rounds(task.settings)
-        out.append("\n".join([f"The task is parked: {review_id} still requires changes after a fix round "
-                               f"(max-review-rounds is {limit}). Ask the owner:",
-                               "  - more fix jobs:", f"    {fix_job_command(task, review_id)}",
-                               "  - or close anyway:", f"    {forward}",
-                               *raise_limit_hint(task, limit)]))
+        mark_limit_park(task, review_id)
+        out.append("\n".join([PARK_OPENING,
+                               f"The task is parked: {review_id} still requires changes after a fix round "
+                               f"(max-review-rounds is {limit}). The story and the options to relay: "
+                               f"sae next {task.id}"]))
     else:
-        out.append("\n".join([f"{review_id}: changes required. Add fix jobs (sae adds the next round when "
-                               "they are merged):", f"  {fix_job_command(task, review_id)}",
-                               "Or, on the owner's word, close anyway:", f"  {forward}"]))
+        out.append("\n".join(changes_required_lines(task, review_id, INTEGRATION)))
     return EXIT_OK
 
 
@@ -735,6 +726,8 @@ def cmd_merge(args) -> int:
             fail(EXIT_USAGE, f"{args.id} is not a writer job that merges (fix jobs merge with their target).")
         if job["merged"]:
             fail(EXIT_USAGE, f"{args.id} is already merged.")
+        if is_dropped(job):
+            fail(EXIT_USAGE, f"{args.id} is dropped: dropped jobs never merge.")
         accepted_park = job["status"] == "parked" and args.accept_review
         if job["status"] != "done" and not accepted_park:
             fail(EXIT_USAGE, f"{args.id} is {job['status']}, not done.")
@@ -746,9 +739,15 @@ def cmd_merge(args) -> int:
             fail(EXIT_GATE, f"The last review of {args.id} requires changes. Add fix jobs, or "
                             f"--accept-review \"<why>\".")
         if args.accept_review:
+            # [LET-GO-REPORT]: the final report lists the findings of the round this merge bypasses:
+            # the latest completed round, only when it requires changes. A newer round still
+            # pending holds no findings yet; a newer passing round supersedes the older findings.
+            completed = [r for r in review_rounds(task, args.id) if task.jobs[r]["status"] == "done"]
+            accepted = completed[-1] if completed and requires_changes(task.jobs[completed[-1]]) else None
             task.event("decision", **{"class": "consequential", "by": "agent",
                                       "summary": f"merge {args.id} despite review: {args.accept_review}",
-                                      "job": args.id})
+                                      "job": args.id, "reason": args.accept_review,
+                                      **({"accepted_review": accepted} if accepted else {})})
             job["status"] = "done"
         out: list[str] = []
         code = merge_job(task, args.id, config, out)
@@ -760,8 +759,9 @@ def cmd_merge(args) -> int:
 def register_collect(sub, command):
     """Add the `collect` command to the parser."""
     p = command(sub, "collect", "Read a job's result file, re-run verify, then merge or add its review.",
-                "Add --tokens, --duration-s and --agent-ref when your harness reports them. A review run through\n"
-                "the printed COMMAND records its tokens itself. Exit 5: resume the same worker with --reason\n"
+                "Add --tokens, --duration-s and --agent-ref when your harness reports them. A job run through the\n"
+                "printed COMMAND (any job in the other harness) records its tokens itself: add no --tokens. Then sae\n"
+                "deletes the output the COMMAND kept. Exit 5: resume the same worker with --reason\n"
                 "verify-failed; after the task's limit the job is failed instead (exit 0).\n"
                 "Exit 4: merge conflict, sae added INTEGRATE-<ID>.",
                 ["collect claims-status STATUS-API --tokens 48210 --duration-s 312 --agent-ref a1b2c3"],
@@ -776,7 +776,9 @@ def register_collect(sub, command):
 def register_merge(sub, command):
     """Add the `merge` command to the parser."""
     p = command(sub, "merge", "Merge a done writer job now; --accept-review merges despite changes-required.",
-                "Normally automatic. --accept-review logs a decision event with the reason.",
+                "Normally automatic. --accept-review logs a decision event with the reason; the final report lists\n"
+                "each finding of the last review round with it. Refuses a dropped job (sae job drop). An integration\n"
+                "review round is accepted with sae accept-review instead.",
                 ['merge claims-status STATUS-API --accept-review "remaining finding is cosmetic"'], [0, 1, 3, 4], cmd_merge)
     p.add_argument("task")
     p.add_argument("id")

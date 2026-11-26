@@ -95,7 +95,8 @@ class JobReviewLimitTests(RoundsCase):
         self.assertEqual(len(outs), 3)
         self.assertNotIn("parked", outs[1])
         self.assertIn("CORE parked: 3 review rounds required changes (max-review-rounds is 3)", outs[2])
-        self.assertIn(f"sae set {task} max-review-rounds=4", outs[2])
+        self.assertIn(f"The story and the options to relay: sae next {task}", outs[2])
+        self.assertIn(f"sae set {task} max-review-rounds=4", sb.sae("next", "three").stdout)  # in the story
         self.assertIn("max-review-rounds 3", sb.state(task)["jobs"]["CORE"]["summary"])
 
     def test_a_settings_json_without_the_key_parks_after_the_third_round(self):
@@ -108,7 +109,8 @@ class JobReviewLimitTests(RoundsCase):
         sb = self.sandbox()
         _, outs = self.job_rounds(sb, "one", ["max-review-rounds=1"])
         self.assertEqual(len(outs), 1)
-        self.assertIn("max-review-rounds=2", outs[0])
+        self.assertIn("CORE parked: 1 review round required changes (max-review-rounds is 1)", outs[0])
+        self.assertIn("max-review-rounds=2", sb.sae("next", "one").stdout)
 
 
 class IntegrationReviewLimitTests(RoundsCase):

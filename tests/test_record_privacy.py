@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import unittest
@@ -91,6 +92,35 @@ class RecordPrivacyTests(SaeTestCase):
         proc = sb.sae("new", "Next thing", "--slug", "next-thing")
         self.assertIn(f"Removed the task worktree of {task}", proc.stderr)
         self.assertFalse(wt.exists())
+
+    def test_launch_records_hold_no_path_and_no_prompt_text(self):
+        """[LAUNCH-RECORD]: a COMMAND attempt and its routing exception store placeholders, never the prompt
+        or a path; the prompt text reaches neither state.json nor the events."""
+        sb = self.sandbox()
+        task = sb.new_task("Launch privacy", "launchpriv")
+        sb.sae("job", "add", "launchpriv", "ONE", "--kind", "implementation")
+        sb.job_file(task, "ONE", objective="A unique objective sentence.")
+        sb.approve_plan("launchpriv")
+        sb.sae("start", "launchpriv")
+        sb.sae("job", "override", "launchpriv", "ONE", "--harness", "codex")
+        dispatched = sb.json("dispatch", "launchpriv", "ONE")
+        fallback = dispatched["if_it_fails"].replace("<exit code or missing result>", "exit 1")
+        words = shlex.split(fallback)  # python3 <sae.py> dispatch …
+        sb.sae(*words[2:])
+        attempts = sb.state(task)["jobs"]["ONE"]["attempts"]
+        records = json.dumps([attempts[0]["launch"], attempts[1]["routing_exception"]])
+        self.assertNotIn(str(sb.tmp), records)
+        self.assertNotIn("/", records.replace("</dev/null", "").replace("/dev/null", ""))
+        record = sb.task_dir(task)
+        for name in ("state.json", "events.jsonl"):
+            text = (record / name).read_text()
+            self.assertNotIn("Follow your protocol", text)
+            self.assertNotIn("Write your result to", text)
+        launch_events = [e for e in sb.events(task) if e["type"] in ("job.dispatched", "routing.exception")
+                         and ("launch" in e or e["type"] == "routing.exception")]
+        self.assertEqual(len(launch_events), 2)
+        self.assertNotIn(str(sb.tmp), json.dumps([{k: v for k, v in e.items() if k != "workspace"}
+                                                  for e in launch_events]))
 
     def test_tilde_home_replaces_only_the_home_folder(self):
         with mock.patch.dict(os.environ, {"HOME": "/home/ann"}):

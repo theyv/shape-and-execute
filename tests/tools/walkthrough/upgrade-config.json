@@ -1,0 +1,515 @@
+{
+  "schema": 2,
+  "models": {
+    "claude": [
+      {
+        "model": "sonnet",
+        "family": true,
+        "enabled": true,
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      {
+        "model": "opus",
+        "family": true,
+        "enabled": true,
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    ],
+    "codex": [
+      {
+        "model": "luna",
+        "family": true,
+        "enabled": true,
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      {
+        "model": "sol",
+        "family": true,
+        "enabled": true,
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ]
+      },
+      {
+        "model": "astra",
+        "family": true,
+        "enabled": true,
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+          "ultra"
+        ]
+      }
+    ]
+  },
+  "routing": {
+    "claude": {
+      "tiers_in_cells": true,
+      "tiers": {
+        "L1": {
+          "model": "sonnet",
+          "effort": "medium"
+        },
+        "L2": {
+          "model": "opus",
+          "effort": "medium"
+        },
+        "L3": {
+          "model": "opus",
+          "effort": "high"
+        },
+        "L4": {
+          "model": "opus",
+          "effort": "xhigh"
+        }
+      },
+      "tables": {
+        "research": {
+          "economy": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "medium"
+            },
+            "normal": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L2",
+              "model": "sonnet",
+              "effort": "high"
+            }
+          },
+          "balanced": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "medium"
+            },
+            "normal": {
+              "tier": "L2",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "low"
+            }
+          },
+          "premium": {
+            "mechanical": {
+              "tier": "L2",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "normal": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "low"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "medium"
+            }
+          }
+        },
+        "execution": {
+          "economy": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "medium"
+            },
+            "normal": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L2",
+              "model": "opus",
+              "effort": "low"
+            }
+          },
+          "balanced": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "normal": {
+              "tier": "L2",
+              "model": "opus",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "high"
+            }
+          },
+          "premium": {
+            "mechanical": {
+              "tier": "L2",
+              "model": "opus",
+              "effort": "low"
+            },
+            "normal": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "xhigh"
+            }
+          }
+        },
+        "planning": {
+          "economy": {
+            "normal": {
+              "tier": "L2",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "medium"
+            }
+          },
+          "balanced": {
+            "normal": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "xhigh"
+            }
+          },
+          "premium": {
+            "normal": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "xhigh"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "xhigh"
+            }
+          }
+        },
+        "review": {
+          "economy": {
+            "normal": {
+              "tier": "L1",
+              "model": "sonnet",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L2",
+              "model": "opus",
+              "effort": "medium"
+            }
+          },
+          "balanced": {
+            "normal": {
+              "tier": "L2",
+              "model": "opus",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "high"
+            }
+          },
+          "premium": {
+            "normal": {
+              "tier": "L3",
+              "model": "opus",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "opus",
+              "effort": "xhigh"
+            }
+          }
+        }
+      }
+    },
+    "codex": {
+      "tiers_in_cells": true,
+      "tiers": {
+        "L1": {
+          "model": "luna",
+          "effort": "xhigh"
+        },
+        "L2": {
+          "model": "sol",
+          "effort": "low"
+        },
+        "L3": {
+          "model": "sol",
+          "effort": "medium"
+        },
+        "L4": {
+          "model": "sol",
+          "effort": "high"
+        }
+      },
+      "tables": {
+        "research": {
+          "economy": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "luna",
+              "effort": "high"
+            },
+            "normal": {
+              "tier": "L1",
+              "model": "luna",
+              "effort": "xhigh"
+            },
+            "hard": {
+              "tier": "L2",
+              "model": "sol",
+              "effort": "low"
+            }
+          },
+          "balanced": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "luna",
+              "effort": "xhigh"
+            },
+            "normal": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            }
+          },
+          "premium": {
+            "mechanical": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            },
+            "normal": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "xhigh"
+            }
+          }
+        },
+        "execution": {
+          "economy": {
+            "mechanical": {
+              "tier": "L1",
+              "model": "luna",
+              "effort": "xhigh"
+            },
+            "normal": {
+              "tier": "L1",
+              "model": "luna",
+              "effort": "xhigh"
+            },
+            "hard": {
+              "tier": "L2",
+              "model": "sol",
+              "effort": "low"
+            }
+          },
+          "balanced": {
+            "mechanical": {
+              "tier": "L2",
+              "model": "sol",
+              "effort": "low"
+            },
+            "normal": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            }
+          },
+          "premium": {
+            "mechanical": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            },
+            "normal": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "xhigh"
+            }
+          }
+        },
+        "planning": {
+          "economy": {
+            "normal": {
+              "tier": "L2",
+              "model": "sol",
+              "effort": "low"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            }
+          },
+          "balanced": {
+            "normal": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "xhigh"
+            }
+          },
+          "premium": {
+            "normal": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "xhigh"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "max"
+            }
+          }
+        },
+        "review": {
+          "economy": {
+            "normal": {
+              "tier": "L2",
+              "model": "sol",
+              "effort": "low"
+            },
+            "hard": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            }
+          },
+          "balanced": {
+            "normal": {
+              "tier": "L3",
+              "model": "sol",
+              "effort": "medium"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            }
+          },
+          "premium": {
+            "normal": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "high"
+            },
+            "hard": {
+              "tier": "L4",
+              "model": "sol",
+              "effort": "xhigh"
+            }
+          }
+        }
+      }
+    }
+  },
+  "defaults": {
+    "interaction": "critical-only",
+    "levels": {
+      "research": "balanced",
+      "planning": "balanced",
+      "execution": "balanced",
+      "review": "balanced"
+    },
+    "review": {
+      "points": [
+        "spec",
+        "plan",
+        "selected-jobs",
+        "integration"
+      ],
+      "provider": "cross-harness"
+    }
+  },
+  "projects": {},
+  "language": {
+    "conversation": "en",
+    "artifacts": "en"
+  },
+  "worktrees": {
+    "root": "<set by walkthrough.sh>"
+  },
+  "parallel": {
+    "max_writers": 3
+  },
+  "verify": {
+    "timeout_s": 600
+  }
+}
