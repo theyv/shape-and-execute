@@ -27,6 +27,7 @@ from .common import (
     OLD_LEVEL_NAMES,
     Parser,
     REVIEW_POINTS,
+    SaeError,
     SKILL_DIR,
     emit,
     fail,
@@ -50,6 +51,7 @@ from .config import (
     flatten_routing,
     is_routing_key,
     load_config,
+    model_entry,
     parse_set_value,
     project_errors,
     project_key,
@@ -564,6 +566,49 @@ max_threads = {CODEX_RECOMMENDED_SUBAGENTS}
                                   "codex_subagent_cap": codex_subagent_cap(), "claude_settings": claude,
                                   "claude_settings_file": str(claude_settings_file())})
     return EXIT_OK
+
+
+ROUTING_PHASE_NOTES = {"research": " (reading, searching)", "execution": " (writing code)"}
+
+
+def cmd_routing(args) -> int:
+    """`sae routing <harness>`: the model and effort for a subagent, one level, project overrides applied."""
+    from .config import routing_layers
+    from .routing import resolve_family, route
+    config = load_config()
+    root, _ = find_root()
+    layers = routing_layers(config, root)
+    cells: dict = {}
+    lines = [f"Subagent routing · {args.harness} · level {args.level} · project overrides included", "",
+             "Before you spawn a subagent, pick its phase and difficulty below and pass that model and effort.",
+             "Never stronger than your own model and effort: a helper does part of your job.", ""]
+    for phase in LEVEL_PHASES:
+        lines.append(f"{phase.capitalize()} subagent{ROUTING_PHASE_NOTES.get(phase, '')}:")
+        for difficulty in PHASE_DIFFICULTIES[phase]:
+            res = route(config, layers, args.harness, {"phase": phase, "level": args.level,
+                                                       "difficulty": difficulty})
+            entry = model_entry(config, args.harness, res["model_entry"]) or {"model": res["model_entry"]}
+            try:
+                model, _ = resolve_family(args.harness, entry, res["effort"])
+            except SaeError:  # no Codex catalog: the family name still tells the agent the model
+                model = res["model_entry"]
+            cells.setdefault(phase, {})[difficulty] = {"model": model, "effort": res["effort"]}
+        width = max(len(c["model"]) for c in cells[phase].values())
+        lines += [f"  {d:<11} model={c['model']:<{width}}  effort={c['effort']}" for d, c in cells[phase].items()]
+        lines.append("")
+    emit(args, "\n".join(lines).rstrip(), {"harness": args.harness, "level": args.level, "cells": cells})
+    return EXIT_OK
+
+
+def register_routing(sub, command):
+    p = command(sub, "routing", "Print the model and effort for a subagent, by phase and difficulty (read-only).",
+                "For any agent about to spawn a subagent, inside or outside a task. Uses the user config with\n"
+                "this repository's project overrides; one level (default balanced); Codex families resolve to\n"
+                "the newest catalog version.",
+                ["routing claude", "routing codex --level economy"], [0, 2], cmd_routing)
+    p.add_argument("harness", choices=HARNESSES, help="the harness the subagent runs on")
+    p.add_argument("--level", choices=LEVELS, default="balanced", help="routing level (default: balanced)")
+    return p
 
 
 def register_setup(sub, command):

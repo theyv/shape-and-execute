@@ -60,6 +60,8 @@
   explore one viewer screen for active tasks across all projects. For further consideration.
 - [Roles, workflows and knowledge layout](tier-2/2026-11-04-1630--adopt-the-roles-workflows-and-knowledge.md) —
   rename `references/modes/` to `workflows/` and move loose knowledge files into `knowledge/`.
+- [Model routing reminder in worker prompts](tier-2/2026-11-26-1745--model-routing-reminder-in-worker-prompts.md) —
+  point workers to `sae routing` for helper models; decide whether the global instruction lines stay.
 
 ## Tier 3 — moderately urgent
 

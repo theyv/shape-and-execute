@@ -15,7 +15,7 @@ from .lifecycle import register_abandon, register_finish, register_new, register
 from .planning import register_approve, register_check, register_job, register_set
 from .progress import register_dispatch, register_next, register_status
 from .reviews import register_collect, register_merge
-from .setup_mode import register_project, register_setup
+from .setup_mode import register_project, register_routing, register_setup
 from .viewer import register_view
 
 
@@ -69,6 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     finding = register_finding(sub, command)
     setup = register_setup(sub, command)
     project = register_project(sub, command)
+    register_routing(sub, command)
     register_doctor(sub, command)
 
     fill_missing_help(parser)
