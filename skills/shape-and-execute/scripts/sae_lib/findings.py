@@ -119,13 +119,18 @@ def cmd_log(args) -> int:
             task.job(args.job)
         if args.let_go and (args.type != "decision" or not args.job or task.jobs[args.job]["kind"] != "review"):
             fail(EXIT_USAGE, "--let-go logs one finding set aside in triage: a decision with --job <REVIEW-ID>.\n"
-                             f"  sae log {task.id} decision \"<number>: <reason>\" --job <REVIEW-ID> --let-go")
+                             f"  sae log {task.id} decision --job <REVIEW-ID> --let-go \"<number or exact title>\" --reason \"<why>\"")
+        if args.reason and not args.let_go:
+            fail(EXIT_USAGE, "--reason goes with --let-go; without it, put the reason in the summary.")
+        if not args.let_go and args.summary is None:
+            fail(EXIT_USAGE, "sae log needs a summary.")
         finding = reason = None
         if args.let_go:
             from .fix_loop import resolve_let_go  # late import: graph imports this module
-            finding, reason, error = resolve_let_go(task, args.job, args.summary)
+            finding, reason, error = resolve_let_go(task, args.job, args.let_go, args.reason)
             if error:
                 fail(EXIT_USAGE, error)
+            args.summary = f"{finding}: {reason}"
         if args.type == "decision":
             if args.decision_class and args.decision_class not in DECISION_CLASSES:
                 fail(EXIT_USAGE, f"--class must be one of {', '.join(DECISION_CLASSES)}")
@@ -453,21 +458,23 @@ def register_log(sub, command):
                 "Write an amendment into specs.md under ## Amendments first, then log it with its --id.\n"
                 "--by: human | agent | joint (default agent; agent entries appear in the final report).\n"
                 "A --by human log closes the open asks of its --job (sae ask), or without --job the open asks\n"
-                "without a job. --let-go: a decision that sets one review finding aside in triage, with --job\n"
-                "<REVIEW-ID> and the summary \"<number>: <reason>\" (the finding's number in the review, or its title\n"
-                "when the review numbers none); the final report lists it under Findings let go.",
+                "without a job. --let-go <finding> --reason <why>: a decision that sets one review finding aside in triage,\n"
+                "with --job <REVIEW-ID> and no summary; <finding> is the finding's number in the review or its exact\n"
+                "title (never guessed from the reason); an unknown one is refused with the review's findings. The final\n"
+                "report lists it under Findings let go.",
                 ['log claims-status decision "Cache status for 60 s" --by agent --class open-tradeoff --job STATUS-API',
-                 'log claims-status decision "2: beyond the Project Stakes" --job REVIEW-STATUS-API --let-go',
+                 'log claims-status decision --job REVIEW-STATUS-API --let-go 2 --reason "beyond the Project Stakes"',
                  'log claims-status amendment "Drop CSV export" --id AMEND-1 --by human'], [0, 1], cmd_log)
     p.add_argument("task")
     p.add_argument("type", choices=("decision", "amendment", "note"))
-    p.add_argument("summary")
+    p.add_argument("summary", nargs="?", help="what is logged; omit with --let-go")
     p.add_argument("--job", metavar="ID")
     p.add_argument("--by", choices=PROVENANCES, default="agent")
     p.add_argument("--class", dest="decision_class", choices=DECISION_CLASSES)
     p.add_argument("--id", dest="amend_id", metavar="AMEND-ID")
     p.add_argument("--file")
-    p.add_argument("--let-go", action="store_true", help="one finding of the --job review set aside in triage")
+    p.add_argument("--let-go", metavar="FINDING", help="the number or exact title of one finding of the --job review set aside in triage")
+    p.add_argument("--reason", help="why the --let-go finding is set aside")
 
 
 def register_finding(sub, command):
