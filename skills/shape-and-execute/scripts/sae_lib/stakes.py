@@ -79,9 +79,26 @@ def _headings(lines: list[str]):
             yield index, len(match.group(1)), match.group(2).strip()
 
 
+def _title_lines(lines: list[str]) -> list[int]:
+    """The 1-based line numbers of every level-2 Project Stakes heading line (outside the frontmatter)."""
+    return [i + 1 for i, d, title in _headings(lines) if d == 2 and title.lower() == SECTION_TITLE.lower()]
+
+
+def _ambiguous_message(lines: list[str]) -> str | None:
+    """Short text naming the lines when more than one line is the Project Stakes heading (a fenced
+    example can hold one: no fence parsing, so the section cannot be told apart); None otherwise."""
+    found = _title_lines(lines)
+    if len(found) < 2:
+        return None
+    return (f'Ambiguous: "## {SECTION_TITLE}" is on lines {", ".join(map(str, found))}. '
+            "Keep one in the file, reload, and save again.")
+
+
 def _find_section(lines: list[str]) -> tuple[int, int] | None:
     """(heading line, end line) of the level-2 Project Stakes section; the end is the next
-    heading of level 1 or 2, or the end of the file."""
+    heading of level 1 or 2, or the end of the file. None when missing or ambiguous."""
+    if len(_title_lines(lines)) > 1:
+        return None
     start = None
     for index, depth, title in _headings(lines):
         if start is not None and depth <= 2:
@@ -144,6 +161,9 @@ def find_stakes(root: Path) -> Stakes | None:
     then CLAUDE.md's, all in the main worktree. The first section with content wins; None when none
     has ([STAKES-LOOKUP], [AMEND-2])."""
     home = main_worktree(root)
+    ambiguous = _ambiguous_message((read_stored(profile_path(root), "") or "").split("\n"))
+    if ambiguous:  # never pick one of the sections: say so where the stakes would be read
+        return Stakes(profile_path(root), ambiguous)
     for path in (profile_path(root), *(home / name for name in INSTRUCTION_FILES)):
         text = section_text(path)
         if text is not None and _content(text):
@@ -214,7 +234,8 @@ def save_profile_stakes(root: Path, text: str) -> Path:
     heading (the template's help) is kept. A missing section is added where the template puts
     it, before the first other `##` section; a missing profile is created. The rule that keeps
     every other byte: the section runs from its heading to the next line that starts a heading of
-    level 1 or 2, with no fence parsing. Raises ValueError, and writes nothing, when `text` holds
+    level 1 or 2, with no fence parsing. Raises ValueError, and writes nothing, when the profile has more than one Project Stakes heading line
+    (the message names the lines), when `text` holds
     such a heading or a code fence line, and when the stored section holds a code fence line (its
     reader-visible end may then lie inside a fenced example)."""
     body = text.replace("\r\n", "\n").strip("\n")
@@ -228,6 +249,9 @@ def save_profile_stakes(root: Path, text: str) -> Path:
     lines = (read_stored(path, "") or "").split("\n")
     if lines == [""]:
         lines = ["# Repo profile", ""]
+    ambiguous = _ambiguous_message(lines)
+    if ambiguous:
+        raise ValueError(f"{ambiguous} Nothing was saved ({path}).")
     found = _find_section(lines)
     if found and any(_is_fence(line) for line in lines[found[0] + 1:found[1]]):
         raise ValueError(f"The {SECTION_TITLE} section in {path} holds a code fence line (```), so its end may lie "
