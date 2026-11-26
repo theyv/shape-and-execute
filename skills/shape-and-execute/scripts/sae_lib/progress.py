@@ -70,7 +70,7 @@ from .park_story import INTEGRATION, limit_parked_jobs, mark_approach_check, par
 from .prompts import EARLIER_RESULT_POINTER, build_prompt
 from .reviews import materialize_integration_review
 from .routing import easy_fallback_notice, model_text, resolve_model, routing_text, short_text
-from .stakes import find_stakes, profile_path, status_line as stakes_status_line
+from .stakes import find_stakes, profile_path, ask_text as stakes_ask_text, status_line as stakes_status_line
 from .session_tokens import record_session_snapshot
 from .tasks import (
     Task,
@@ -159,6 +159,8 @@ def cmd_status(args) -> int:
         found = find_stakes(task.root)  # [STAKES-LOOKUP]: read at status time, like a dispatch
         lines += [data["settings_card"]] + ([data["bypass"]] if data["bypass"] else [])
         lines += [stakes_status_line(task.root, found), f"Last change: {age_text(data['last_change'])}"]
+        if not found:  # the question appears only while Project Stakes are not set
+            lines += ["", stakes_ask_text(task.root), ""]
         data["stakes"] = {"source": str(found.path) if found else None, "profile": str(profile_path(task.root))}
         data["routing_notice"] = easy_fallback_notice(task)  # [EASY-UPGRADE]
         if data["routing_notice"]:

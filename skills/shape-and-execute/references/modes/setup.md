@@ -35,7 +35,9 @@ and skip the guide.
 
 ## 2. Guide (first setup only)
 
-Show this before the proposal, in the conversation language:
+Show this before the proposal, in the conversation language. Keep its layout: one blank line
+before every heading, also after a list or a quote line, so no heading sticks to the line
+above it.
 
 ```
 ### Task
@@ -125,7 +127,14 @@ difficulty of execution has its own tier.
 | L3 | normal | opus · medium | sol · high |
 | L4 | hard | opus · high | sol · xhigh |
 
-**Routing tables**, Tiers mode (`tiers_in_cells` on). Cells carry only a tier, no model ·
+**Routing tables (Tiers mode)**. Right under this heading, show the user this line, in the
+conversation language (it is for users who skipped the guide):
+
+```
+!! YOU CAN CHANGE THIS MORE EASILY IN THE GUI LATER !!
+```
+
+Tiers mode means `tiers_in_cells` on. Cells carry only a tier, no model ·
 effort of their own. The first switch to Free mode copies the tier's model · effort into each
 cell, so the switch alone changes no route.
 
@@ -225,6 +234,9 @@ At the first task in a repository, or when the user asks:
   CLAUDE.md do not already say — validation commands (smoke, full suite, unit, typecheck,
   lint, end-to-end), known hot files, notes for worktree setup. Optional frontmatter pin:
   `artifact_language` (for a team).
+- For the Project Stakes section, ask the question that `sae status` prints while they are not
+  set; write the answer to the path it names, and on a skip the "not set" line. Do not
+  explain it a second time.
 - Ask once where decision records go, and write the answer into the profile:
   - one flat folder: `adr_folder: docs/adr` (no answer: an existing ADR folder, else
     `docs/decisions/`);

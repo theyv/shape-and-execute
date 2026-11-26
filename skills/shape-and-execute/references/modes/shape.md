@@ -26,10 +26,8 @@ Keep the start short and concrete. The deep work comes after research.
 Ask one round in the grill format ([grill.md](../grill.md) — question format and rules). It has:
 
 - 2–4 questions about intent, scope or success that the repository cannot answer;
-- when `sae status` shows `Project Stakes: not set`, one question: a draft of
-  the Project Stakes section (`templates/repo/profile.md`) from AGENTS.md or CLAUDE.md and
-  the README. Write the answer, or on a skip the template's "not set" line, to the profile path
-  `sae status` names.
+- when `sae status` shows that Project Stakes are not set, the question it prints: ask it,
+  write the answer to the path it names, and on a skip the "not set" line.
 - a **depth proposal** in one sentence with its reason:
   - "Grill only" — the area is familiar and the outcome is clear;
   - "Research: <topic>, <topic> at level <research level>" — there is an unknown external API

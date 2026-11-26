@@ -6,6 +6,7 @@ Run from the repository root:  python3 tests/run.py test_stakes
 
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -151,6 +152,37 @@ class BlockTests(StakesCase):
         self.assertIn("Leaving out what it does not need is expected; it never lowers the requirements you "
                       "were given", flat)
 
+
+class AskTests(StakesCase):
+    """INTEGRATION-FIX-5: shaping asks for the Project Stakes bullet by bullet, with the example."""
+
+    def test_the_question_is_printed_by_status_only_while_stakes_are_not_set(self):
+        sb = self.home()
+        sb.new_task("ask", "ask")
+        profile = sb.repo / ".tasks" / "repo" / "profile.md"
+        out = " ".join(sb.sae("status", "ask").stdout.split())
+        self.assertIn(f"Project Stakes ({'Project Stakes'} section of {profile})", out)
+        self.assertIn("every reviewer judges the work against it", out)
+        self.assertIn("edit them later in the GUI or in the file", out)
+        self.assertIn("propose your best guess", out)
+        for label in ("Who uses it and why", "Acceptable breakage", "What matters now",
+                      "Don't build (optional)", "So build it like"):
+            self.assertIn(label, out)
+        template = (SKILL_DIR / "templates" / "repo" / "profile.md").read_text()
+        example = re.findall(r"(?m)^ +(- [^:\n]+: .+)$", template.split("## Project Stakes")[1].split("Do not name")[0])
+        self.assertEqual(len(example), 5)
+        for line in example:
+            self.assertIn(line.strip(), out)
+        self.assertIn('"not set" line', out)
+        self.profile(sb, "- Not set by the owner. Set the bar yourself.\n")
+        self.assertNotIn("Question for the owner", sb.sae("status", "ask").stdout)
+
+    def test_shaping_and_setup_point_to_the_printed_question_without_a_copy(self):
+        for name in ("shape.md", "setup.md"):
+            text = " ".join((SKILL_DIR / "references" / "modes" / name).read_text().split())
+            self.assertIn("`sae status`", text)
+            self.assertNotIn("every agent reads it", text)
+            self.assertNotIn("A game for a kid", text)
 
 class PromptKindTests(StakesCase):
     def count(self, text: str) -> int:
