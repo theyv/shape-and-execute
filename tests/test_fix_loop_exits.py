@@ -185,7 +185,7 @@ class ChangesRequiredLinesTests(FixLoopCase):
             "Fix job for the findings you keep:",
             f'  sae job add {task} A-FIX-1 --kind implementation --fix-of A --reason "REVIEW-A: changes required"',
             "Each finding you set aside, logged with its reason:",
-            f'  sae log {task} decision "<number>: <reason>" --job REVIEW-A --let-go',
+            f'  sae log {task} decision --job REVIEW-A --let-go "<number>" --reason "<why>"',
             "Or accept the round when the mode lets you decide:",
             f'  sae merge {task} A --accept-review "<why>"'])  # no close: finish would wait for A's merge
         sb.sae("job", "add", "lines", "A-FIX-1", "--kind", "implementation", "--fix-of", "A", "--reason", "round 1")
@@ -207,7 +207,7 @@ class ChangesRequiredLinesTests(FixLoopCase):
             f'  sae job add {task} INTEGRATION-FIX-1 --kind implementation --fix-of REVIEW-INTEGRATION '
             f'--reason "REVIEW-INTEGRATION: changes required"',
             "Each finding you set aside, logged with its reason:",
-            f'  sae log {task} decision "<number>: <reason>" --job REVIEW-INTEGRATION --let-go',
+            f'  sae log {task} decision --job REVIEW-INTEGRATION --let-go "<number>" --reason "<why>"',
             "Or accept the round when the mode lets you decide:",
             f'  sae accept-review {task} REVIEW-INTEGRATION --reason "<why>"',
             "Or close anyway, on the user's word:",
@@ -230,7 +230,7 @@ class AcceptIntegrationTests(FixLoopCase):
                          ["Log line too chatty", "Missing retry on a rare race", "Old name in a comment"])
         sb.sae("dispatch", "accint", "FINAL", code=1)  # waits for a positive round
         # one finding logged on its own, by its number: it keeps its own reason and appears once
-        sb.sae("log", "accint", "decision", "2: beyond the Project Stakes", "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("log", "accint", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", "--reason", "beyond the Project Stakes")
         out = sb.sae("accept-review", "accint", "REVIEW-INTEGRATION", "--reason", "cosmetic").stdout
         self.assertIn("REVIEW-INTEGRATION accepted: cosmetic", out)
         self.assertIn("FINAL", [r["id"] for r in sb.json("next", "accint")["ready"]])
@@ -288,9 +288,9 @@ class LetGoReportTests(FixLoopCase):
         task = self.integration_task(sb, "triage")
         self.review_with(sb, task, "triage", "REVIEW-INTEGRATION", "integration", "changes-required",
                          ["Startup crashes without a config", "Lock for a nearly impossible race"])
-        sb.sae("log", "triage", "decision", "2: beyond the Project Stakes", "--job", "REVIEW-INTEGRATION", "--let-go")
-        sb.sae("log", "triage", "decision", "x: y", "--job", "LEFT", "--let-go", code=1)  # not a review
-        sb.sae("log", "triage", "note", "x", "--job", "REVIEW-INTEGRATION", "--let-go", code=1)
+        sb.sae("log", "triage", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", "--reason", "beyond the Project Stakes")
+        sb.sae("log", "triage", "decision", "--job", "LEFT", "--let-go", "1", "--reason", "y", code=1)  # not a review
+        sb.sae("log", "triage", "note", "x", "--job", "REVIEW-INTEGRATION", "--let-go", "1", "--reason", "y", code=1)
         sb.sae("job", "add", "triage", "INTEGRATION-FIX-1", "--kind", "implementation",
                "--fix-of", "REVIEW-INTEGRATION", "--reason", "finding 1")
         sb.job_file(task, "INTEGRATION-FIX-1")
@@ -312,7 +312,7 @@ class LetGoReportTests(FixLoopCase):
         self.run_writer(sb, task, "jaccept", "A")
         self.review_with(sb, task, "jaccept", "REVIEW-A", "A", "changes-required",
                          ["Name is unclear", "Speculative lock", "Missing docstring"])
-        sb.sae("log", "jaccept", "decision", "2: no concurrent caller exists", "--job", "REVIEW-A", "--let-go")
+        sb.sae("log", "jaccept", "decision", "--job", "REVIEW-A", "--let-go", "2", "--reason", "no concurrent caller exists")
         sb.sae("merge", "jaccept", "A", "--accept-review", "style only")
         report = self.report(sb.sae("finish", "jaccept").stdout)
         self.assertEqual(self.section(report, "## Findings let go"), [
@@ -513,9 +513,9 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         task = self.integration_task(sb, "letabs")
         self.review_with(sb, task, "letabs", "REVIEW-INTEGRATION", "integration", "changes-required", ["One"])
         before = self.snapshot(sb, task)
-        refused = sb.sae("log", "letabs", "decision", "2: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
-        self.assertIn("REVIEW-INTEGRATION has no finding 2; its findings are 1:", refused)
+        refused = sb.sae("log", "letabs", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2",
+                         "--reason", "rare", code=1).stderr
+        self.assertIn('REVIEW-INTEGRATION has no finding "2"; its findings are: 1: One.', refused)
         self.assertEqual(self.snapshot(sb, task), before)
 
     def test_let_go_by_title_when_the_review_numbers_no_finding(self):
@@ -524,8 +524,8 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         sb = self.sandbox()
         task = self.integration_task(sb, "lettitle")
         sb.json("dispatch", "lettitle", "REVIEW-INTEGRATION")
-        refused = sb.sae("log", "lettitle", "decision", "1: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
+        refused = sb.sae("log", "lettitle", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Slow path",
+                         "--reason", "rare", code=1).stderr
         self.assertIn(f"REVIEW-INTEGRATION is running: it has no findings to let go yet. Log them after "
                       f"sae collect {task} REVIEW-INTEGRATION.", refused)
         path = sb.task_dir(task) / "reviews" / "REVIEW-INTEGRATION.md"
@@ -533,18 +533,18 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         path.write_text("---\ntarget: integration\nverdict: changes-required\n---\n\n# Review\n\n## Findings\n\n"
                         "### Slow path — major\n**Expected:** fast\n\n### Odd log — minor\n**Expected:** quiet\n")
         out = sb.sae("collect", "lettitle", "REVIEW-INTEGRATION").stdout
-        line = f'sae log {task} decision "<finding>: <reason>" --job REVIEW-INTEGRATION --let-go'
+        line = f'sae log {task} decision --job REVIEW-INTEGRATION --let-go "<exact title>" --reason "<why>"'
         self.assertIn(f"  {line}", out)
         before = self.snapshot(sb, task)
-        refused = sb.sae("log", "lettitle", "decision", "2: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
+        refused = sb.sae("log", "lettitle", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2",
+                         "--reason", "rare", code=1).stderr
         self.assertEqual(refused.strip().split("\n")[-2:], [
-            "REVIEW-INTEGRATION numbers none of its findings: name the finding by its title.", f"  {line}"])
-        refused = sb.sae("log", "lettitle", "decision", "Odd log:", "--job", "REVIEW-INTEGRATION", "--let-go",
+            'REVIEW-INTEGRATION has no finding titled "2"; its findings are: Slow path; Odd log.', f"  {line}"])
+        refused = sb.sae("log", "lettitle", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Odd log",
                          code=1).stderr
-        self.assertIn('--let-go needs a reason after "Odd log:"', refused)
+        self.assertIn("--let-go needs --reason", refused)
         self.assertEqual(self.snapshot(sb, task), before)
-        sb.sae("log", "lettitle", "decision", "Odd log: cosmetic", "--job", "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("log", "lettitle", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Odd log", "--reason", "cosmetic")
         sb.sae("accept-review", "lettitle", "REVIEW-INTEGRATION", "--reason", "slow only in tests")
         self.final(sb, task, "lettitle")
         report = self.report(sb.sae("finish", "lettitle").stdout)
@@ -564,24 +564,43 @@ class ReviewFixLoopExitsTests(FixLoopCase):
                         "### Retry: lost write — major\n**Expected:** kept\n\n### Slow path — minor\n**Expected:** fast\n")
         sb.sae("collect", "letcolon", "REVIEW-INTEGRATION")
         before = self.snapshot(sb, task)
-        refused = sb.sae("log", "letcolon", "decision", "Retry: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
+        refused = sb.sae("log", "letcolon", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Retry",
+                         "--reason", "rare", code=1).stderr
         self.assertIn('REVIEW-INTEGRATION has no finding titled "Retry"; its findings are: Retry: lost write; '
                       'Slow path.', refused)
-        refused = sb.sae("log", "letcolon", "decision", "Missing: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
-        self.assertIn('has no finding titled "Missing"', refused)
         self.assertEqual(self.snapshot(sb, task), before)
-        sb.sae("log", "letcolon", "decision", "Retry: lost write: the queue retries it", "--job",
-               "REVIEW-INTEGRATION", "--let-go")
+        sb.sae("log", "letcolon", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Retry: lost write",
+               "--reason", "the queue retries it: rare")
         event = [e for e in sb.events(task) if e["type"] == "decision" and e.get("let_go")][-1]
-        self.assertEqual((event["finding"], event["reason"]), ("Retry: lost write", "the queue retries it"))
+        self.assertEqual((event["finding"], event["reason"]), ("Retry: lost write", "the queue retries it: rare"))
         sb.sae("accept-review", "letcolon", "REVIEW-INTEGRATION", "--reason", "slow only in tests")
         self.final(sb, task, "letcolon")
         report = self.report(sb.sae("finish", "letcolon").stdout)
         self.assertEqual(self.section(report, "## Findings let go"), [
-            "- REVIEW-INTEGRATION: Retry: lost write — let go: the queue retries it",
+            "- REVIEW-INTEGRATION: Retry: lost write — let go: the queue retries it: rare",
             "- REVIEW-INTEGRATION: Slow path — accepted: slow only in tests"])
+
+    def test_let_go_of_titles_that_start_each_other_keeps_each_reason(self):
+        """REVIEW-INTEGRATION-2 finding 2: "Retry" and "Retry: lost write" are let go on their own,
+        each with its own reason, and the final report names the right one."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letpair")
+        sb.json("dispatch", "letpair", "REVIEW-INTEGRATION")
+        path = sb.task_dir(task) / "reviews" / "REVIEW-INTEGRATION.md"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("---\ntarget: integration\nverdict: changes-required\n---\n\n# Review\n\n## Findings\n\n"
+                        "### Retry — major\n**Expected:** kept\n\n### Retry: lost write — minor\n**Expected:** kept\n")
+        sb.sae("collect", "letpair", "REVIEW-INTEGRATION")
+        sb.sae("log", "letpair", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Retry",
+               "--reason", "lost write: the caller retries")
+        sb.sae("log", "letpair", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Retry: lost write",
+               "--reason", "the queue retries it")
+        sb.sae("accept-review", "letpair", "REVIEW-INTEGRATION", "--reason", "rest is fine")
+        self.final(sb, task, "letpair")
+        report = self.report(sb.sae("finish", "letpair").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-INTEGRATION: Retry — let go: lost write: the caller retries",
+            "- REVIEW-INTEGRATION: Retry: lost write — let go: the queue retries it"])
 
     def test_let_go_refuses_a_blank_reason(self):
         """REVIEW-FIX-LOOP-EXITS-2 finding 2: "2:" names a finding but gives no reason."""
@@ -590,10 +609,12 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         self.review_with(sb, task, "letblank", "REVIEW-INTEGRATION", "integration", "changes-required",
                          ["Retry", "Odd log"])
         before = self.snapshot(sb, task)
-        for summary in ("2:", "2:   "):
-            refused = sb.sae("log", "letblank", "decision", summary, "--job", "REVIEW-INTEGRATION", "--let-go",
-                             code=1).stderr
-            self.assertIn("reason", refused)
+        for reason in ("", "   "):
+            refused = sb.sae("log", "letblank", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2",
+                             "--reason", reason, code=1).stderr
+            self.assertIn("--let-go needs --reason", refused)
+        refused = sb.sae("log", "letblank", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", code=1).stderr
+        self.assertIn("--let-go needs --reason", refused)
         self.assertEqual(self.snapshot(sb, task), before)
 
     def test_let_go_names_one_finding_by_number(self):
@@ -602,15 +623,15 @@ class ReviewFixLoopExitsTests(FixLoopCase):
         task = self.integration_task(sb, "letnum")
         out = self.review_with(sb, task, "letnum", "REVIEW-INTEGRATION", "integration", "changes-required",
                                ["Retry", "Retry on timeout"])
-        self.assertIn(f'sae log {task} decision "<number>: <reason>" --job REVIEW-INTEGRATION --let-go', out)
-        refused = sb.sae("log", "letnum", "decision", "Retry on timeout: rare", "--job", "REVIEW-INTEGRATION",
-                         "--let-go", code=1).stderr
-        self.assertIn("by its number", refused)
-        refused = sb.sae("log", "letnum", "decision", "3: rare", "--job", "REVIEW-INTEGRATION", "--let-go",
-                         code=1).stderr
-        self.assertIn("REVIEW-INTEGRATION has no finding 3", refused)
-        sb.sae("log", "letnum", "decision", "2: too rare", "--job", "REVIEW-INTEGRATION", "--let-go")
-        sb.sae("log", "letnum", "decision", "#2: rare in production", "--job", "REVIEW-INTEGRATION", "--let-go")
+        self.assertIn(f'sae log {task} decision --job REVIEW-INTEGRATION --let-go "<number>" --reason "<why>"', out)
+        refused = sb.sae("log", "letnum", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "Retry on time",
+                         "--reason", "rare", code=1).stderr
+        self.assertIn('has no finding "Retry on time"; its findings are: 1: Retry; 2: Retry on timeout.', refused)
+        refused = sb.sae("log", "letnum", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "3",
+                         "--reason", "rare", code=1).stderr
+        self.assertIn('REVIEW-INTEGRATION has no finding "3"', refused)
+        sb.sae("log", "letnum", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", "--reason", "too rare")
+        sb.sae("log", "letnum", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", "--reason", "rare in production")
         sb.sae("accept-review", "letnum", "REVIEW-INTEGRATION", "--reason", "cosmetic")
         self.final(sb, task, "letnum")
         report = self.report(sb.sae("finish", "letnum").stdout)
