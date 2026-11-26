@@ -234,7 +234,12 @@ def cmd_status(args) -> int:
                 for b in backlog]
         lines += ["", "Backlog:", table(rows)]
     lines += ["", f"Open findings: {findings}"]
-    emit(args, "\n".join(lines), {"tasks": tasks, "backlog": backlog, "open_findings": findings})
+    found = find_stakes(root)  # the same question as with a task, so setup can ask it before the first task
+    if not found:
+        lines += ["", stakes_ask_text(root)]
+    emit(args, "\n".join(lines), {"tasks": tasks, "backlog": backlog, "open_findings": findings,
+                                  "stakes": {"source": str(found.path) if found else None,
+                                             "profile": str(profile_path(root))}})
     return EXIT_OK
 
 

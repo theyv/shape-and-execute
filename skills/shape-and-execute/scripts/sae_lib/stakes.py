@@ -192,6 +192,8 @@ def ask_text(root: Path) -> str:
         "  5. So build it like: a toy, a tool for friends, a product people pay for, or a bank?",
         "A model answer, for a small game for a kid:",
         *(f"    {line}" for line in ASK_EXAMPLE.split("\n")),
+        "The owner may skip this: the profile then gets the \"not set\" line, agents set the bar themselves",
+        "from the repository, and the question is not asked again.",
         f"Write the answer to {path}, section \"{SECTION_TITLE}\". On a skip, write the profile",
         'template\'s "not set" line there.',
     ])
