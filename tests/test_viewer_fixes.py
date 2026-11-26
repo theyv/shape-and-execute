@@ -1,9 +1,10 @@
 """Viewer fixes: the process-map steps in the task data, effective difficulty in prompts and the viewer,
-known Claude families in the settings answer, a state path below a file, `by` of hold events.
+known Claude families in the settings answer, a state path below a file, `by` of hold events,
+the routing mode switch (Tiers mode | Free mode).
 
 Run from the repository root:  /usr/bin/python3 -m unittest discover -s tests -v
 Spec: [VIEWER-PROCESS-MAP], [DIFFICULTY-DISPLAY], [SETTINGS-CLAUDE-FAMILIES], [VIEWER-STATE-PATH],
-[HOLD-BY].
+[HOLD-BY], [AMEND-3].
 """
 
 from __future__ import annotations
@@ -63,6 +64,37 @@ console.log(JSON.stringify(vm.runInContext(`readHash(); S.repo = "R"; S.task = n
   SX.cur = {key: "R|null", proj: ANSWER};
   var html = sxModelsSec(), opts = [...html.matchAll(/<option value="([^"]*)"/g)].map(m => m[1]);
   ({opts, button: html.includes(">Add family</button>")})`, ctx)));
+"""
+
+
+# app.js, task-views.js and settings.js in node: the routing mode switch, then clicks on it (argv: scope, values)
+MODE_SWITCH_JS = r"""
+const vm = require("vm"), fs = require("fs");
+const el = () => new Proxy({innerHTML: "", hidden: true, dataset: {}, style: {},
+  classList: {toggle() {}, contains() { return false }, add() {}, remove() {}}, addEventListener() {}, querySelectorAll() { return [] }},
+  {get: (t, k) => k in t ? t[k] : () => null});
+const clicks = [];
+const ctx = {console, setTimeout: () => 0, clearTimeout() {}, setInterval() {}, addEventListener() {}, history: {replaceState() {}},
+  location: {hash: ""}, localStorage: {getItem() { return null }, setItem() {}},
+  document: {hidden: false, title: "", documentElement: {dataset: {}}, body: el(), activeElement: null,
+    querySelector: el, querySelectorAll: () => [], createElement: el,
+    addEventListener(type, fn) { if (type === "click") clicks.push(fn) }}};
+ctx.window = ctx; vm.createContext(ctx);
+for (const f of process.argv.slice(2, 5)) vm.runInContext(fs.readFileSync(f, "utf8"), ctx);
+ctx.ANSWER = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
+const scope = process.argv[6], posts = [];
+vm.runInContext(`readHash(); S.repo = "R"; S.task = null; SX.h = "claude"; SX.cur = {key: "R|null", proj: ANSWER};
+  renderMain = () => {}; sxLoad = () => {}; render = () => {}; loadTask = () => {}`, ctx);
+ctx.post = (route, body) => { posts.push(body.pairs); return Promise.resolve({ok: true}) };
+const out = {html: vm.runInContext(`sxRouting("${scope}")`, ctx), after: []};
+for (const v of process.argv.slice(7)) {
+  const button = {dataset: {act: "sxtic", k: scope + "|tiers-in-cells.claude", v}, disabled: false};
+  const ev = {target: {closest: s => s === "[data-act]" ? button : null}, stopPropagation() {}, preventDefault() {}};
+  for (const fn of clicks) fn(ev);
+  out.after.push(vm.runInContext(`(c => c && JSON.parse(JSON.stringify(c.routing.claude)))(SX.draft && SX.draft.c)`, ctx) || null);
+}
+Promise.resolve().then(() => vm.runInContext("SX.q", ctx)).then(() => {
+  out.posts = posts; console.log(JSON.stringify(out)) });
 """
 
 
@@ -132,6 +164,41 @@ class ClaudeFamilyTests(ViewerServerCase):
         out = run_node(ADD_FAMILY_JS, "app.js", "task-views.js", "settings.js", data=answer)
         self.assertEqual(sorted(out["opts"]), sorted("cf:" + f for f in CLAUDE_FAMILIES if f not in listed))
         self.assertTrue(out["button"])
+
+
+@unittest.skipUnless(shutil.which("node"), "node runs the viewer scripts")
+class RoutingModeSwitchTests(ViewerServerCase):
+    """[AMEND-3]: the switch names Tiers mode and Free mode and still flips `tiers_in_cells`."""
+
+    def answer(self) -> dict:
+        sb = self.sandbox()
+        sb.new_task("Modes", "modes")
+        view = self.view(sb)
+        return request(view["port"], "GET", f"/api/settings?repo={view['repo']}")[1]
+
+    def test_global_switch_names_both_modes_and_flips_the_draft(self):
+        out = run_node(MODE_SWITCH_JS, "app.js", "task-views.js", "settings.js", data=self.answer(),
+                       args=["global", "tiers", "free", "free", "tiers"])
+        html = out["html"]
+        self.assertRegex(html, r'aria-checked="true" data-act="sxtic"[^>]*data-v="tiers"[^>]*>Tiers mode</button>')
+        self.assertRegex(html, r'aria-checked="false" data-act="sxtic"[^>]*data-v="free"[^>]*>Free mode</button>')
+        self.assertNotIn("Tiers in cells", html)
+        tiers_now, free, free_again, tiers_back = out["after"]
+        self.assertIsNone(tiers_now)  # the mode already shown: no draft
+        self.assertIs(free["tiers_in_cells"], False)
+        cell, tiers = free["tables"]["execution"]["balanced"]["hard"], free["tiers"]
+        self.assertEqual({k: cell[k] for k in ("model", "effort")}, tiers[cell["tier"]])  # the switch changes no route
+        self.assertEqual(free_again, free)
+        self.assertIs(tiers_back["tiers_in_cells"], True)
+
+    def test_project_switch_saves_free_mode_with_the_tier_copies(self):
+        out = run_node(MODE_SWITCH_JS, "app.js", "task-views.js", "settings.js", data=self.answer(),
+                       args=["project", "free"])
+        self.assertIn(">Free mode</button>", out["html"])
+        self.assertEqual(len(out["posts"]), 1)
+        pairs = out["posts"][0]
+        self.assertEqual(pairs[0], "tiers-in-cells.claude=off")
+        self.assertTrue(any(p.startswith("routing.claude.execution.balanced.hard=") for p in pairs[1:]), pairs)
 
 
 class HoldByTests(ViewerServerCase):

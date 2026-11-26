@@ -224,10 +224,9 @@ def config_skeleton(facts: dict) -> dict:
     models, routing = {}, {}
 
     def block() -> dict:
-        tables = {phase: {lvl: {d: {"tier": "<L1-L4>", "model": "<model, used when tiers are off>",
-                                    "effort": "<effort>"} for d in PHASE_DIFFICULTIES[phase]}
+        # Tiers mode: a cell carries only its tier; the first switch to Free mode copies the tier into it
+        tables = {phase: {lvl: {d: {"tier": "<L1-L4>"} for d in PHASE_DIFFICULTIES[phase]}
                           for lvl in LEVELS} for phase in LEVEL_PHASES}
-        # tiers in cells stays on by default, although the owner works with it off
         return {"tiers_in_cells": True, "tiers": {t: {"model": "<model>", "effort": "<effort>"} for t in TIERS},
                 "tables": tables}
 
@@ -311,7 +310,8 @@ def routing_tables_text(layers: list, harness: str, marks: bool = False) -> list
     """The tiers and one small table per phase for one harness (`marks`: a source letter)."""
     effective = effective_routing(layers, harness)
     letter = {"global": "", "project": "ᵖ", "task": "ᵗ"}
-    lines = [f"  tiers in cells: {'on' if effective.get('tiers_in_cells', (True,))[0] else 'off'}"]
+    tiers_on = effective.get("tiers_in_cells", (True,))[0]
+    lines = ["  Tiers mode (tiers_in_cells on)" if tiers_on else "  Free mode (tiers_in_cells off)"]
     for name in TIERS:
         if name in effective["tiers"]:
             tier, source = effective["tiers"][name]
