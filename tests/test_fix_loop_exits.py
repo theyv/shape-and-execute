@@ -639,6 +639,33 @@ class ReviewFixLoopExitsTests(FixLoopCase):
             "- REVIEW-INTEGRATION: Retry on timeout — let go: rare in production",
             "- REVIEW-INTEGRATION: Retry — accepted: cosmetic"])
 
+    def test_let_go_number_is_the_whole_argument_and_a_double_match_is_refused(self):
+        """REVIEW-INTEGRATION-3 finding 2: finding 1 titled "2: Retry on timeout" is not finding 2."""
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letwhole")
+        self.review_with(sb, task, "letwhole", "REVIEW-INTEGRATION", "integration", "changes-required",
+                         ["2: Retry on timeout", "Other"])
+        sb.sae("log", "letwhole", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2: Retry on timeout",
+               "--reason", "first")
+        sb.sae("log", "letwhole", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2", "--reason", "second")
+        sb.sae("accept-review", "letwhole", "REVIEW-INTEGRATION", "--reason", "cosmetic")
+        self.final(sb, task, "letwhole")
+        report = self.report(sb.sae("finish", "letwhole").stdout)
+        self.assertEqual(self.section(report, "## Findings let go"), [
+            "- REVIEW-INTEGRATION: 2: Retry on timeout — let go: first",
+            "- REVIEW-INTEGRATION: Other — let go: second"])
+
+    def test_let_go_refuses_a_selector_that_matches_two_findings(self):
+        sb = self.sandbox()
+        task = self.integration_task(sb, "letdouble")
+        self.review_with(sb, task, "letdouble", "REVIEW-INTEGRATION", "integration", "changes-required",
+                         ["2", "Other"])
+        before = self.snapshot(sb, task)
+        refused = sb.sae("log", "letdouble", "decision", "--job", "REVIEW-INTEGRATION", "--let-go", "2",
+                         "--reason", "rare", code=1).stderr
+        self.assertIn('"2" names more than one finding', refused)
+        self.assertEqual(self.snapshot(sb, task), before)
+
     def test_decision_job_for_a_review_limit_park_points_to_the_review(self):
         """Finding 4: sae parked the job at the round limit; its result holds no Decision request."""
         sb = self.sandbox()
