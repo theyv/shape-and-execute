@@ -38,10 +38,17 @@ npx skills add theyv/shape-and-execute --skill shape-and-execute -g -y --agent c
 ```
 
 The first run starts setup, once. It asks which models to use and how each level (economy,
-balanced, premium) and job difficulty (mechanical, normal, hard) maps to a model and an effort.
+balanced, premium) and job difficulty (mechanical, easy, normal, hard) maps to a model and an
+effort: through four tiers, L1 to L4 (Tiers mode, the default), or per cell (Free mode).
 It also sets your defaults for new tasks: the interaction mode, from `full-auto` to
 `interactive`, and the review points (spec, plan, jobs, integration). Then the agent goes back
 to your note. Pick a task up later, in any session, with `/shape-and-execute continue <task>`.
+
+The first task in a repository also asks for its **Project Stakes**: who uses the project and
+why, how much may break, what matters now, what not to build. They live in
+`.tasks/repo/profile.md`. Every worker builds to them and every reviewer judges the work
+against them, so agents neither cut corners you care about nor overbuild what you do not need.
+Skip the question, and agents set the bar themselves from the repository.
 
 ## Seven problems it solves
 
@@ -139,8 +146,8 @@ decisions. For a task that fits one short session, a plain session is enough; sa
    second model; spec approval.
 2. **Plan.** A planner splits the spec into a graph of jobs. Each job fits a fresh context and
    has its own verify commands. A level per phase (economy, balanced, premium) and a difficulty
-   per job (mechanical, normal, hard) map to a model and an effort through the user's routing
-   table. Plan review; plan approval.
+   per job (mechanical, easy, normal, hard) map to a model and an effort through the user's
+   routing table. Plan review; plan approval.
 3. **Execute.** One fresh worker per job, on the model and effort that `sae dispatch` prints.
    A chain of jobs runs in the task worktree; parallel jobs get their own branch and worktree.
    `sae` re-runs every job's verify commands, merges the jobs into one task branch and gates the

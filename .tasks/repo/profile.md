@@ -19,3 +19,6 @@ adr_folder: docs/adr
 
 ## Owner walkthrough
 - A task that changes the first-run setup (the setup guide or proposal in `skills/shape-and-execute/references/modes/setup.md`, `setup_mode.py`, the config schema) or adds anything that asks the user for an action or an answer after an update gets a job `FIRST-RUN-WALKTHROUGH`: after the integration fixes, before the final validation, with a hold after it. The job runs the tool in `tests/tools/walkthrough/` (fresh install and upgrade; Claude by default, Codex on demand) and the owner walks through both. Why: the decision record "First-run and upgrade changes end with an owner walkthrough".
+
+## Docs in sync
+- A task that changes what users see (commands, setup, the viewer, texts the user reads) updates `README.md` in the same task. The `sae-release` skill checks it again before a release.

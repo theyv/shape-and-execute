@@ -6,3 +6,10 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+
+# APM dependencies
+apm_modules/
+# APM output: generated from .apm/ by `apm install`
+.claude/skills/
+.agents/

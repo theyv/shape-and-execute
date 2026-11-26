@@ -30,22 +30,9 @@
   and global concurrency.
 - [Risk and review](tier-1/2026-10-30-1311--consider-risk-independently-of-difficult.md) — assess
   consequences separately from implementation difficulty.
-- [Four difficulty levels](tier-1/2026-11-13-1158--four-difficulty-levels.md) — add a category for
-  simple work, improve model routing, and reduce unnecessary token use. Routing details remain open.
-- [Fix the broken rule, not one instance](tier-1/2026-11-13-1324--fix-the-broken-rule-not-one-instance.md) —
-  stop review rounds that fix one code path at a time; group findings by the broken rule and
-  find every consumer first.
-- [Harness permissions in the viewer](tier-1/2026-11-17-1020--harness-permissions-in-the-viewer-and-a.md) —
-  configure Claude and Codex permissions from the viewer, check them before dispatch, and define
-  a visible default when a routed harness cannot run a job.
-- [Reviews judge against real use](tier-1/2026-11-17-1840--reviews-judge-against-the-projects-real.md) —
-  findings name a real user step; the orchestrator filters over-engineered findings.
 
 - [Notify the active agent about viewer setting changes](tier-1/2026-11-20-0918--notify-the-active-agent-about-viewer-set.md) —
   show owner changes on the next agent turn so stale settings do not override them.
-- [Drop a parked job and its fix chain](tier-1/2026-11-20-1133--drop-a-parked-job-and-its-fix-chain.md) —
-  a supported path when the owner decides a parked job never merges; today it blocks the
-  integration review and the final validation.
 - [Model changes for a running or finished job](tier-1/2026-10-12-2206--change-the-model-or-effort-of-a-finished.md) —
   change model and effort of a running job or a fix round; the record shows what really ran.
 
@@ -95,6 +82,8 @@
   commits orchestrated by SaE.
 - [Greenfield application design](tier-4/2026-10-29-1328--document-and-plan-a-greenfield-applicati.md) —
   establish an application design before implementation tasks.
+- [Sandboxed writer launches](tier-4/2026-11-20-1159--sandboxed-writer-launches-for-cross-harn.md) —
+  run cross-harness writer jobs in a sandbox and apply harness permissions from the viewer.
 
 ## Findings and unresolved candidates
 

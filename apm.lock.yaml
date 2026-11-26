@@ -1,0 +1,69 @@
+lockfile_version: '1'
+dependencies: []
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sae-release
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sae-release/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1b01b801fa9331e9ad3a0bb125f73b70d38a7e9ccb1248f34570cbc45ca8c6fa
+- kind: project-relative
+  target: claude
+  value: .claude/skills/sae-release/scripts/publish_check.py
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b97e0a81aee6ba9ef5bd4a72bf50f0bb691e860199574f485d26df6b15257b3d
+- kind: project-relative
+  target: codex
+  value: .agents/skills/sae-release
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: null
+- kind: project-relative
+  target: codex
+  value: .agents/skills/sae-release/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:1b01b801fa9331e9ad3a0bb125f73b70d38a7e9ccb1248f34570cbc45ca8c6fa
+- kind: project-relative
+  target: codex
+  value: .agents/skills/sae-release/scripts/publish_check.py
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:b97e0a81aee6ba9ef5bd4a72bf50f0bb691e860199574f485d26df6b15257b3d
+local_deployed_files:
+- .agents/skills/sae-release
+- .agents/skills/sae-release/SKILL.md
+- .agents/skills/sae-release/scripts/publish_check.py
+- .claude/skills/sae-release
+- .claude/skills/sae-release/SKILL.md
+- .claude/skills/sae-release/scripts/publish_check.py
+local_deployed_file_hashes:
+  .agents/skills/sae-release/SKILL.md: sha256:1b01b801fa9331e9ad3a0bb125f73b70d38a7e9ccb1248f34570cbc45ca8c6fa
+  .agents/skills/sae-release/scripts/publish_check.py: sha256:b97e0a81aee6ba9ef5bd4a72bf50f0bb691e860199574f485d26df6b15257b3d
+  .claude/skills/sae-release/SKILL.md: sha256:1b01b801fa9331e9ad3a0bb125f73b70d38a7e9ccb1248f34570cbc45ca8c6fa
+  .claude/skills/sae-release/scripts/publish_check.py: sha256:b97e0a81aee6ba9ef5bd4a72bf50f0bb691e860199574f485d26df6b15257b3d

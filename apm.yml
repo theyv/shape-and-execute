@@ -1,0 +1,8 @@
+name: shape-and-execute-dev
+version: 1.0.0
+description: Project-only agent skills for developing this repository (not the published skill).
+targets: [claude, codex]
+dependencies:
+  apm: []
+  mcp: []
+includes: auto
