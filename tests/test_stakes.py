@@ -468,6 +468,25 @@ class WriterTests(StakesCase):
         self.assertEqual(path.read_bytes(), before)
         self.assertIn("## Validation commands", path.read_text())
 
+    def test_a_second_project_stakes_heading_makes_the_section_ambiguous(self):
+        # REVIEW-INTEGRATION-3 1: a fenced example with the heading before the real section
+        sb = self.home()
+        path = sb.repo / ".tasks" / "repo" / "profile.md"
+        path.write_text("# Repo profile\n\n## Worktree notes\n```md\n## Project Stakes\n- Example.\n```\n\n"
+                        "## Project Stakes\n- Real.\n\n## Hot files\n- a.py\n")
+        before = path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "lines 5, 9"):
+            stakes.save_profile_stakes(sb.repo, "- New.")
+        self.assertEqual(path.read_bytes(), before)
+        found = stakes.find_stakes(sb.repo)
+        self.assertIn("Ambiguous", found.text)
+        self.assertIn("5, 9", found.text)
+        self.assertNotIn("Real", found.text)
+        self.assertEqual(stakes.section_revision(path), "")
+        path.write_text(before.decode().replace("## Project Stakes\n- Example.", "Project Stakes example\n- Example."))
+        stakes.save_profile_stakes(sb.repo, "- New.")  # one heading saves as before
+        self.assertIn("- New.", path.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
