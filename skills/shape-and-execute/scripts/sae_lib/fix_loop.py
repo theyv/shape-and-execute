@@ -248,6 +248,9 @@ def review_findings(text: str | None) -> list[tuple[str | None, str]]:
 LET_GO_RE = re.compile(r"^\s*(?:finding\s*)?#?(\d+)\.?\s*:\s*(.*)$", re.I | re.S)
 
 
+WHOLE_NUMBER_RE = re.compile(r"^(?:finding\s*)?#?(\d+)\.?$", re.I)
+
+
 def let_go_finding(summary: str | None) -> tuple[str | None, str]:
     """(number, reason) of a --let-go summary "<number>: <reason>" ("2", "#2", "finding 2");
     (None, summary) when it names no number. A title never identifies a finding: one title can
@@ -295,7 +298,7 @@ def resolve_let_go(task: Task, review_id: str, finding_arg: str, reason: str | N
     if not reason:
         return None, "", f"--let-go needs --reason <why>:\n  {line}"
     name = (finding_arg or "").strip()
-    number = LET_GO_RE.match(name + ":") or re.match(r"^#?(\d+)$", name)
+    number = WHOLE_NUMBER_RE.match(name)  # a number only when the whole argument is one
     key = number.group(1) if number else None
     if by_title(task, review_id):
         titles = [t for _, t in found]
@@ -304,10 +307,13 @@ def resolve_let_go(task: Task, review_id: str, finding_arg: str, reason: str | N
         problem = "more than one finding titled" if titles.count(name) > 1 else "no finding titled"
         return None, "", f"{review_id} has {problem} \"{name}\"; its findings are: {listing}.\n  {line}"
     numbers = [n for n, _ in found if n]
-    if key is None:  # an exact title of a numbered review
-        same = [n for n, t in found if n and t == name]
-        if len(same) == 1:
-            return same[0], reason, None
+    by_name = [n for n, t in found if n and t == name]  # an exact title of a numbered review
+    if key is not None and by_name and by_name != [key]:
+        return None, "", (f"{review_id}: \"{name}\" names more than one finding (number {key} and the title of "
+                          f"finding {by_name[0]}); its findings are: {listing}.\n  {line}")
+    if key is None:
+        if len(by_name) == 1:
+            return by_name[0], reason, None
         key = name
     if numbers.count(key) != 1:
         problem = "has no finding" if key not in numbers else "numbers finding"
